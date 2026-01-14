@@ -1,0 +1,509 @@
+
+import React, { useState, useEffect } from 'react';
+import { meshDataSync } from '../services/meshDataSync';
+import { realTorService } from '../services/realTorService';
+import { realPowService } from '../services/realPowService';
+
+interface ProfileViewProps {
+  myHandle: string;
+  setMyHandle: (val: string) => void;
+  myAvatar: string;
+  setMyAvatar: (val: string) => void;
+  myMood: { text: string; emoji: string };
+  setMyMood: (val: { text: string; emoji: string }) => void;
+  uptime: number;
+  balance: number;
+  theme: 'green' | 'amber' | 'cyan' | 'red';
+  setTheme: (theme: 'green' | 'amber' | 'cyan' | 'red') => void;
+  onWipe: () => void;
+  onSOS: () => void;
+  onClose: () => void;
+  onUplinkCoreChange?: (val: string) => void;
+  installPrompt?: any;
+  isInstalled?: boolean;
+  onInstallApp?: () => void;
+}
+
+const ProfileView: React.FC<ProfileViewProps> = ({
+  myHandle,
+  setMyHandle,
+  myAvatar,
+  setMyAvatar,
+  myMood,
+  setMyMood,
+  uptime,
+  balance,
+  theme,
+  setTheme,
+  onWipe,
+  onSOS,
+  onClose,
+  onUplinkCoreChange,
+  installPrompt,
+  isInstalled,
+  onInstallApp,
+}) => {
+  const avatarInputRef = React.useRef<HTMLInputElement>(null);
+  const [appearance, setAppearance] = useState<'system' | 'light' | 'dark'>('dark');
+  const [pow, setPow] = useState(false);
+  const [tor, setTor] = useState(true);
+  const [uplinkCore, setUplinkCore] = useState('ghost');
+  const [torStatus, setTorStatus] = useState<any>(null);
+  const [powStats, setPowStats] = useState<any>(null);
+
+  // Load saved uplink core from localStorage
+  useEffect(() => {
+    const savedUplinkCore = localStorage.getItem('xitchat_uplink_core');
+    if (savedUplinkCore) {
+      setUplinkCore(savedUplinkCore);
+    }
+  }, []);
+
+  // Initialize TOR and POW services
+  useEffect(() => {
+    // Load TOR status
+    setTor(realTorService.getTorEnabled());
+    setTorStatus(realTorService.getStatus());
+    
+    // Load POW status
+    setPow(realPowService.getPOWEnabled());
+    setPowStats(realPowService.getStats());
+    
+    // Subscribe to TOR updates
+    const unsubscribeTor = realTorService.subscribe('statusUpdated', (status) => {
+      setTorStatus(status);
+    });
+    
+    const unsubscribeTorEnabled = realTorService.subscribe('torEnabled', () => {
+      setTor(true);
+    });
+    
+    const unsubscribeTorDisabled = realTorService.subscribe('torDisabled', () => {
+      setTor(false);
+    });
+    
+    // Subscribe to POW updates
+    const unsubscribePow = realPowService.subscribe('statsUpdated', (stats) => {
+      setPowStats(stats);
+    });
+    
+    const unsubscribePowEnabled = realPowService.subscribe('powEnabled', () => {
+      setPow(true);
+    });
+    
+    const unsubscribePowDisabled = realPowService.subscribe('powDisabled', () => {
+      setPow(false);
+    });
+    
+    return () => {
+      unsubscribeTor();
+      unsubscribeTorEnabled();
+      unsubscribeTorDisabled();
+      unsubscribePow();
+      unsubscribePowEnabled();
+      unsubscribePowDisabled();
+    };
+  }, []);
+
+  // Sync profile changes to mesh network
+  useEffect(() => {
+    const profileData = {
+      handle: myHandle,
+      avatar: myAvatar,
+      mood: myMood,
+      theme: theme,
+      uplinkCore: uplinkCore,
+      lastUpdated: Date.now()
+    };
+
+    // Broadcast profile changes to mesh
+    meshDataSync.syncUserProfile(profileData);
+  }, [myHandle, myAvatar, myMood, theme, uplinkCore]);
+
+  // TOR toggle handler
+  const handleTorToggle = async (enabled: boolean) => {
+    try {
+      if (enabled) {
+        await realTorService.enableTor();
+      } else {
+        await realTorService.disableTor();
+      }
+    } catch (error) {
+      console.error('Failed to toggle TOR:', error);
+    }
+  };
+
+  const handlePowToggle = async (enabled: boolean) => {
+    try {
+      if (enabled) {
+        await realPowService.enablePOW();
+      } else {
+        await realPowService.disablePOW();
+      }
+    } catch (error) {
+      console.error('Failed to toggle POW:', error);
+    }
+  };
+
+  const handleUplinkCoreChange = (coreId: string) => {
+    setUplinkCore(coreId);
+    if (onUplinkCoreChange) {
+      onUplinkCoreChange(coreId);
+    }
+  };
+
+  const uplinkCores = [
+    { id: 'ghost', icon: 'fa-ghost', color: '#00ff41', label: 'Ghost' },
+    { id: 'robot', icon: 'fa-robot', color: '#00ffff', label: 'Robot' },
+    { id: 'mojie', icon: 'fa-face-smile', color: '#ffb000', label: 'Mojie' },
+    { id: 'alien', icon: 'fa-user-astronaut', color: '#ff3131', label: 'Alien' },
+    { id: 'signal', icon: 'fa-satellite-dish', color: '#00ff41', label: 'Signal' },
+    { id: 'shield', icon: 'fa-shield-halved', color: '#00ff41', label: 'Shield' },
+    { id: 'pulse', icon: 'fa-heart-pulse', color: '#ff3131', label: 'Pulse' },
+    { id: 'node', icon: 'fa-network-wired', color: '#00ffff', label: 'Node' },
+    { id: 'star', icon: 'fa-star', color: '#ffb000', label: 'Star' },
+  ];
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setMyAvatar(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const themes: Array<{ id: 'green' | 'amber' | 'cyan' | 'red'; label: string; dotColor: string }> = [
+    { id: 'green', label: 'MATRIX_GREEN', dotColor: 'bg-[#00ff41]' },
+    { id: 'amber', label: 'AMBER_TERMINAL', dotColor: 'bg-[#ffb000]' },
+    { id: 'cyan', label: 'CYBER_CYAN', dotColor: 'bg-[#00ffff]' },
+    { id: 'red', label: 'ALERT_RED', dotColor: 'bg-[#ff3131]' },
+  ];
+
+  return (
+    <div className="flex-1 p-6 md:p-12 flex flex-col items-center overflow-y-auto bg-black no-scrollbar animate-in fade-in zoom-in-95 duration-300">
+      <div className="max-w-md w-full space-y-10 pb-20 relative">
+        
+        {/* Header with Version and Close */}
+        <div className="flex justify-between items-start mb-6">
+           <div className="flex items-baseline gap-2">
+              <h1 className="text-4xl font-bold text-current lowercase tracking-tighter">xitchat</h1>
+              <span className="text-[10px] opacity-40 font-mono">v1.3.1</span>
+           </div>
+           <button 
+             onClick={onClose}
+             className="text-current font-bold uppercase text-xs tracking-widest hover:opacity-70 transition-opacity"
+           >
+             Close
+           </button>
+        </div>
+
+        {/* Profile Identity Card */}
+        <div className="border border-current border-opacity-30 p-8 space-y-6 bg-[#050505] relative overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.5)]">
+            <div className="flex justify-between items-start">
+                <div 
+                  className="w-20 h-20 border-2 border-current border-opacity-30 p-1 relative bg-black group cursor-pointer overflow-hidden shadow-[0_0_10px_rgba(0,255,65,0.1)]" 
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  <img src={myAvatar} className="w-full h-full object-cover grayscale opacity-80 group-hover:opacity-100 transition-all" alt="" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                    <i className="fa-solid fa-camera text-white"></i>
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 text-3xl bg-black rounded-full p-1 border-2 border-current shadow-[0_0_10px_rgba(0,255,65,0.2)]">
+    <i className={`fa-solid ${uplinkCores.find(c => c.id === uplinkCore)?.icon || 'fa-ghost'}`} 
+       style={{ color: uplinkCores.find(c => c.id === uplinkCore)?.color || '#00ff41' }}></i>
+  </div>
+                </div>
+                <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
+                
+                <div className="text-right flex-1 ml-6">
+                  <div className="flex items-center gap-2 justify-end mb-1">
+                    <span className="text-white opacity-40 text-[9px] uppercase font-bold tracking-widest">node:</span>
+                    <input 
+                      value={myHandle} 
+                      onChange={(e) => setMyHandle(e.target.value)}
+                      className="text-right bg-transparent border-none outline-none text-lg font-bold uppercase tracking-tighter glow-text text-white w-full max-w-[120px] focus:text-current transition-colors"
+                    />
+                  </div>
+                  <p className="text-[9px] font-bold opacity-30 uppercase tracking-widest text-white/30">id: 48F2-A812</p>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+               <p className="text-[9px] font-bold opacity-30 uppercase tracking-[0.3em] text-current">broadcast_signal</p>
+               <div className="flex items-center gap-4 bg-[#080808] p-3 border border-current border-opacity-20">
+                  <span className="text-lg drop-shadow-[0_0_5px_currentColor]">{myMood.emoji}</span>
+                  <input 
+                    value={myMood.text} 
+                    onChange={(e) => setMyMood({ ...myMood, text: e.target.value })}
+                    className="bg-transparent border-none outline-none text-xs w-full text-white font-mono placeholder-white/10"
+                    placeholder="broadcast_status..."
+                  />
+               </div>
+            </div>
+        </div>
+
+        {/* Feature Highlights Section */}
+        <div className="space-y-8 py-4 border-t border-current border-opacity-10 pt-10">
+          <div className="flex items-start gap-5">
+            <div className="mt-1 text-current w-6 text-center text-lg">
+              <i className="fa-solid fa-bluetooth"></i>
+            </div>
+            <div>
+              <h3 className="text-current font-bold text-base tracking-tight mb-1">Offline Mesh Chat</h3>
+              <p className="text-[11px] opacity-60 leading-relaxed text-current">
+                Communicate directly via Bluetooth LE without internet or servers. Messages relay through nearby devices to extend range.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-5">
+            <div className="mt-1 text-current w-6 text-center text-lg">
+              <i className="fa-solid fa-globe"></i>
+            </div>
+            <div>
+              <h3 className="text-current font-bold text-base tracking-tight mb-1">Online Geohash Channels</h3>
+              <p className="text-[11px] opacity-60 leading-relaxed text-current">
+                Connect with people in your area using geohash-based channels. Extend the mesh using public internet relays.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Uplink Core Selection */}
+        <div className="space-y-4">
+          <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#006600]">UPLINK_CORE_SELECTION</h4>
+          <div className="grid grid-cols-3 gap-3">
+            {uplinkCores.map((core) => (
+              <button
+                key={core.id}
+                onClick={() => handleUplinkCoreChange(core.id)}
+                className={`flex flex-col items-center gap-2 p-3 border transition-all bg-[#080808] relative group ${
+                  uplinkCore === core.id 
+                    ? 'border-current shadow-[0_0_15px_rgba(0,255,65,0.1)]' 
+                    : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
+                }`}
+              >
+                <div className={`text-lg transition-all ${
+                  uplinkCore === core.id ? 'scale-110' : 'scale-100'
+                }`} style={{ color: core.color }}>
+                  <i className={`fa-solid ${core.icon}`}></i>
+                </div>
+                <span className={`text-[8px] font-bold uppercase tracking-wider font-mono ${
+                  uplinkCore === core.id ? 'text-white' : 'text-white/40'
+                }`}>
+                  {core.label}
+                </span>
+                {uplinkCore === core.id && (
+                  <div className="absolute inset-0 bg-current opacity-[0.03] pointer-events-none rounded"></div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Node Appearance Settings */}
+        <div className="space-y-4">
+          <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#006600]">NODE_APPEARANCE</h4>
+          <div className="grid grid-cols-2 gap-3">
+            {themes.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTheme(t.id)}
+                className={`flex items-center gap-4 p-4 border transition-all text-left bg-[#080808] relative group ${
+                  theme === t.id 
+                    ? 'border-[#00ff41] shadow-[0_0_15px_rgba(0,255,65,0.05)]' 
+                    : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
+                }`}
+              >
+                <div className={`w-3.5 h-3.5 rounded-full shrink-0 ${t.dotColor} ${
+                  theme === t.id ? 'shadow-[0_0_8px_currentColor] ring-2 ring-current ring-opacity-20' : 'opacity-40'
+                }`}></div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
+                  theme === t.id ? 'text-white' : 'text-white/40'
+                }`}>
+                  {t.label}
+                </span>
+                {theme === t.id && (
+                  <div className="absolute inset-0 bg-current opacity-[0.03] pointer-events-none"></div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Other Settings Sections */}
+        <div className="space-y-10 border-t border-current border-opacity-10 pt-10">
+          
+          {/* Appearance Section */}
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] text-current">appearance</h4>
+            <div className="flex gap-3">
+              {(['system', 'light', 'dark'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setAppearance(mode)}
+                  className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
+                    appearance === mode ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Proof of Work Section */}
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] text-current">proof of work</h4>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handlePowToggle(false)}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
+                  !pow ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                }`}
+              >
+                pow off
+              </button>
+              <button
+                onClick={() => handlePowToggle(true)}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
+                  pow ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                }`}
+              >
+                pow on
+              </button>
+            </div>
+
+            {/* POW Status Log */}
+            {pow && (
+              <div className="mt-6 p-4 bg-[#111111] border border-current border-opacity-10 rounded-lg font-mono text-[10px] leading-relaxed">
+                <p className="text-current opacity-80 mb-2">
+                  POW Status: <span className="text-[#00ff41]">Mining</span>
+                </p>
+                <div className="opacity-40 space-y-1">
+                  <p>Difficulty: {powStats?.currentDifficulty || 1}</p>
+                  <p>Hash Rate: {powStats?.hashRate ? (powStats.hashRate / 1000).toFixed(2) : '0.00'} KH/s</p>
+                  <p>Solved: {powStats?.solvedChallenges || 0}/{powStats?.totalChallenges || 0}</p>
+                  <p>Avg Time: {powStats?.averageSolveTime ? (powStats.averageSolveTime / 1000).toFixed(2) : '0.00'}s</p>
+                  {powStats?.lastSolution && (
+                    <p>Last: {powStats.lastSolution.hash.substring(0, 16)}...</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Network Section */}
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] text-current">network</h4>
+            <div className="flex gap-3">
+              <button
+                onClick={() => handleTorToggle(false)}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
+                  !tor ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                }`}
+              >
+                tor off
+              </button>
+              <button
+                onClick={() => handleTorToggle(true)}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all relative ${
+                  tor ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                }`}
+              >
+                tor on
+                {tor && <span className="absolute right-2 top-2 w-1.5 h-1.5 rounded-full bg-[#00ff41] animate-pulse"></span>}
+              </button>
+            </div>
+
+            {/* Tor Status Log */}
+            <div className="mt-6 p-4 bg-[#111111] border border-current border-opacity-10 rounded-lg font-mono text-[10px] leading-relaxed">
+              <p className="text-current opacity-80 mb-2">
+                tor Status: <span className={torStatus?.connected ? 'text-[#00ff41]' : 'text-red-500'}>
+                  {torStatus?.connected ? `Running, bootstrap ${torStatus.bootstrapProgress}%` : 'Disconnected'}
+                </span>
+              </p>
+              <div className="opacity-40 space-y-1">
+                <p>Last: [2m2025-09-15T12:39:12.870251Z[0m [32m INFO[0m</p>
+                <p>[2mtor_guardmgr::guard[0m[:[0m We have found that guard [scrubbed] is usable.</p>
+                {torStatus?.exitNode && (
+                  <p>Exit Node: {torStatus.exitNode.nickname} ({torStatus.exitNode.country})</p>
+                )}
+                {torStatus?.bandwidth > 0 && (
+                  <p>Bandwidth: {(torStatus.bandwidth / 1024 / 1024).toFixed(2)} MB/s</p>
+                )}
+                {torStatus?.circuitCount > 0 && (
+                  <p>Active Circuits: {torStatus.circuitCount}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* System Actions */}
+        <div className="pt-10 space-y-4 border-t border-current border-opacity-10">
+          {/* PWA Install Section */}
+          {!isInstalled && installPrompt && (
+            <div className="mb-6 p-4 border border-[#00ff41] border-opacity-30 bg-[#00ff41]/5 rounded-lg">
+              <div className="flex items-center gap-3 mb-3">
+                <i className="fa-solid fa-download text-[#00ff41] text-lg"></i>
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">install_node</h4>
+              </div>
+              <p className="text-[11px] opacity-60 mb-4 text-current">
+                Install XitChat to your home screen for instant access and a native app experience.
+              </p>
+              <button 
+                onClick={onInstallApp}
+                className="w-full bg-[#00ff41] text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:bg-[#00cc33] transition-all flex items-center justify-center gap-2"
+              >
+                <i className="fa-solid fa-mobile-alt"></i>
+                Install Node to Home Screen
+              </button>
+            </div>
+          )}
+
+          {isInstalled && (
+            <div className="mb-6 p-4 border border-current border-opacity-20 bg-[#050505] rounded-lg">
+              <div className="flex items-center gap-3 mb-2">
+                <i className="fa-solid fa-check text-[#00ff41] text-lg"></i>
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">node_installed</h4>
+              </div>
+              <p className="text-[11px] opacity-60 text-current">
+                XitChat is installed on your device. Launch from home screen for the best experience.
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="border border-current border-opacity-10 p-4 bg-[#080808]">
+              <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest mb-1 text-white/40">wallet</p>
+              <p className="text-lg font-bold text-white glow-text">{balance} XC</p>
+            </div>
+            <div className="border border-current border-opacity-10 p-4 bg-[#080808]">
+              <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest mb-1 text-white/40">uptime</p>
+              <p className="text-lg font-bold text-white glow-text">{Math.floor(uptime/60)}m</p>
+            </div>
+          </div>
+
+          <button 
+            onClick={onSOS}
+            className="w-full bg-red-900/40 border border-red-500 text-red-500 py-4 font-black uppercase text-xs tracking-[0.4em] hover:bg-red-500 hover:text-white transition-all"
+          >
+            emergency_sos
+          </button>
+          <button 
+            onClick={onWipe}
+            className="w-full border border-red-500/20 text-red-500/50 hover:text-red-500 hover:border-red-500 py-3 uppercase text-[10px] font-bold tracking-[0.2em] transition-all"
+          >
+            wipe_node_identity (factory_reset)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ProfileView;

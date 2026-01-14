@@ -1,0 +1,84 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1920" height="1080" fill="#000000"/>
+  
+  <!-- Scanline effect -->
+  <rect width="1920" height="1080" fill="url(#scanlines)" opacity="0.1"/>
+  
+  <!-- X Logo centered -->
+  <g transform="translate(960, 540)">
+    <!-- Animated glow rings -->
+    <circle cx="0" cy="0" r="200" fill="none" stroke="#00ff41" stroke-width="2" opacity="0.2">
+      <animate attributeName="r" values="150;250;150" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.2;0.1;0.2" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    
+    <circle cx="0" cy="0" r="150" fill="none" stroke="#00ff41" stroke-width="3" opacity="0.3">
+      <animate attributeName="r" values="120;180;120" dur="2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.3;0.1;0.3" dur="2s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- Main X -->
+    <path d="M -100,-100 L 100,100 M 100,-100 L -100,100" 
+          stroke="#00ff41" 
+          stroke-width="20" 
+          stroke-linecap="round"
+          filter="url(#glow)"/>
+    
+    <!-- Center -->
+    <circle cx="0" cy="0" r="12" fill="#00ff41">
+      <animate attributeName="r" values="12;16;12" dur="1.5s" repeatCount="indefinite"/>
+    </circle>
+    
+    <!-- App name -->
+    <text x="0" y="280" 
+          font-family="monospace" 
+          font-size="48" 
+          font-weight="bold"
+          fill="#00ff41" 
+          text-anchor="middle">XitChat</text>
+    
+    <!-- Tagline -->
+    <text x="0" y="320" 
+          font-family="monospace" 
+          font-size="20" 
+          fill="#00ff41" 
+          text-anchor="middle"
+          opacity="0.7">Decentralized Mesh Messaging</text>
+    
+    <!-- Loading dots -->
+    <g transform="translate(0, 380)">
+      <circle cx="-40" cy="0" r="4" fill="#00ff41">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="1s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="0" cy="0" r="4" fill="#00ff41">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="1s" begin="0.3s" repeatCount="indefinite"/>
+      </circle>
+      <circle cx="40" cy="0" r="4" fill="#00ff41">
+        <animate attributeName="opacity" values="0.3;1;0.3" dur="1s" begin="0.6s" repeatCount="indefinite"/>
+      </circle>
+    </g>
+  </g>
+  
+  <!-- Grid overlay -->
+  <defs>
+    <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+      <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#00ff41" stroke-width="0.5" opacity="0.1"/>
+    </pattern>
+    
+    <pattern id="scanlines" width="4" height="4" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="4" stroke="#00ff41" stroke-width="0.5" opacity="0.3"/>
+    </pattern>
+    
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Grid background -->
+  <rect width="1920" height="1080" fill="url(#grid)"/>
+</svg>

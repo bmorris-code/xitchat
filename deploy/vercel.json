@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "name": "xitchat-p2p",
+  "builds": [
+    {
+      "src": "server/signaling-server.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/signaling",
+      "dest": "/server/signaling-server.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "server/signaling-server.js": {
+      "maxDuration": 10
+    }
+  }
+}

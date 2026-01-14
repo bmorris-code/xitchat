@@ -1,0 +1,19 @@
+{
+  "name": "xitchat-signaling-server",
+  "version": "1.0.0",
+  "description": "Real-time signaling server for XitChat radar and peer discovery",
+  "main": "realtime-signaling-server.ts",
+  "scripts": {
+    "start": "tsx realtime-signaling-server.ts",
+    "dev": "tsx watch realtime-signaling-server.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.3",
+    "@types/ws": "^8.5.10",
+    "@types/node": "^22.14.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "~5.8.2"
+  }
+}

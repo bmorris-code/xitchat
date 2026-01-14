@@ -1,0 +1,10 @@
+
+{
+  "name": "XitChat",
+  "description": "A modern evolution of the classic Mxit experience combined with BitChat's lightweight feel, featuring location-based discovery and AI-powered interactions.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera",
+    "microphone"
+  ]
+}
