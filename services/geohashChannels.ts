@@ -70,6 +70,13 @@ class GeohashChannelsService {
       this.updateLocation(position.coords.latitude, position.coords.longitude);
     };
 
+     // 1. Define what happens if EVERYTHING fails
+    const onTotalFailure = (error: GeolocationPositionError) => {
+      console.error(`Location totally failed (${error.message}). Defaulting to fallback.`);
+      // Set a default location (e.g., Null Island) so the app loads
+      this.updateLocation(0, 0); 
+    };
+
     // fallback option: Low Accuracy (Wifi/Cell)
     const startLowAccuracyWatch = () => {
       console.log('Switching to low accuracy location mode...');
@@ -83,6 +90,28 @@ class GeohashChannelsService {
         }
       );
     };
+      // 3. Start High Accuracy Watch
+    const highAccuracyWatchId = navigator.geolocation.watchPosition(
+      onLocationSuccess,
+      (error) => {
+        // If High Accuracy fails, clear this watcher and try low accuracy
+        if (error.code === 3 || error.code === 2) {
+          console.warn(`High accuracy failed (${error.message}). Falling back.`);
+          navigator.geolocation.clearWatch(highAccuracyWatchId);
+          startLowAccuracyWatch();
+        } else {
+          // Permission denied (Code 1) - stop everything
+          navigator.geolocation.clearWatch(highAccuracyWatchId);
+          console.error('Location access denied.');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000, 
+        maximumAge: 10000
+      }
+    );
+  
 
     // First attempt: High Accuracy (GPS)
     navigator.geolocation.watchPosition(
