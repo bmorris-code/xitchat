@@ -54,8 +54,8 @@ class NostrService {
     'wss://relay.snort.social',
     'wss://nos.lol',
     'wss://relay.nostr.band',
-    'wss://nostr.wine',
-    'wss://relay.nostr.bg'
+    // 'wss://nostr.wine',
+    // 'wss://relay.nostr.bg'
   ];
 
   async initialize(privateKey?: string): Promise<boolean> {
