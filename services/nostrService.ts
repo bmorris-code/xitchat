@@ -112,7 +112,7 @@ class NostrService {
     }
   }
 
-  private async connectToRelays(): Promise<void> {
+ private async connectToRelays(): Promise<void> {
     console.log('🌐 Connecting to Nostr relays...');
 
     // Process all connections in parallel
