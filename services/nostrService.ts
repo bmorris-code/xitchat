@@ -115,19 +115,31 @@ class NostrService {
   private async connectToRelays(): Promise<void> {
     console.log('🌐 Connecting to Nostr relays...');
 
-    for (const relayUrl of this.defaultRelays) {
+    // Process all connections in parallel
+    const connectionPromises = this.defaultRelays.map(async (relayUrl) => {
       try {
-        const relay = await this.pool!.ensureRelay(relayUrl);
-        this.relays.push(relay);
+        // Add a 5-second timeout so a bad relay doesn't hang the process
+        const relay = await Promise.race([
+            this.pool!.ensureRelay(relayUrl),
+            new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('Connection timeout')), 5000)
+            )
+        ]);
+        
+        this.relays.push(relay as nostrTools.Relay);
         this.connectedRelays.add(relayUrl);
         console.log(`✅ Connected to relay: ${relayUrl}`);
       } catch (error) {
-        console.warn(`⚠️ Failed to connect to relay ${relayUrl}:`, error);
+        // Log as warning, not error, so it doesn't look critical in console
+        console.warn(`⚠️ Skipped relay ${relayUrl}:`, error instanceof Error ? error.message : 'Unknown error');
         this.failedRelays.add(relayUrl);
       }
-    }
+    });
 
-    console.log(`🌐 Connected to ${this.connectedRelays.size} relays`);
+    // Wait for all attempts to finish (success or fail)
+    await Promise.all(connectionPromises);
+
+    console.log(`🌐 Connected to ${this.connectedRelays.size}/${this.defaultRelays.length} relays`);
     this.emit('relaysConnected', { count: this.connectedRelays.size });
   }
 
