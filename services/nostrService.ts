@@ -51,7 +51,8 @@ class NostrService {
   // Default public Nostr relays
   private readonly defaultRelays = [
     'wss://relay.damus.io',
-    'wss://relay.snort.social',
+    'wss://bitcoiner.social',
+    // 'wss://relay.snort.social',
     'wss://nos.lol',
     'wss://relay.primal.net'
     // 'wss://relay.nostr.band',
@@ -163,6 +164,13 @@ class NostrService {
   }
 
   private async subscribeToEvents(): Promise<void> {
+       // Only subscribe to relays that are actually connected
+    const activeRelays = Array.from(this.connectedRelays);
+
+    if (activeRelays.length === 0) {
+      console.warn('⚠️ No active relays to subscribe to.');
+      return;
+    }
     try {
       // Subscribe to direct messages (kind 4)
       this.pool!.subscribeMany(this.defaultRelays, {
