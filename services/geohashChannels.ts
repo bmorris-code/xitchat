@@ -60,22 +60,48 @@ class GeohashChannelsService {
     this.startBackgroundSync();
   }
 
-  private initializeLocationServices() {
-    if ('geolocation' in navigator) {
+ private initializeLocationServices() {
+    if (!('geolocation' in navigator)) {
+      console.warn('Geolocation is not supported by this browser.');
+      return;
+    }
+
+    const onLocationSuccess = (position: GeolocationPosition) => {
+      this.updateLocation(position.coords.latitude, position.coords.longitude);
+    };
+
+    // fallback option: Low Accuracy (Wifi/Cell)
+    const startLowAccuracyWatch = () => {
+      console.log('Switching to low accuracy location mode...');
       navigator.geolocation.watchPosition(
-        (position) => {
-          this.updateLocation(position.coords.latitude, position.coords.longitude);
-        },
-        (error) => {
-          console.error('Location access denied:', error);
-        },
+        onLocationSuccess,
+        (error) => console.error('Low accuracy location failed:', error),
         {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes
+          enableHighAccuracy: false, // Low accuracy is faster
+          timeout: 30000,
+          maximumAge: 60000
         }
       );
-    }
+    };
+
+    // First attempt: High Accuracy (GPS)
+    navigator.geolocation.watchPosition(
+      onLocationSuccess,
+      (error) => {
+        // If timeout (code 3) or position unavailable (code 2), switch to low accuracy
+        if (error.code === 3 || error.code === 2) {
+          console.warn(`High accuracy failed (${error.message}). Falling back to low accuracy.`);
+          startLowAccuracyWatch();
+        } else {
+          console.error('Location access denied:', error);
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000, // Increased to 15s to give GPS more time
+        maximumAge: 10000
+      }
+    );
   }
 
   private updateLocation(latitude: number, longitude: number) {
