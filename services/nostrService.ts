@@ -53,7 +53,8 @@ class NostrService {
     'wss://relay.damus.io',
     'wss://relay.snort.social',
     'wss://nos.lol',
-    'wss://relay.nostr.band',
+    'wss://relay.primal.net'
+    // 'wss://relay.nostr.band',
     // 'wss://nostr.wine',
     // 'wss://relay.nostr.bg'
   ];
