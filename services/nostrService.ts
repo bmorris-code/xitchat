@@ -173,39 +173,38 @@ private async subscribeToEvents(): Promise<void> {
       const allPeers = Array.from(this.peers.keys());
       const recentPeers = allPeers.slice(0, 100);
 
-      // FIX: Explicitly type this as nostrTools.Filter[]
-      // This tells TypeScript that these objects conform to the Filter interface
-      const filters: nostrTools.Filter[] = [
-        { 
-          kinds: [4], 
-          '#p': [this.publicKey!],
-          limit: 50 
-        },
-        { 
-          kinds: [42], 
-          limit: 50 
-        }
-      ];
-
-      // Now we can push to it without type errors
-      if (recentPeers.length > 0) {
-        filters.push({
-          kinds: [0],
-          authors: recentPeers
-        });
-      }
-
-      this.pool!.subscribeMany(activeRelays, filters, {
+      // Subscribe to direct messages
+      this.pool!.subscribeMany(activeRelays, { 
+        kinds: [4], 
+        '#p': [this.publicKey!],
+        limit: 50 
+      }, {
         onevent: async (event) => {
-          if (event.kind === 4) {
-            await this.handleDirectMessage(event);
-          } else if (event.kind === 42) {
-            this.handleChannelMessage(event);
-          } else if (event.kind === 0) {
-            this.handleMetadataUpdate(event);
-          }
+          await this.handleDirectMessage(event);
         }
       });
+
+      // Subscribe to channel messages
+      this.pool!.subscribeMany(activeRelays, { 
+        kinds: [42], 
+        limit: 50 
+      }, {
+        onevent: async (event) => {
+          this.handleChannelMessage(event);
+        }
+      });
+
+      // Subscribe to metadata updates for recent peers
+      if (recentPeers.length > 0) {
+        this.pool!.subscribeMany(activeRelays, {
+          kinds: [0],
+          authors: recentPeers
+        }, {
+          onevent: async (event) => {
+            this.handleMetadataUpdate(event);
+          }
+        });
+      }
 
       console.log(`👂 Subscribed to Nostr events (Tracking ${recentPeers.length} peers)`);
     } catch (error) {

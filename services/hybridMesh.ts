@@ -322,22 +322,47 @@ class HybridMeshService {
       }
 
       // If Broadcast or Unknown Peer, send via ALL active channels (Smart Broadcast)
-      const promises: (Promise<void> | Promise<boolean>)[] = [];
+      const promises: Promise<void>[] = [];
 
-      if (this.activeServices.broadcast) promises.push(broadcastMesh.broadcastMessage(content));
-      if (this.activeServices.wifi) promises.push(Promise.resolve(wifiP2P.sendMessage('broadcast', content)).then(() => { }));
+      if (this.activeServices.broadcast) {
+        promises.push(broadcastMesh.broadcastMessage(content).catch(() => {}));
+      }
+      
+      if (this.activeServices.wifi) {
+        promises.push(Promise.resolve().then(async () => {
+          await wifiP2P.sendMessage('broadcast', content);
+        }));
+      }
+      
       if (this.activeServices.nostr) {
         // For nostr, broadcast means posting to a public channel (kind 1)
-        promises.push(nostrService.publishChannelMessage('global', content).catch(() => {}));
+        promises.push(Promise.resolve().then(async () => {
+          await nostrService.publishChannelMessage('global', content);
+        }));
       }
-      if (this.activeServices.webrtc) promises.push(Promise.resolve(ablyWebRTC.sendMessage(content)));
+      
+      if (this.activeServices.webrtc) {
+        promises.push(Promise.resolve().then(async () => {
+          await ablyWebRTC.sendMessage(content);
+        }));
+      }
+      
       if (this.activeServices.bluetooth) {
         // Bluetooth often requires a target, but we can iterate peers
-        Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth').forEach(p => {
-          promises.push(workingBluetoothMesh.sendMessage(p.serviceId!, content).then(() => { }));
-        });
+        Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'bluetooth')
+          .forEach(p => {
+            promises.push(Promise.resolve().then(async () => {
+              await workingBluetoothMesh.sendMessage(p.serviceId!, content);
+            }));
+          });
       }
-      if (this.activeServices.local) promises.push(localTestMesh.sendMessage(undefined, content).then(() => { }));
+      
+      if (this.activeServices.local) {
+        promises.push(Promise.resolve().then(async () => {
+          await localTestMesh.sendMessage(undefined, content);
+        }));
+      }
 
       await Promise.allSettled(promises);
 
