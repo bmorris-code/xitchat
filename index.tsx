@@ -2,11 +2,15 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
-// Import the PWA register function (Required for offline mode)
-import { registerSW } from 'virtual:pwa-register'; 
 
 // Import global JSON setup to handle BigInt serialization
 import './utils/globalJsonSetup';
+
+// Import iOS fixes for Safari/PWA compatibility
+import './ios-fixes';
+
+// Import the PWA register function (Required for offline mode)
+import { registerSW } from 'virtual:pwa-register'; 
 
 // --- 1. THE "WHITE SCREEN" / MIME TYPE FIX ---
 // This listens for the specific deployment error you were seeing.
