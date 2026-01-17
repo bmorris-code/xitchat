@@ -322,14 +322,13 @@ class HybridMeshService {
       }
 
       // If Broadcast or Unknown Peer, send via ALL active channels (Smart Broadcast)
-      const promises: Promise<void>[] = [];
+      const promises: (Promise<void> | Promise<boolean>)[] = [];
 
       if (this.activeServices.broadcast) promises.push(broadcastMesh.broadcastMessage(content));
       if (this.activeServices.wifi) promises.push(Promise.resolve(wifiP2P.sendMessage('broadcast', content)).then(() => { }));
       if (this.activeServices.nostr) {
-        // For nostr, "broadcast" usually means posting to a public channel or kind 1 note.
-        // Here we might skip or post to a default channel if implemented.
-        // nostrService.publishChannelMessage(...) 
+        // For nostr, broadcast means posting to a public channel (kind 1)
+        promises.push(nostrService.publishChannelMessage('global', content).catch(() => {}));
       }
       if (this.activeServices.webrtc) promises.push(Promise.resolve(ablyWebRTC.sendMessage(content)));
       if (this.activeServices.bluetooth) {

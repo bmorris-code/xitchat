@@ -211,7 +211,7 @@ class _GalleryViewState extends State<GalleryView> with TickerProviderStateMixin
                       children: [
                         Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.favorite,
                               color: Colors.red,
                               size: 12,
@@ -219,7 +219,7 @@ class _GalleryViewState extends State<GalleryView> with TickerProviderStateMixin
                             const SizedBox(width: 4),
                             Text(
                               '${item.likes}',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 color: AppTheme.darkGreen,
                                 fontSize: 10,
                               ),
@@ -228,7 +228,7 @@ class _GalleryViewState extends State<GalleryView> with TickerProviderStateMixin
                         ),
                         Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.share,
                               color: AppTheme.primaryGreen,
                               size: 12,
@@ -236,7 +236,7 @@ class _GalleryViewState extends State<GalleryView> with TickerProviderStateMixin
                             const SizedBox(width: 4),
                             Text(
                               '${item.shares}',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 color: AppTheme.darkGreen,
                                 fontSize: 10,
                               ),

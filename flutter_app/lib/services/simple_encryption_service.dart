@@ -20,10 +20,10 @@ class SimpleEncryptionService {
   late Uint8List _encryptionKey;
   late Uint8List _signingKey;
   String? _currentKeyId;
-  Map<String, Uint8List> _peerKeys = {};
+  final Map<String, Uint8List> _peerKeys = {};
   
   // Encryption metrics
-  Map<String, dynamic> _encryptionMetrics = {
+  final Map<String, dynamic> _encryptionMetrics = {
     'messagesEncrypted': 0,
     'messagesDecrypted': 0,
     'keysGenerated': 0,
@@ -268,7 +268,7 @@ class SimpleEncryptionService {
 
   Uint8List _padMessage(String message) {
     final messageBytes = utf8.encode(message);
-    final blockSize = 16; // AES block size
+    const blockSize = 16; // AES block size
     final paddingLength = blockSize - (messageBytes.length % blockSize);
     
     final paddedBytes = Uint8List(messageBytes.length + paddingLength);
@@ -421,7 +421,7 @@ class SimpleEncryptionService {
   }
 
   String _calculateSecurityLevel() {
-    final keySize = _keySize * 8; // in bits
+    const keySize = _keySize * 8; // in bits
     final messagesEncrypted = _encryptionMetrics['messagesEncrypted'] as int;
     
     if (keySize >= 256 && messagesEncrypted > 100) {
@@ -439,8 +439,8 @@ class SimpleEncryptionService {
     try {
       debugPrint('🧪 Testing encryption...');
       
-      final testMessage = 'This is a test message for encryption verification.';
-      final testRecipient = 'test_recipient';
+      const testMessage = 'This is a test message for encryption verification.';
+      const testRecipient = 'test_recipient';
       
       // Encrypt
       final encrypted = await encryptMessage(testMessage, testRecipient);

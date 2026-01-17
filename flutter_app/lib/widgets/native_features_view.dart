@@ -467,15 +467,15 @@ class _NativeFeaturesViewState extends State<NativeFeaturesView> with TickerProv
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.location_off,
                   color: AppTheme.darkGreen,
                   size: 24,
                 ),
-                const SizedBox(width: 12),
-                const Text(
+                SizedBox(width: 12),
+                Text(
                   'Location Unavailable',
                   style: TextStyle(
                     color: AppTheme.darkGreen,
@@ -508,15 +508,15 @@ class _NativeFeaturesViewState extends State<NativeFeaturesView> with TickerProv
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.location_on,
                 color: AppTheme.primaryGreen,
                 size: 24,
               ),
-              const SizedBox(width: 12),
-              const Text(
+              SizedBox(width: 12),
+              Text(
                 'Current Location',
                 style: TextStyle(
                   color: Colors.white,
@@ -692,15 +692,15 @@ class _NativeFeaturesViewState extends State<NativeFeaturesView> with TickerProv
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.network_check,
                 color: AppTheme.primaryGreen,
                 size: 24,
               ),
-              const SizedBox(width: 12),
-              const Text(
+              SizedBox(width: 12),
+              Text(
                 'Connection Status',
                 style: TextStyle(
                   color: Colors.white,

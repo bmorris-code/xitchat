@@ -195,13 +195,13 @@ class _JoeBankerViewState extends State<JoeBankerView> {
               decoration: InputDecoration(
                 hintText: 'Recipient handle (@user)',
                 hintStyle: TextStyle(color: AppTheme.darkGreen.withOpacity(0.6)),
-                border: OutlineInputBorder(
+                border: const OutlineInputBorder(
                   borderSide: BorderSide(color: AppTheme.darkGreen),
                 ),
-                enabledBorder: OutlineInputBorder(
+                enabledBorder: const OutlineInputBorder(
                   borderSide: BorderSide(color: AppTheme.darkGreen),
                 ),
-                focusedBorder: OutlineInputBorder(
+                focusedBorder: const OutlineInputBorder(
                   borderSide: BorderSide(color: AppTheme.primaryGreen),
                 ),
               ),
@@ -216,13 +216,13 @@ class _JoeBankerViewState extends State<JoeBankerView> {
             decoration: InputDecoration(
               hintText: 'Amount in XC',
               hintStyle: TextStyle(color: AppTheme.darkGreen.withOpacity(0.6)),
-              border: OutlineInputBorder(
+              border: const OutlineInputBorder(
                 borderSide: BorderSide(color: AppTheme.darkGreen),
               ),
-              enabledBorder: OutlineInputBorder(
+              enabledBorder: const OutlineInputBorder(
                 borderSide: BorderSide(color: AppTheme.darkGreen),
               ),
-              focusedBorder: OutlineInputBorder(
+              focusedBorder: const OutlineInputBorder(
                 borderSide: BorderSide(color: AppTheme.primaryGreen),
               ),
             ),
@@ -353,8 +353,8 @@ class _JoeBankerViewState extends State<JoeBankerView> {
     final amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter a valid amount'),
+        const SnackBar(
+          content: Text('Please enter a valid amount'),
           backgroundColor: Colors.red,
         ),
       );
@@ -363,8 +363,8 @@ class _JoeBankerViewState extends State<JoeBankerView> {
 
     if (_selectedTransactionType == 'send' && _recipientController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter a recipient'),
+        const SnackBar(
+          content: Text('Please enter a recipient'),
           backgroundColor: Colors.red,
         ),
       );

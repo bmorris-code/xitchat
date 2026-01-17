@@ -22,7 +22,7 @@ class TorService {
   Timer? _circuitRotationTimer;
   
   // Privacy metrics
-  Map<String, dynamic> _privacyMetrics = {
+  final Map<String, dynamic> _privacyMetrics = {
     'circuitChanges': 0,
     'dataTransferred': 0,
     'connectionUptime': 0,

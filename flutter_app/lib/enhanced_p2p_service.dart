@@ -106,7 +106,7 @@ class EnhancedP2PService {
 
     for (final permission in permissions) {
       final status = await permission.request();
-      debugPrint('📋 Permission ${permission.toString()}: ${status}');
+      debugPrint('📋 Permission ${permission.toString()}: $status');
     }
   }
 
@@ -122,7 +122,7 @@ class EnhancedP2PService {
       if (await FlutterBluePlus.isOn == false) {
         debugPrint('⚠️ Bluetooth is not enabled');
         // Request user to enable Bluetooth
-        await FlutterBluePlus.startScan(timeout: Duration(seconds: 1));
+        await FlutterBluePlus.startScan(timeout: const Duration(seconds: 1));
         return;
       }
 
@@ -308,12 +308,12 @@ class EnhancedP2PService {
 
   Future<void> _startWebRTCSignaling() async {
     // Start WebRTC signaling via SharedPreferences for cross-platform communication
-    _discoveryInterval = Timer.periodic(Duration(seconds: 5), (timer) {
+    _discoveryInterval = Timer.periodic(const Duration(seconds: 5), (timer) {
       _broadcastWebRTCOffer();
     });
 
     // Listen for WebRTC signals
-    Timer.periodic(Duration(seconds: 2), (timer) {
+    Timer.periodic(const Duration(seconds: 2), (timer) {
       _checkForWebRTCSignals();
     });
   }
@@ -591,7 +591,7 @@ class EnhancedP2PService {
   }
 
   void _startHeartbeat() {
-    _heartbeatInterval = Timer.periodic(Duration(seconds: 30), (timer) {
+    _heartbeatInterval = Timer.periodic(const Duration(seconds: 30), (timer) {
       _sendHeartbeat();
     });
   }
@@ -627,7 +627,7 @@ class EnhancedP2PService {
 
     // Start Bluetooth scanning
     if (_isBluetoothEnabled) {
-      await FlutterBluePlus.startScan(timeout: Duration(seconds: 30));
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 30));
     }
 
     // WiFi Direct discovery (not yet implemented)

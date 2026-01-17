@@ -197,7 +197,7 @@ class AppProvider extends ChangeNotifier {
   }
 
   Future<void> connectToPeer(String peerId) async {
-    await _meshService.sendMessage(peerId, "Connection request");
+    _meshService.sendMessage(peerId, "Connection request");
     
     // Award XC for connecting
     await _xcEconomy.addBalance(5, 'Connected to new peer');

@@ -300,10 +300,10 @@ class _XCDashboardFullState extends State<XCDashboardFull> with TickerProviderSt
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'RECENT ACTIVITY',
                 style: TextStyle(
                   color: AppTheme.primaryGreen,

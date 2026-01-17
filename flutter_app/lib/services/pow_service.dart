@@ -13,8 +13,8 @@ class PoWService {
 
   // PoW configuration
   int _difficulty = 4; // Number of leading zeros required
-  int _maxNonce = 1000000;
-  String _algorithm = 'SHA-256';
+  final int _maxNonce = 1000000;
+  final String _algorithm = 'SHA-256';
   bool _isMining = false;
   Timer? _miningTimer;
   
