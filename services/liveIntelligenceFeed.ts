@@ -1,4 +1,4 @@
-import { getXitBotResponse } from './gemini';
+import { getXitBotResponse } from './hybridAI';
 
 export interface IntelligenceItem {
   id: string;
@@ -11,15 +11,23 @@ export interface IntelligenceItem {
 }
 
 class LiveIntelligenceFeedService {
+  private static instance: LiveIntelligenceFeedService | null = null;
   private intelligenceItems: IntelligenceItem[] = [];
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private isRefreshing = false;
   private lastRefresh = 0;
-  private readonly REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+  private readonly REFRESH_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
 
-  constructor() {
+  private constructor() {
     this.loadStoredIntelligence();
     this.startAutoRefresh();
+  }
+
+  static getInstance(): LiveIntelligenceFeedService {
+    if (!LiveIntelligenceFeedService.instance) {
+      LiveIntelligenceFeedService.instance = new LiveIntelligenceFeedService();
+    }
+    return LiveIntelligenceFeedService.instance;
   }
 
   private loadStoredIntelligence() {
@@ -185,4 +193,4 @@ Focus on REAL, VERIFIABLE news from the last 24-48 hours. Be factual and brief.`
   }
 }
 
-export const liveIntelligenceFeed = new LiveIntelligenceFeedService();
+export const liveIntelligenceFeed = LiveIntelligenceFeedService.getInstance();

@@ -179,9 +179,9 @@ class HybridMeshService {
 
   private async startWebRTC(): Promise<boolean> {
     try {
-      // Use Ably WebRTC implementation
-      const keys = ['y_V16g.L7k7_g:h4o_aG0x5r4XqZ5j', 'xitchat-demo-key']; // Demo key, ideally from env
-      const success = await ablyWebRTC.initialize(keys[0]);
+      // Use Ably WebRTC implementation with environment variable
+      const apiKey = process.env.ABLY_API_KEY || '0XyUmg.KAC1UQ:4HxrbKiaAWmzcMyMFiMWu74y3sHhA1KyZ3WBE2ixiSc'; // Fallback demo key
+      const success = await ablyWebRTC.initialize(apiKey);
 
       if (success) {
         this.activeServices.webrtc = true;

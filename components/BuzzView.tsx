@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getLatestBuzz, BuzzItem } from '../services/gemini';
+import { getLatestBuzz, BuzzItem } from '../services/hybridAI';
 import { liveIntelligenceFeed, IntelligenceItem } from '../services/liveIntelligenceFeed';
 import { xcEconomy } from '../services/xcEconomy';
 

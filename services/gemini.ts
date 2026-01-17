@@ -8,11 +8,36 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const chatCache = new Map<string, { response: string; timestamp: number }>();
 const CHAT_CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
 let lastChatApiCall = 0;
-const CHAT_API_COOLDOWN = 30 * 1000; // 30 seconds between chat calls
+const CHAT_API_COOLDOWN = 5 * 60 * 1000; // 5 minutes between chat calls
+
+// Global rate limiting to prevent quota exhaustion
+let lastGlobalApiCall = 0;
+const GLOBAL_API_COOLDOWN = 15 * 60 * 1000; // 15 minutes between ANY API calls
+const DAILY_API_LIMIT = 15; // Stay well under the 20/day limit
+let dailyApiCount = 0;
+let lastDailyReset = Date.now();
 
 export const getXitBotResponse = async (userMessage: string) => {
   const now = Date.now();
   const cacheKey = userMessage.toLowerCase().trim();
+  
+  // Reset daily counter if needed
+  if (now - lastDailyReset > 24 * 60 * 60 * 1000) {
+    dailyApiCount = 0;
+    lastDailyReset = now;
+  }
+  
+  // Check daily limit
+  if (dailyApiCount >= DAILY_API_LIMIT) {
+    console.log('Daily API limit reached, using fallback response');
+    return getFallbackChatResponse(userMessage);
+  }
+  
+  // Check global cooldown
+  if (now - lastGlobalApiCall < GLOBAL_API_COOLDOWN) {
+    console.log('Global API cooldown active, using fallback response');
+    return getFallbackChatResponse(userMessage);
+  }
   
   // Check cache first
   const cached = chatCache.get(cacheKey);
@@ -29,6 +54,11 @@ export const getXitBotResponse = async (userMessage: string) => {
   
   try {
     lastChatApiCall = now;
+    lastGlobalApiCall = now;
+    dailyApiCount++;
+    
+    console.log(`Making API call ${dailyApiCount}/${DAILY_API_LIMIT} for today`);
+    
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: userMessage,
@@ -117,7 +147,7 @@ export interface BuzzItem {
 const buzzCache = new Map<string, { data: BuzzItem[]; timestamp: number }>();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 let lastApiCall = 0;
-const API_COOLDOWN = 60 * 1000; // 1 minute between calls
+const API_COOLDOWN = 10 * 60 * 1000; // 10 minutes between calls
 
 export const getLatestBuzz = async (): Promise<BuzzItem[]> => {
   const now = Date.now();

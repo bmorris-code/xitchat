@@ -51,13 +51,10 @@ class NostrService {
   // Default public Nostr relays
   private readonly defaultRelays = [
     'wss://relay.damus.io',
-    'wss://bitcoiner.social',
-    // 'wss://relay.snort.social',
     'wss://nos.lol',
-    'wss://relay.primal.net'
-    // 'wss://relay.nostr.band',
-    // 'wss://nostr.wine',
-    // 'wss://relay.nostr.bg'
+    'wss://relay.primal.net',
+    'wss://relay.nostr.band',
+    'wss://nostr.wine'
   ];
 
   async initialize(privateKey?: string): Promise<boolean> {

@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Chat, User, Message, Reaction } from './types';
 import { INITIAL_CHATS } from './constants';
-import { getXitBotResponse } from './services/gemini';
+import { getXitBotResponse } from './services/hybridAI';
 import { meshDataSync } from './services/meshDataSync';
 import { hybridMesh } from './services/hybridMesh';
 import { enhancedDiscovery } from './services/enhancedDiscovery';
