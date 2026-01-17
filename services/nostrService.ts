@@ -51,11 +51,13 @@ class NostrService {
   // Default public Nostr relays
   private readonly defaultRelays = [
     'wss://relay.damus.io',
-    'wss://relay.snort.social',
+    'wss://bitcoiner.social',
+    // 'wss://relay.snort.social',
     'wss://nos.lol',
-    'wss://relay.nostr.band',
-    'wss://nostr.wine',
-    'wss://relay.nostr.bg'
+    'wss://relay.primal.net'
+    // 'wss://relay.nostr.band',
+    // 'wss://nostr.wine',
+    // 'wss://relay.nostr.bg'
   ];
 
   async initialize(privateKey?: string): Promise<boolean> {
@@ -111,22 +113,34 @@ class NostrService {
     }
   }
 
-  private async connectToRelays(): Promise<void> {
+ private async connectToRelays(): Promise<void> {
     console.log('🌐 Connecting to Nostr relays...');
 
-    for (const relayUrl of this.defaultRelays) {
+    // Process all connections in parallel
+    const connectionPromises = this.defaultRelays.map(async (relayUrl) => {
       try {
-        const relay = await this.pool!.ensureRelay(relayUrl);
-        this.relays.push(relay);
+        // Add a 5-second timeout so a bad relay doesn't hang the process
+        const relay = await Promise.race([
+            this.pool!.ensureRelay(relayUrl),
+            new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('Connection timeout')), 5000)
+            )
+        ]);
+        
+        this.relays.push(relay as nostrTools.Relay);
         this.connectedRelays.add(relayUrl);
         console.log(`✅ Connected to relay: ${relayUrl}`);
       } catch (error) {
-        console.warn(`⚠️ Failed to connect to relay ${relayUrl}:`, error);
+        // Log as warning, not error, so it doesn't look critical in console
+        console.warn(`⚠️ Skipped relay ${relayUrl}:`, error instanceof Error ? error.message : 'Unknown error');
         this.failedRelays.add(relayUrl);
       }
-    }
+    });
 
-    console.log(`🌐 Connected to ${this.connectedRelays.size} relays`);
+    // Wait for all attempts to finish (success or fail)
+    await Promise.all(connectionPromises);
+
+    console.log(`🌐 Connected to ${this.connectedRelays.size}/${this.defaultRelays.length} relays`);
     this.emit('relaysConnected', { count: this.connectedRelays.size });
   }
 
@@ -149,38 +163,51 @@ class NostrService {
     }
   }
 
-  private async subscribeToEvents(): Promise<void> {
+ // In nostrService.ts
+
+private async subscribeToEvents(): Promise<void> {
+    const activeRelays = Array.from(this.connectedRelays);
+    if (activeRelays.length === 0) return;
+
     try {
-      // Subscribe to direct messages (kind 4)
-      this.pool!.subscribeMany(this.defaultRelays, {
-        kinds: [4], // Direct messages
-        '#p': [this.publicKey!]
-      }, {
+      const allPeers = Array.from(this.peers.keys());
+      const recentPeers = allPeers.slice(0, 100);
+
+      // FIX: Explicitly type this as nostrTools.Filter[]
+      // This tells TypeScript that these objects conform to the Filter interface
+      const filters: nostrTools.Filter[] = [
+        { 
+          kinds: [4], 
+          '#p': [this.publicKey!],
+          limit: 50 
+        },
+        { 
+          kinds: [42], 
+          limit: 50 
+        }
+      ];
+
+      // Now we can push to it without type errors
+      if (recentPeers.length > 0) {
+        filters.push({
+          kinds: [0],
+          authors: recentPeers
+        });
+      }
+
+      this.pool!.subscribeMany(activeRelays, filters, {
         onevent: async (event) => {
-          await this.handleDirectMessage(event);
+          if (event.kind === 4) {
+            await this.handleDirectMessage(event);
+          } else if (event.kind === 42) {
+            this.handleChannelMessage(event);
+          } else if (event.kind === 0) {
+            this.handleMetadataUpdate(event);
+          }
         }
       });
 
-      // Subscribe to channel messages (kind 42)
-      this.pool!.subscribeMany(this.defaultRelays, {
-        kinds: [42] // Channel messages
-      }, {
-        onevent: (event) => {
-          this.handleChannelMessage(event);
-        }
-      });
-
-      // Subscribe to metadata updates (kind 0)
-      this.pool!.subscribeMany(this.defaultRelays, {
-        kinds: [0], // Metadata
-        authors: Array.from(this.peers.keys())
-      }, {
-        onevent: (event) => {
-          this.handleMetadataUpdate(event);
-        }
-      });
-
-      console.log('👂 Subscribed to Nostr events');
+      console.log(`👂 Subscribed to Nostr events (Tracking ${recentPeers.length} peers)`);
     } catch (error) {
       console.warn('⚠️ Failed to subscribe to events:', error);
     }
