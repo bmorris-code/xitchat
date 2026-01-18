@@ -47,7 +47,9 @@ class NostrService {
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private subscriptionRetryCount = new Map<string, number>();
   private lastSubscriptionTime = new Map<string, number>();
+  private lastPublishTime = new Map<string, number>();
   private readonly RATE_LIMIT_DELAY = 5000; // 5 seconds between subscriptions
+  private readonly PUBLISH_RATE_LIMIT = 2000; // 2 seconds between publishes
   private isInitialized = false;
 
   // Default public Nostr relays - using only most reliable ones
@@ -449,6 +451,15 @@ private async subscribeToEvents(): Promise<void> {
         throw new Error('Nostr service not initialized');
       }
 
+      // Rate limiting check
+      const now = Date.now();
+      const lastPublishTime = this.lastPublishTime.get('broadcast') || 0;
+      if (now - lastPublishTime < this.PUBLISH_RATE_LIMIT) {
+        console.log('⏳ Rate limiting broadcast, waiting...');
+        return false;
+      }
+      this.lastPublishTime.set('broadcast', now);
+
       const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
       
       // Validate content
@@ -468,21 +479,41 @@ private async subscribeToEvents(): Promise<void> {
         throw new Error('Failed to create valid Nostr event');
       }
 
-      // Publish to relays
-      const promises = this.defaultRelays.map(relayUrl =>
-        this.pool!.publish([relayUrl], event)
-      );
-
-      await Promise.allSettled(promises);
-      console.log('📢 Broadcasted message to Nostr network');
-
-      this.emit('messageBroadcasted', {
-        id: event.id,
-        content: content,
-        timestamp: new Date()
+      // Publish to relays with timeout and error handling
+      const publishPromises = this.defaultRelays.map(async (relayUrl) => {
+        try {
+          // Add timeout to prevent hanging
+          const result = await Promise.race([
+            this.pool!.publish([relayUrl], event),
+            new Promise<never>((_, reject) => 
+              setTimeout(() => reject(new Error('Publish timeout')), 5000)
+            )
+          ]);
+          return { relay: relayUrl, success: true, result };
+        } catch (error: any) {
+          if (error.message.includes('rate-limited') || error.message.includes('slow down')) {
+            console.warn(`⚠️ Rate limited by ${relayUrl}, backing off...`);
+            return { relay: relayUrl, success: false, error: 'rate-limited' };
+          }
+          return { relay: relayUrl, success: false, error: error.message };
+        }
       });
 
-      return true;
+      const results = await Promise.allSettled(publishPromises);
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+      
+      if (successful > 0) {
+        console.log(`📢 Broadcasted message to ${successful}/${this.defaultRelays.length} relays`);
+        this.emit('messageBroadcasted', {
+          id: event.id,
+          content: content,
+          timestamp: new Date()
+        });
+        return true;
+      } else {
+        console.warn('⚠️ All relays rejected broadcast (rate limited)');
+        return false;
+      }
     } catch (error) {
       console.error('❌ Failed to broadcast message:', error);
       return false;
