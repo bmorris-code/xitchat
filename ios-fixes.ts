@@ -13,6 +13,45 @@ console.log('📱 Device Detection:', {
   userAgent: navigator.userAgent
 });
 
+// Enhanced debugging for blank screen issues
+const debugBlankScreen = () => {
+  console.log('🔍 Blank Screen Debug Check:');
+  console.log('📄 Document ready state:', document.readyState);
+  console.log('🎯 Root element exists:', !!document.getElementById('root'));
+  console.log('🧩 React mounted:', !!document.querySelector('[data-reactroot]'));
+  console.log('💾 LocalStorage available:', typeof Storage !== 'undefined');
+  console.log('🔧 Service Worker active:', !!navigator.serviceWorker);
+  console.log('🌐 Online status:', navigator.onLine);
+  console.log('📱 Viewport size:', window.innerWidth + 'x' + window.innerHeight);
+  console.log('🎨 CSS loaded:', !!document.querySelector('link[href*="index.css"]'));
+  console.log('⚡ JavaScript errors:', window.console.error.length);
+  
+  // Check for specific iOS PWA issues
+  if (isIOS && isIOSPWA) {
+    console.log('🍎 iOS PWA Mode - Checking for common issues...');
+    
+    // Check if app is in standalone mode
+    const standalone = (window.navigator as any)?.standalone;
+    console.log('📱 Standalone mode:', standalone);
+    
+    // Check for safe area issues
+    const safeArea = getComputedStyle(document.body);
+    const safeAreaTop = (safeArea as any).paddingTop;
+    console.log('🔲 Safe area top:', safeAreaTop);
+    
+    // Check for viewport issues
+    const viewport = document.querySelector('meta[name="viewport"]');
+    console.log('📱 Viewport meta:', viewport?.getAttribute('content'));
+    
+    // Check for content security policy issues
+    const cspMeta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+    console.log('🔒 CSP meta:', cspMeta?.getAttribute('content'));
+  }
+  
+  // Run debug check every 5 seconds
+  setTimeout(debugBlankScreen, 5000);
+};
+
 // iOS-specific initialization
 if (isIOS || isSafari) {
   console.log('🍎 iOS/Safari detected - applying fixes...');
@@ -88,6 +127,12 @@ if (isIOSPWA) {
       }, 300);
     }
   });
+  
+  // Fix 4: Enhanced PWA startup
+  setTimeout(() => {
+    console.log('📱 PWA Startup check completed');
+    debugBlankScreen();
+  }, 1000);
 }
 
 // Debug console for iOS
@@ -99,7 +144,8 @@ if (isIOS || isSafari) {
       filename: e.filename,
       lineno: e.lineno,
       colno: e.colno,
-      stack: e.error?.stack
+      stack: e.error?.stack,
+      timestamp: new Date().toISOString()
     });
   });
   
@@ -108,6 +154,7 @@ if (isIOS || isSafari) {
     console.log('🍎 iOS Page loaded successfully');
     console.log('🍎 Document ready state:', document.readyState);
     console.log('🍎 React root element:', document.getElementById('root'));
+    debugBlankScreen();
   });
 }
 
@@ -118,5 +165,6 @@ export const iOSFixes = {
   applyFixes: () => {
     console.log('🍎 Applying iOS fixes...');
     // Fixes are already applied above
-  }
+  },
+  debugBlankScreen
 };

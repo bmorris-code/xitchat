@@ -27,6 +27,15 @@
     </script>
 
     <title>XitChat</title>
+    <!-- Favicon for browsers -->
+    <link rel="icon" type="image/svg+xml" href="/icon.svg">
+    <link rel="alternate icon" type="image/png" sizes="32x32" href="/icon-96.png">
+    <link rel="alternate icon" type="image/png" sizes="16x16" href="/icon-96.png">
+    
+    <!-- Mobile PWA icons (from manifest.json) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png">
+    <link rel="shortcut icon" href="/icon-96.png">
+    
     <!-- Local Font Awesome to avoid tracking prevention -->
     <link rel="stylesheet" href="/font-awesome/css/all.min.css">
     
@@ -175,5 +184,6 @@
     </script>
     
     <script type="module" src="./index.tsx"></script>
+    <!-- Add these after your existing apple-mobile-web-app meta tags -->
 </body>
 </html>

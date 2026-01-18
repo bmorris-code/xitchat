@@ -31,6 +31,7 @@ import GalleryView from './components/GalleryView';
 import NativeFeaturesView from './components/NativeFeaturesView';
 import TransmissionToast from './components/TransmissionToast';
 import { handshakePersistence, HandshakeNode } from './services/handshakePersistence';
+import { iOSFixes } from './ios-fixes';
 
 const App: React.FC = () => {
   console.log('App component initializing...');
@@ -146,6 +147,15 @@ const App: React.FC = () => {
 
   // Initialize Real-time Radar Service
   useEffect(() => {
+    console.log('📡 Initializing services...');
+    
+    // iOS Debug: Run blank screen check
+    if (iOSFixes.isIOS || iOSFixes.isSafari) {
+      setTimeout(() => {
+        iOSFixes.debugBlankScreen();
+      }, 2000);
+    }
+
     const initializeRadar = async () => {
       try {
         console.log('📡 Initializing real-time radar service...');

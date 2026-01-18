@@ -48,13 +48,12 @@ class NostrService {
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private isInitialized = false;
 
-  // Default public Nostr relays
+  // Default public Nostr relays - using only most reliable ones
   private readonly defaultRelays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.primal.net',
-    'wss://relay.nostr.band',
-    'wss://nostr.wine'
+    'wss://relay.snort.social'
   ];
 
   async initialize(privateKey?: string): Promise<boolean> {
@@ -280,14 +279,33 @@ private async subscribeToEvents(): Promise<void> {
       // Encrypt message
       const encryptedContent = await nostrTools.nip04.encrypt(this.privateKey, recipientPublicKey, content);
 
-      // Create event
+      // Validate encrypted content
+      if (!encryptedContent || encryptedContent.length === 0) {
+        throw new Error('Failed to encrypt message');
+      }
+
+      // Validate recipient public key format
+      if (!recipientPublicKey || typeof recipientPublicKey !== 'string' || recipientPublicKey.length !== 64) {
+        throw new Error('Invalid recipient public key format');
+      }
+
+      // Create event with validated data
       const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+      
+      // Ensure tags are properly formatted
+      const tags = [['p', recipientPublicKey]];
+      
       const event = nostrTools.finalizeEvent({
         kind: 4, // Direct message
         created_at: Math.floor(Date.now() / 1000),
-        tags: [['p', recipientPublicKey]],
+        tags: tags,
         content: encryptedContent
       }, privateKeyBytes);
+
+      // Validate event before publishing
+      if (!event || !event.id || !event.sig) {
+        throw new Error('Failed to create valid Nostr event');
+      }
 
       // Publish to connected relays only
       const successfulRelays: string[] = [];
@@ -330,12 +348,32 @@ private async subscribeToEvents(): Promise<void> {
       }
 
       const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+      
+      // Validate content and channel ID
+      if (!content || content.length === 0) {
+        throw new Error('Channel message content cannot be empty');
+      }
+      
+      // Allow empty channel ID for broadcast scenarios
+      if (channelId && typeof channelId !== 'string') {
+        console.warn('Invalid channel ID format:', channelId, typeof channelId);
+        throw new Error('Invalid channel ID format');
+      }
+      
+      // Ensure tags are properly formatted (only add 'e' tag if channelId exists)
+      const tags = channelId ? [['e', channelId]] : [];
+      
       const event = nostrTools.finalizeEvent({
         kind: 42, // Channel message
         created_at: Math.floor(Date.now() / 1000),
-        tags: [['e', channelId]], // Reference to channel
+        tags: tags,
         content: content
       }, privateKeyBytes);
+
+      // Validate event before publishing
+      if (!event || !event.id || !event.sig) {
+        throw new Error('Failed to create valid Nostr event');
+      }
 
       // Publish to relays
       const promises = this.defaultRelays.map(relayUrl =>
@@ -343,7 +381,7 @@ private async subscribeToEvents(): Promise<void> {
       );
 
       await Promise.allSettled(promises);
-      console.log(`📢 Published message to channel ${channelId}`);
+      console.log(`📢 Published message to channel ${channelId || 'broadcast'}`);
 
       this.emit('channelMessageSent', {
         id: event.id,
@@ -355,6 +393,53 @@ private async subscribeToEvents(): Promise<void> {
       return true;
     } catch (error) {
       console.error('❌ Failed to publish channel message:', error);
+      console.error('Debug info - channelId:', channelId, 'type:', typeof channelId, 'content:', content);
+      return false;
+    }
+  }
+
+  async broadcastMessage(content: string): Promise<boolean> {
+    try {
+      if (!this.privateKey || !this.publicKey) {
+        throw new Error('Nostr service not initialized');
+      }
+
+      const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+      
+      // Validate content
+      if (!content || content.length === 0) {
+        throw new Error('Broadcast content cannot be empty');
+      }
+      
+      const event = nostrTools.finalizeEvent({
+        kind: 1, // Text note (broadcast)
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [], // No tags needed for broadcast
+        content: content
+      }, privateKeyBytes);
+
+      // Validate event before publishing
+      if (!event || !event.id || !event.sig) {
+        throw new Error('Failed to create valid Nostr event');
+      }
+
+      // Publish to relays
+      const promises = this.defaultRelays.map(relayUrl =>
+        this.pool!.publish([relayUrl], event)
+      );
+
+      await Promise.allSettled(promises);
+      console.log('📢 Broadcasted message to Nostr network');
+
+      this.emit('messageBroadcasted', {
+        id: event.id,
+        content: content,
+        timestamp: new Date()
+      });
+
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to broadcast message:', error);
       return false;
     }
   }
@@ -366,12 +451,23 @@ private async subscribeToEvents(): Promise<void> {
       }
 
       const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+      
+      // Validate metadata
+      if (!metadata || typeof metadata !== 'object') {
+        throw new Error('Invalid metadata format');
+      }
+      
       const event = nostrTools.finalizeEvent({
         kind: 0, // Metadata
         created_at: Math.floor(Date.now() / 1000),
         tags: [],
         content: JSON.stringify(metadata)
       }, privateKeyBytes);
+
+      // Validate event before publishing
+      if (!event || !event.id || !event.sig) {
+        throw new Error('Failed to create valid Nostr event');
+      }
 
       // Publish to relays
       const promises = this.defaultRelays.map(relayUrl =>

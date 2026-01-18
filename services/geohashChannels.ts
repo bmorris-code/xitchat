@@ -73,6 +73,12 @@ class GeohashChannelsService {
     // 1. Final Safety Net: If everything fails, set location to (0,0) so app doesn't crash
     const onTotalFailure = (error: GeolocationPositionError) => {
       console.error(`Location totally failed (${error.message}). Defaulting to fallback.`);
+      
+      // Check if it's a secure origin issue
+      if (error.message.includes('secure origins') || error.message.includes('Only secure origins')) {
+        console.warn('🌐 Geolocation requires HTTPS in production. In development, use https://localhost:3000 or allow insecure location in browser settings.');
+      }
+      
       this.updateLocation(0, 0); 
     };
 
@@ -95,6 +101,17 @@ class GeohashChannelsService {
         }
       );
     };
+
+    // Check if we're on a secure origin
+    const isSecureOrigin = window.location.protocol === 'https:' || 
+                          window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1';
+
+    if (!isSecureOrigin) {
+      console.warn('🌐 Geolocation requires HTTPS. Current location is not secure. Using fallback location.');
+      this.updateLocation(40.7128, -74.0060); // Default to NYC
+      return;
+    }
 
     // 3. First Attempt: High Accuracy (GPS)
     const highAccWatchId = navigator.geolocation.watchPosition(
@@ -509,3 +526,5 @@ class GeohashChannelsService {
 }
 
 export const geohashChannels = new GeohashChannelsService();
+
+// Force recompilation - remove this line after fixing import issues

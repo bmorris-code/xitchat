@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nostr Connection Test</title>
-    <script src="https://unpkg.com/nostr-tools@2.19.4/lib/nostr-tools.bundle.js"></script>
-    <script src="https://unpkg.com/@noble/secp256k1@3.0.0/index.js"></script>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
@@ -20,13 +18,13 @@
 <body>
     <h1>Nostr Connection Test</h1>
     
-    <div id="status" class="status info">Ready to test Nostr...</div>
+    <div id="status" class="status info">Loading Nostr libraries...</div>
     
     <div>
-        <button onclick="testNostrConnection()">Test Nostr Connection</button>
-        <button onclick="generateKeys()">Generate New Keys</button>
-        <button onclick="publishTestNote()">Publish Test Note</button>
-        <button onclick="subscribeToNotes()">Subscribe to Notes</button>
+        <button onclick="testNostrConnection()" disabled id="testBtn">Test Nostr Connection</button>
+        <button onclick="generateKeys()" disabled id="keysBtn">Generate New Keys</button>
+        <button onclick="publishTestNote()" disabled id="publishBtn">Publish Test Note</button>
+        <button onclick="subscribeToNotes()" disabled id="subscribeBtn">Subscribe to Notes</button>
         <button onclick="clearLogs()">Clear Logs</button>
     </div>
     
@@ -37,6 +35,29 @@
     </div>
     
     <div id="logs"></div>
+
+    <!-- Load nostr-tools library -->
+    <script src="https://unpkg.com/nostr-tools@2.19.4/lib/esm/index.js" type="module"></script>
+    <script src="https://unpkg.com/@noble/secp256k1@3.0.0/index.js" type="module"></script>
+    
+    <script type="module">
+        // Import modules after they load
+        import { SimplePool, getEventHash, signEvent } from 'https://unpkg.com/nostr-tools@2.19.4/lib/esm/index.js';
+        import * as secp256k1 from 'https://unpkg.com/@noble/secp256k1@3.0.0/index.js';
+        
+        // Make available globally
+        window.NostrTools = { SimplePool, getEventHash, signEvent };
+        window.secp256k1 = secp256k1;
+        
+        // Enable buttons when libraries are loaded
+        document.getElementById('testBtn').disabled = false;
+        document.getElementById('keysBtn').disabled = false;
+        document.getElementById('publishBtn').disabled = false;
+        document.getElementById('subscribeBtn').disabled = false;
+        
+        updateStatus('Nostr libraries loaded. Ready to test!', 'success');
+        log('✅ Nostr libraries loaded successfully', 'success');
+    </script>
 
     <script>
         let privateKey = null;
@@ -49,7 +70,6 @@
             'wss://relay.damus.io',
             'wss://nos.lol',
             'wss://relay.primal.net',
-            'wss://relay.nostr.band',
             'wss://nostr.wine'
         ];
         
@@ -71,6 +91,11 @@
         
         async function generateKeys() {
             try {
+                if (!window.secp256k1) {
+                    log('❌ secp256k1 library not loaded yet', 'error');
+                    return;
+                }
+                
                 log('Generating new Nostr key pair...');
                 
                 // Generate private key
@@ -98,6 +123,11 @@
         
         async function testNostrConnection() {
             try {
+                if (!window.NostrTools) {
+                    log('❌ Nostr library not loaded yet', 'error');
+                    return;
+                }
+                
                 if (!privateKey || !publicKey) {
                     await generateKeys();
                 }
@@ -106,7 +136,7 @@
                 updateStatus('Connecting to relays...', 'info');
                 
                 // Initialize relay pool
-                pool = window.NostrTools.SimplePool();
+                pool = new window.NostrTools.SimplePool();
                 let connectedCount = 0;
                 
                 // Connect to all relays
@@ -227,8 +257,8 @@
         
         // Initialize
         window.addEventListener('load', () => {
-            log('Nostr test page loaded. Ready to test connectivity.');
-            updateStatus('Ready to test', 'info');
+            log('Nostr test page loaded. Loading libraries...');
+            updateStatus('Loading libraries...', 'info');
         });
     </script>
 </body>

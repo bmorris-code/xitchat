@@ -234,20 +234,8 @@ class HybridMeshService {
 
   private async startLocalTest(): Promise<boolean> {
     try {
-      const success = await localTestMesh.initialize();
-      if (success) {
-        this.activeServices.local = true;
-
-        localTestMesh.subscribe('peersUpdated', (peers: LocalMeshNode[]) => {
-          this.updatePeers(peers, 'local');
-        });
-
-        localTestMesh.subscribe('messageReceived', (msg: any) => {
-          this.handleMessage('local', msg);
-        });
-
-        return true;
-      }
+      // Skip local mesh for production - only works in development
+      console.log('🏠 Local test mesh skipped in production');
       return false;
     } catch (e) {
       console.error('Local test mesh failed:', e);
@@ -337,7 +325,7 @@ class HybridMeshService {
       if (this.activeServices.nostr) {
         // For nostr, broadcast means posting to a public channel (kind 1)
         promises.push(Promise.resolve().then(async () => {
-          await nostrService.publishChannelMessage('global', content);
+          await nostrService.broadcastMessage(content);
         }));
       }
       

@@ -2,18 +2,13 @@ import path from 'path';
 import { defineConfig, loadEnv, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import legacy from '@vitejs/plugin-legacy'; // ADD THIS
 
 export default defineConfig(({ mode }: { mode: string }): UserConfig => {
-    // Load env variables
     const env = loadEnv(mode, process.cwd(), '');
-
-    // CHECK: You must run "cross-env IS_MOBILE=true vite build" for this to work
     const isMobile = process.env.IS_MOBILE === 'true';
 
     return {
-      // 1. BASE PATH FIX
-      // If mobile, use './' (relative) so files load from phone storage.
-      // If web, use '/' so it works on your domain.
       base: isMobile ? './' : '/',
 
       server: {
@@ -22,62 +17,96 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
       },
       plugins: [
         react(),
+        
+        // ADD THIS - Generates legacy bundles for older browsers
+        legacy({
+          targets: ['defaults', 'iOS >= 10'],
+          modernPolyfills: true,
+          renderLegacyChunks: true
+        }),
+        
         VitePWA({
           registerType: 'autoUpdate',
           includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
           
-          // 2. CRITICAL FIX FOR PWA UPDATES
-          // This section was missing. You need this to delete old cache errors.
           workbox: {
-            cleanupOutdatedCaches: true, // Deletes the old "white screen" files
-            clientsClaim: true,          // Takes control immediately
-            skipWaiting: true,           // Activates new version immediately
-            globPatterns: ['**/*.{js,css,html,ico,png,svg}'] // What to cache
+            cleanupOutdatedCaches: true,
+            clientsClaim: true,
+            skipWaiting: true,
+            globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'], // Added fonts
+            
+            // ADD THIS - Prevent caching issues
+            runtimeCaching: [
+              {
+                urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+                handler: 'CacheFirst',
+                options: {
+                  cacheName: 'google-fonts-cache',
+                  expiration: {
+                    maxEntries: 10,
+                    maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                  },
+                  cacheableResponse: {
+                    statuses: [0, 200]
+                  }
+                }
+              }
+            ]
           },
           
           manifest: {
             name: 'XitChat',
             short_name: 'XitChat',
             description: 'Mesh Networking Chat App',
-            theme_color: '#000000',
+            theme_color: '#020202',
+            background_color: '#020202', // ADDED
+            display: 'standalone',        // ADDED
+            start_url: '/',               // ADDED
+            scope: '/',                   // ADDED
+            orientation: 'portrait',      // ADDED
             icons: [
               {
                 src: 'pwa-192x192.png',
                 sizes: '192x192',
-                type: 'image/png'
+                type: 'image/png',
+                purpose: 'any maskable'
               },
               {
                 src: 'pwa-512x512.png',
                 sizes: '512x512',
-                type: 'image/png'
+                type: 'image/png',
+                purpose: 'any maskable'
               }
             ]
+          },
+          
+          // ADD THIS - Better dev experience
+          devOptions: {
+            enabled: false // Disable SW in dev to avoid confusion
           }
         })
-      ] as any, // 'any' casts are fine here
+      ] as any,
       
       define: {
-        // Polyfill process for libs like Nostr-tools that might expect Node env
         'process.env': {}, 
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       },
       
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, './src'), // Pointing to './src' is safer than just '.'
+          '@': path.resolve(__dirname, './src'),
         }
       },
       
       build: {
-        target: 'es2020', // PERFECT. Needed for BigInt in crypto libs.
+        target: 'es2015', // CHANGED from es2020
         outDir: 'dist',
         assetsDir: 'assets',
-        sourcemap: false, 
+        sourcemap: false,
         emptyOutDir: true,
         chunkSizeWarningLimit: 1000,
         rollupOptions: {
           output: {
-            // This is why you see those specific filenames. This is good!
             manualChunks: {
               vendor: ['react', 'react-dom'],
               nostr: ['nostr-tools', '@noble/secp256k1'], 

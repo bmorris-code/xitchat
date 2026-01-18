@@ -93,7 +93,7 @@ class RealTorService {
       const signalingServers = [
         'wss://relay.damus.io/tor-signal',
         'wss://nos.lol/tor-signal',
-        'wss://relay.nostr.band/tor-signal'
+        // 'wss://relay.nostr.band/tor-signal' // 502 error - endpoint not supported
       ];
 
       let connected = false;

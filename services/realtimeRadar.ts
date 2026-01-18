@@ -132,12 +132,22 @@ class RealtimeRadarService {
       if (!serverUrl) {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;
-        // If on localhost, use 8080, otherwise use valid path
-        const port = host === 'localhost' ? ':8080' : ''; 
-        serverUrl = `${protocol}//${host}${port}/ws`; 
+        
+        // For local development, always use localhost to avoid connection issues
+        // when accessing from different IPs on the same network
+        const isLocalNetwork = host === 'localhost' || 
+                              host === '127.0.0.1' || 
+                              host.startsWith('192.168.') ||
+                              host.startsWith('10.') ||
+                              host.startsWith('172.');
+        
+        const serverHost = isLocalNetwork ? 'localhost' : host;
+        const port = isLocalNetwork ? ':8443' : ''; 
+        serverUrl = `${protocol}//${serverHost}${port}/ws`;
       }
 
       console.log(`📡 Connecting to radar server: ${serverUrl}`);
+      console.log(`🔧 Using port 8443 for local development (updated from 8080)`);
 
       // 2. Start Location Tracking (Real GPS)
       this.startRealLocationTracking();
@@ -153,11 +163,12 @@ class RealtimeRadarService {
         }
 
         const timeout = setTimeout(() => {
-          console.warn("⚠️ Connection timeout - Switching to Simulation Mode");
+          console.warn("⚠️ WebSocket connection timeout - No radar server running on port 8443");
+          console.log("💡 To enable real-time radar, start the signaling server: npm run dev:server");
           this.ws?.close();
           this.enableSimulationMode();
           resolve(true); // Resolve true so UI loads
-        }, 3000);
+        }, 1500); // Reduced timeout to fail faster
 
         this.ws.onopen = () => {
           clearTimeout(timeout);

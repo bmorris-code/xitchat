@@ -102,6 +102,9 @@ class HybridAIService {
   }
 
   async getXitBotResponse(userMessage: string): Promise<string> {
+    console.log('🤖 Hybrid AI: Getting response for:', userMessage);
+    console.log('🔧 Current provider:', this.primaryProvider, 'Groq healthy:', this.isGroqHealthy);
+    
     return this.executeWithFallback(
       () => getXitBotResponseGroq(userMessage),
       () => getXitBotResponseGemini(userMessage),

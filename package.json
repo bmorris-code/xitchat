@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "node server/signaling-server.js",
     "// BUILD COMMANDS": "------------------------------------------------",
     "build": "vite build",
     "build:mobile": "cross-env IS_MOBILE=true vite build",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@vitejs/plugin-legacy": "^6.1.1",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.19",
     "cross-env": "^10.1.0",
