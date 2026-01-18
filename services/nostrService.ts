@@ -37,15 +37,17 @@ export interface NostrChannel {
 }
 
 class NostrService {
+  private pool: any = null;
   private privateKey: string | null = null;
   private publicKey: string | null = null;
-  private pool: nostrTools.SimplePool | null = null;
-  private relays: nostrTools.Relay[] = [];
+  private relays: Set<string> = new Set();
   private connectedRelays: Set<string> = new Set();
   private failedRelays: Set<string> = new Set();
   private peers: Map<string, NostrPeer> = new Map();
-  private channels: Map<string, NostrChannel> = new Map();
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
+  private subscriptionRetryCount = new Map<string, number>();
+  private lastSubscriptionTime = new Map<string, number>();
+  private readonly RATE_LIMIT_DELAY = 5000; // 5 seconds between subscriptions
   private isInitialized = false;
 
   // Default public Nostr relays - using only most reliable ones
@@ -123,7 +125,7 @@ class NostrService {
             )
         ]);
         
-        this.relays.push(relay as nostrTools.Relay);
+        this.relays.add(relayUrl);
         this.connectedRelays.add(relayUrl);
         console.log(`✅ Connected to relay: ${relayUrl}`);
       } catch (error) {
@@ -165,36 +167,73 @@ private async subscribeToEvents(): Promise<void> {
     const activeRelays = Array.from(this.connectedRelays);
     if (activeRelays.length === 0) return;
 
+    // Check rate limiting
+    const now = Date.now();
+    const lastSubTime = this.lastSubscriptionTime.get('main') || 0;
+    if (now - lastSubTime < this.RATE_LIMIT_DELAY) {
+      console.log('⏳ Rate limiting subscription, waiting...');
+      return;
+    }
+    this.lastSubscriptionTime.set('main', now);
+
     try {
       const allPeers = Array.from(this.peers.keys());
       const recentPeers = allPeers.slice(0, 10); // Reduced from 20
 
-      // Subscribe to direct messages
-      this.pool!.subscribeMany(activeRelays, { 
-        kinds: [4], 
-        '#p': [this.publicKey!],
-        limit: 5 // Reduced from 10
-      }, {
-        onevent: async (event) => {
-          await this.handleDirectMessage(event);
-        },
-        oneose: () => {
-          console.log('✅ Direct messages subscription ready');
+      // Subscribe to direct messages with error handling
+      try {
+        this.pool!.subscribeMany(activeRelays, { 
+          kinds: [4], 
+          '#p': [this.publicKey!],
+          limit: 3 // Further reduced from 5
+        }, {
+          onevent: async (event) => {
+            await this.handleDirectMessage(event);
+          },
+          oneose: () => {
+            console.log('✅ Direct messages subscription ready');
+          },
+          onclose: (reason: string) => {
+            if (reason.includes('rate-limited')) {
+              console.warn('⚠️ Rate limited, backing off...');
+              setTimeout(() => this.subscribeToEvents(), 10000);
+            }
+          }
+        });
+      } catch (error: any) {
+        if (error.message.includes('rate-limited')) {
+          console.warn('⚠️ Rate limited on direct messages, backing off...');
+          setTimeout(() => this.subscribeToEvents(), 10000);
+          return;
         }
-      });
+      }
 
-      // Subscribe to channel messages
-      this.pool!.subscribeMany(activeRelays, { 
-        kinds: [42], 
-        limit: 5 // Reduced from 10
-      }, {
-        onevent: async (event) => {
-          this.handleChannelMessage(event);
-        },
-        oneose: () => {
-          console.log('✅ Channel messages subscription ready');
+      // Subscribe to channel messages with error handling
+      try {
+        this.pool!.subscribeMany(activeRelays, { 
+          kinds: [42], 
+          limit: 3 // Further reduced from 5
+        }, {
+          onevent: async (event) => {
+            this.handleChannelMessage(event);
+          },
+          oneose: () => {
+            console.log('✅ Channel messages subscription ready');
+          },
+          onclose: (reason: string) => {
+            if (reason.includes('rate-limited')) {
+              console.warn('⚠️ Rate limited, backing off...');
+              setTimeout(() => this.subscribeToEvents(), 10000);
+            }
+          }
+        });
+      } catch (error: any) {
+        if (error.message.includes('rate-limited')) {
+          console.warn('⚠️ Rate limited on channel messages, backing off...');
+          setTimeout(() => this.subscribeToEvents(), 10000);
+          return;
         }
-      });
+      }
 
       // Subscribe to metadata updates for recent peers
       if (recentPeers.length > 0) {
@@ -583,7 +622,7 @@ private async subscribeToEvents(): Promise<void> {
       if (this.pool) {
         this.pool.close(this.defaultRelays);
       }
-      this.relays = [];
+      this.relays.clear();
       this.connectedRelays.clear();
       this.failedRelays.clear();
       this.isInitialized = false;
