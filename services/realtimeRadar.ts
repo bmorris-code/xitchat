@@ -128,7 +128,21 @@ class RealtimeRadarService {
   // Initialize connection to signaling server
   async initialize(serverUrl?: string): Promise<boolean> {
     try {
-      // 1. Determine correct URL (Secure vs Insecure)
+      // 1. Check if we're on Vercel (production) - disable WebSocket for Vercel
+      const hostname = window.location.hostname.toLowerCase();
+      const isVercel = hostname.includes('vercel.app') || 
+                      hostname.endsWith('.vercel.app') ||
+                      hostname === 'xitchat.vercel.app';
+      
+      console.log(`🔍 Checking hostname: ${hostname}, isVercel: ${isVercel}`);
+      
+      if (isVercel) {
+        console.log('🚫 Vercel detected - WebSocket radar disabled (Vercel doesn\'t support WebSockets)');
+        this.enableSimulationMode();
+        return Promise.resolve(true);
+      }
+
+      // 2. Determine correct URL (Secure vs Insecure)
       if (!serverUrl) {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.hostname;

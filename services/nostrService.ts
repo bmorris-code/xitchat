@@ -167,26 +167,32 @@ private async subscribeToEvents(): Promise<void> {
 
     try {
       const allPeers = Array.from(this.peers.keys());
-      const recentPeers = allPeers.slice(0, 100);
+      const recentPeers = allPeers.slice(0, 10); // Reduced from 20
 
       // Subscribe to direct messages
       this.pool!.subscribeMany(activeRelays, { 
         kinds: [4], 
         '#p': [this.publicKey!],
-        limit: 50 
+        limit: 5 // Reduced from 10
       }, {
         onevent: async (event) => {
           await this.handleDirectMessage(event);
+        },
+        oneose: () => {
+          console.log('✅ Direct messages subscription ready');
         }
       });
 
       // Subscribe to channel messages
       this.pool!.subscribeMany(activeRelays, { 
         kinds: [42], 
-        limit: 50 
+        limit: 5 // Reduced from 10
       }, {
         onevent: async (event) => {
           this.handleChannelMessage(event);
+        },
+        oneose: () => {
+          console.log('✅ Channel messages subscription ready');
         }
       });
 
@@ -491,7 +497,7 @@ private async subscribeToEvents(): Promise<void> {
       const events = await this.pool!.querySync(this.defaultRelays, {
         kinds: [0], // Metadata
         search: query,
-        limit: 20
+        limit: 3 // Reduced from 5
       });
 
       const peers: NostrPeer[] = [];

@@ -66,6 +66,13 @@ class GeohashChannelsService {
       return;
     }
 
+    // Delay location request to avoid user gesture violation
+    setTimeout(() => {
+      this.requestLocationWithUserGesture();
+    }, 2000); // Wait 2 seconds for user interaction
+  }
+
+  private requestLocationWithUserGesture() {
     const onLocationSuccess = (position: GeolocationPosition) => {
       this.updateLocation(position.coords.latitude, position.coords.longitude);
     };
