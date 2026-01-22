@@ -5,7 +5,7 @@ import Groq from 'groq-sdk';
 
 // Initialize Groq with environment variable or fallback
 const groq = new Groq({ 
-  apiKey: process.env.GROQ_API_KEY || 'gsk_demo_key', // Fallback for development
+  apiKey: process.env.VITE_GROQ_API_KEY || 'gsk_demo_key', // Fallback for development
   dangerouslyAllowBrowser: true // Enable browser usage for XitChat
 });
 
@@ -33,13 +33,13 @@ export const getXitBotResponseGroq = async (userMessage: string): Promise<string
   
   // Debug: Check if API key is available
   console.log('🔑 Groq API Key Check:', {
-    hasKey: !!process.env.GROQ_API_KEY,
-    keyValue: process.env.GROQ_API_KEY ? `${process.env.GROQ_API_KEY.substring(0, 10)}...` : 'missing',
-    isDemoKey: process.env.GROQ_API_KEY === 'gsk_demo_key'
+    hasKey: !!process.env.VITE_GROQ_API_KEY,
+    keyValue: process.env.VITE_GROQ_API_KEY ? `${process.env.VITE_GROQ_API_KEY.substring(0, 10)}...` : 'missing',
+    isDemoKey: process.env.VITE_GROQ_API_KEY === 'gsk_demo_key'
   });
   
   // Check if we have a valid API key
-  if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_demo_key') {
+  if (!process.env.VITE_GROQ_API_KEY || process.env.VITE_GROQ_API_KEY === 'gsk_demo_key') {
     console.log('⚠️ Groq API key not configured, using fallback response');
     return getFallbackChatResponse(userMessage);
   }
