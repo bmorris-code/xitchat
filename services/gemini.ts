@@ -1,8 +1,10 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Fix: initialized GoogleGenAI strictly using process.env.GEMINI_API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.VITE_GEMINI_API_KEY });
+// Fix: initialized GoogleGenAI strictly using process.env.VITE_GEMINI_API_KEY
+// Add fallback to prevent crashes when API key is missing
+const geminiApiKey = process.env.VITE_GEMINI_API_KEY || 'demo_key_fallback';
+const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
 // Cache for chat responses to reduce API calls
 const chatCache = new Map<string, { response: string; timestamp: number }>();
@@ -20,6 +22,12 @@ let lastDailyReset = Date.now();
 export const getXitBotResponse = async (userMessage: string) => {
   const now = Date.now();
   const cacheKey = userMessage.toLowerCase().trim();
+  
+  // Check if API key is configured
+  if (!process.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY === 'demo_key_fallback') {
+    console.log('⚠️ Gemini API key not configured, using fallback response');
+    return getFallbackChatResponse(userMessage);
+  }
   
   // Reset daily counter if needed
   if (now - lastDailyReset > 24 * 60 * 60 * 1000) {
