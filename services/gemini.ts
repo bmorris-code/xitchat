@@ -1,10 +1,15 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Fix: initialized GoogleGenAI strictly using process.env.VITE_GEMINI_API_KEY
+// Fix: Only initialize GoogleGenAI when API key is available
 // Add fallback to prevent crashes when API key is missing
-const geminiApiKey = process.env.VITE_GEMINI_API_KEY || 'demo_key_fallback';
-const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+const geminiApiKey = process.env.VITE_GEMINI_API_KEY;
+let ai: GoogleGenAI | null = null;
+
+// Only initialize if we have a valid API key
+if (geminiApiKey && geminiApiKey !== 'demo_key_fallback') {
+  ai = new GoogleGenAI({ apiKey: geminiApiKey });
+}
 
 // Cache for chat responses to reduce API calls
 const chatCache = new Map<string, { response: string; timestamp: number }>();
@@ -23,8 +28,8 @@ export const getXitBotResponse = async (userMessage: string) => {
   const now = Date.now();
   const cacheKey = userMessage.toLowerCase().trim();
   
-  // Check if API key is configured
-  if (!process.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY === 'demo_key_fallback') {
+  // Check if API key is configured and AI is initialized
+  if (!ai) {
     console.log('⚠️ Gemini API key not configured, using fallback response');
     return getFallbackChatResponse(userMessage);
   }
@@ -66,6 +71,11 @@ export const getXitBotResponse = async (userMessage: string) => {
     dailyApiCount++;
     
     console.log(`Making API call ${dailyApiCount}/${DAILY_API_LIMIT} for today`);
+    
+    if (!ai) {
+      console.log('⚠️ Gemini AI not initialized, using fallback response');
+      return getFallbackChatResponse(userMessage);
+    }
     
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
@@ -122,6 +132,11 @@ const getFallbackChatResponse = (userMessage: string): string => {
 
 export const getQuickReplies = async (lastMessage: string): Promise<string[]> => {
   try {
+    if (!ai) {
+      console.log('⚠️ Gemini AI not initialized for quick replies, using fallback');
+      return ["That's interesting!", "Tell me more!", "Cool! 🤙"];
+    }
+    
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Suggest 3 short, snappy quick replies for this message: "${lastMessage}"`,
@@ -176,6 +191,12 @@ export const getLatestBuzz = async (): Promise<BuzzItem[]> => {
   
   try {
     lastApiCall = now;
+    
+    if (!ai) {
+      console.log('⚠️ Gemini AI not initialized for buzz, using fallback');
+      return getFallbackBuzz();
+    }
+    
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: "Generate 5 trending news items for the XitChat mesh network buzz feed.",
