@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Fix: initialized GoogleGenAI strictly using process.env.GEMINI_API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.VITE_GEMINI_API_KEY });
 
 // Cache for chat responses to reduce API calls
 const chatCache = new Map<string, { response: string; timestamp: number }>();
