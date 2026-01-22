@@ -2,7 +2,7 @@
 // Automatically chooses best available P2P method and combines them
 
 import { workingBluetoothMesh, WorkingMeshNode } from './workingBluetoothMesh';
-import { ablyWebRTC, AblyWebRTCPeer } from './ablyWebRTC';
+// import { ablyWebRTC, AblyWebRTCPeer } from './ablyWebRTC'; // PAUSED - Server-dependent, re-enable later if needed
 import { wifiP2P, WiFiPeer } from './wifiP2P';
 import { nostrService, NostrPeer } from './nostrService';
 import { broadcastMesh, BroadcastPeer } from './broadcastMesh';
@@ -36,7 +36,7 @@ class HybridMeshService {
   // Track active state of each service
   private activeServices = {
     bluetooth: false,
-    webrtc: false,
+    webrtc: false, // PAUSED - Server-dependent, re-enable later if needed
     wifi: false,
     nostr: false,
     broadcast: false,
@@ -74,10 +74,11 @@ class HybridMeshService {
       const nostrSuccess = await this.startNostr();
       if (nostrSuccess) initializedTypes.push('nostr');
 
-      // 4. Start WebRTC (Regional Layer)
-      console.log('🌐 Starting Ably WebRTC...');
-      const webRTCSuccess = await this.startWebRTC();
-      if (webRTCSuccess) initializedTypes.push('webrtc');
+      // 4. PAUSED - WebRTC (requires server - re-enable later if needed)
+      console.log('🔗 WebRTC PAUSED (server-dependent) - using true P2P methods only');
+      // To re-enable later:
+      // const webRTCSuccess = await this.startWebRTC();
+      // if (webRTCSuccess) initializedTypes.push('webrtc');
 
       // 5. Start Bluetooth (Close Range Layer - Android Priority)
       if (isAndroid || 'bluetooth' in navigator) {
@@ -177,36 +178,40 @@ class HybridMeshService {
     }
   }
 
-  private async startWebRTC(): Promise<boolean> {
-    try {
-      // Use Ably WebRTC implementation with environment variable
-      const apiKey = process.env.ABLY_API_KEY || '0XyUmg.KAC1UQ:4HxrbKiaAWmzcMyMFiMWu74y3sHhA1KyZ3WBE2ixiSc'; // Fallback demo key
-      const success = await ablyWebRTC.initialize(apiKey);
+  // PAUSED - WebRTC Service (re-enable later if server needed)
+  // private async startWebRTC(): Promise<boolean> {
+  //   try {
+  //     // Use Ably WebRTC implementation with environment variable
+  //     const apiKey = process.env.ABLY_API_KEY || '0XyUmg.KAC1UQ:4HxrbKiaAWmzcMyMFiMWu74y3sHhA1KyZ3WBE2ixiSc'; // Fallback demo key
+  //     const success = await ablyWebRTC.initialize(apiKey);
 
-      if (success) {
-        this.activeServices.webrtc = true;
+  //     if (success) {
+  //       this.activeServices.webrtc = true;
 
-        ablyWebRTC.subscribe('peerJoined', (peer: any) => {
-          // Refresh full list slightly inefficient but robust
-          this.updatePeers(ablyWebRTC.getPeers(), 'webrtc');
-        });
+  //       ablyWebRTC.subscribe('peerJoined', (peer: any) => {
+  //         this.updatePeers(ablyWebRTC.getPeers(), 'webrtc');
+  //       });
 
-        ablyWebRTC.subscribe('peerLeft', (peer: any) => {
-          this.updatePeers(ablyWebRTC.getPeers(), 'webrtc');
-        });
+  //       ablyWebRTC.subscribe('peerLeft', (peer: any) => {
+  //         this.updatePeers(ablyWebRTC.getPeers(), 'webrtc');
+  //       });
 
-        ablyWebRTC.subscribe('messageReceived', (msg: any) => {
-          this.handleMessage('webrtc', msg);
-        });
+  //       ablyWebRTC.subscribe('messageReceived', (msg: any) => {
+  //         this.handleMessage('webrtc', msg);
+  //       });
 
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error('WebRTC failed:', e);
-      return false;
-    }
-  }
+  //       console.log('✅ WebRTC service started');
+  //       return true;
+  //     }
+
+  //     console.warn('⚠️ WebRTC service failed to start');
+  //     return false;
+
+  //   } catch (error) {
+  //     console.warn('⚠️ WebRTC initialization failed:', error);
+  //     return false;
+  //   }
+  // }
 
   private async startBluetooth(): Promise<boolean> {
     try {
@@ -301,7 +306,8 @@ class HybridMeshService {
             case 'bluetooth': await workingBluetoothMesh.sendMessage(peer.serviceId!, content); break;
             case 'wifi': await wifiP2P.sendMessage(peer.serviceId!, content); break;
             case 'nostr': await nostrService.sendDirectMessage(peer.serviceId!, content); break;
-            case 'webrtc': await ablyWebRTC.sendMessage(content); break; // Note: current Ably impl broadcasts to channel mostly, but supports direct if modified. Using broadcast for now as fallback.
+            // PAUSED - WebRTC (re-enable later if server needed)
+            // case 'webrtc': await ablyWebRTC.sendMessage(content); break;
             case 'broadcast': await broadcastMesh.sendMessage(peer.serviceId!, content); break;
             case 'local': await localTestMesh.sendMessage(peer.serviceId!, content); break;
           }
@@ -329,11 +335,12 @@ class HybridMeshService {
         }));
       }
       
-      if (this.activeServices.webrtc) {
-        promises.push(Promise.resolve().then(async () => {
-          await ablyWebRTC.sendMessage(content);
-        }));
-      }
+      // PAUSED - WebRTC (re-enable later if server needed)
+      // if (this.activeServices.webrtc) {
+      //   promises.push(Promise.resolve().then(async () => {
+      //     await ablyWebRTC.sendMessage(content);
+      //   }));
+      // }
       
       if (this.activeServices.bluetooth) {
         // Bluetooth often requires a target, but we can iterate peers

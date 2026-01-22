@@ -93,7 +93,7 @@ class RealOfflineMeshService {
   private async startLocalNetworkDiscovery(): Promise<void> {
     try {
       // Create WebSocket for local network discovery
-      this.signalingServer = new WebSocket('ws://localhost:8080');
+      this.signalingServer = new WebSocket('ws://localhost:8443');
       
       this.signalingServer.onopen = () => {
         console.log('🌐 Connected to local signaling server');

@@ -131,8 +131,8 @@ class NostrService {
         this.connectedRelays.add(relayUrl);
         console.log(`✅ Connected to relay: ${relayUrl}`);
       } catch (error) {
-        // Log as warning, not error, so it doesn't look critical in console
-        console.warn(`⚠️ Skipped relay ${relayUrl}:`, error instanceof Error ? error.message : 'Unknown error');
+        // Reduce verbosity for relay connection failures (expected in some network conditions)
+        console.debug(`Nostr relay connection failed: ${relayUrl} - ${error instanceof Error ? error.message : 'Unknown error'}`);
         this.failedRelays.add(relayUrl);
       }
     });
@@ -180,7 +180,7 @@ private async subscribeToEvents(): Promise<void> {
 
     try {
       const allPeers = Array.from(this.peers.keys());
-      const recentPeers = allPeers.slice(0, 10); // Reduced from 20
+      const recentPeers = allPeers.slice(0, 3); // Reduced to prevent filter size errors
 
       // Subscribe to direct messages with error handling
       try {

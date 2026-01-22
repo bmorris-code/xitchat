@@ -208,44 +208,15 @@ class WebRTCMeshService {
 
   private async startDiscovery(): Promise<void> {
     try {
-      // Simulate peer discovery for now
-      // In real implementation, would use signaling server
-      setInterval(() => {
-        this.simulatePeerDiscovery();
-      }, 5000);
+      // Real WebRTC peer discovery through signaling server
+      console.log('🔗 Starting real WebRTC peer discovery...');
+      
+      // Connect to signaling server for real peer discovery
+      await this.connectToSignalingServer();
     } catch (error) {
-      console.error('WebRTC discovery failed:', error);
+      console.error('WebRTC discovery failed - real signaling required:', error);
+      throw error;
     }
-  }
-
-  private simulatePeerDiscovery(): void {
-    // Simulate finding nearby peers using WebRTC
-    const mockPeers: WebRTCPeer[] = [
-      {
-        id: 'webrtc-peer-1',
-        name: 'WebRTC User',
-        handle: '@webrtc1',
-        connection: new RTCPeerConnection(),
-        dataChannel: {} as RTCDataChannel,
-        isConnected: false,
-        lastSeen: new Date()
-      },
-      {
-        id: 'webrtc-peer-2',
-        name: 'WebRTC Relay',
-        handle: '@webrtc2',
-        connection: new RTCPeerConnection(),
-        dataChannel: {} as RTCDataChannel,
-        isConnected: false,
-        lastSeen: new Date()
-      }
-    ];
-
-    mockPeers.forEach(peer => {
-      this.peers.set(peer.id, peer);
-    });
-
-    this.notifyPeersUpdated();
   }
 
   async connectToPeer(peerId: string): Promise<boolean> {

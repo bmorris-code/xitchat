@@ -115,7 +115,7 @@ class GeohashChannelsService {
                           window.location.hostname === '127.0.0.1';
 
     if (!isSecureOrigin) {
-      console.warn('🌐 Geolocation requires HTTPS. Current location is not secure. Using fallback location.');
+      console.debug('🌐 Geolocation requires HTTPS. Current location is not secure. Using fallback location.');
       this.updateLocation(40.7128, -74.0060); // Default to NYC
       return;
     }

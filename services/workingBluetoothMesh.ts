@@ -54,7 +54,6 @@ class WorkingBluetoothMeshService {
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private myDevice: BluetoothDevice | null = null;
   private scanTimer: any = null;
-  private isSimulationMode = false;
 
   async initialize(): Promise<boolean> {
     try {
@@ -62,34 +61,27 @@ class WorkingBluetoothMeshService {
       
       // 1. Check if we are in a context that supports Bluetooth
       if (typeof navigator === 'undefined' || !navigator.bluetooth) {
-        console.warn('⚠️ Web Bluetooth API not available. Switching to Simulation Mode.');
-        this.enableSimulationMode();
-        return true; // Return true so the app doesn't crash
+        throw new Error('Web Bluetooth API not available - real Bluetooth hardware required');
       }
 
       // 2. Check availability
       const available = await navigator.bluetooth.getAvailability();
       if (!available) {
-        console.warn('⚠️ Bluetooth hardware not found. Switching to Simulation Mode.');
-        this.enableSimulationMode();
-        return true;
+        throw new Error('Bluetooth hardware not found - real Bluetooth required');
       }
 
       return true;
 
     } catch (error) {
-      console.error('❌ Bluetooth initialization check failed:', error);
-      this.enableSimulationMode();
-      return true;
+      console.error('❌ Bluetooth initialization failed - real Bluetooth required:', error);
+      throw error; // Don't fall back to simulation
     }
   }
 
   // This MUST be called by a USER CLICK event (Button), not automatically
   async startScanning(): Promise<boolean> {
-      if (this.isSimulationMode) {
-          console.log("🔍 Scanning (Simulated)...");
-          this.simulateDeviceDiscovery();
-          return true;
+      if (!navigator.bluetooth) {
+        throw new Error('Bluetooth not available - real hardware required');
       }
 
       try {
@@ -114,11 +106,8 @@ class WorkingBluetoothMeshService {
               console.log('ℹ️ Bluetooth scan cancelled by user.');
               return false;
           }
-          console.error('❌ Bluetooth Scan Error:', error);
-          // Fallback to simulation if scan fails (e.g. dev environment)
-          this.enableSimulationMode();
-          this.simulateDeviceDiscovery();
-          return true;
+          console.error('❌ Bluetooth Scan Error - real scanning required:', error);
+          throw error; // Don't fall back to simulation
       }
   }
 
@@ -139,42 +128,6 @@ class WorkingBluetoothMeshService {
       this.emit('connected', { deviceName: device.name });
   }
 
-  private enableSimulationMode() {
-      if (this.isSimulationMode) return;
-      this.isSimulationMode = true;
-      console.log("🎮 Bluetooth Simulation Mode Enabled");
-      
-      // Create a fake local device
-      this.emit('connected', { deviceName: "Simulated Radio" });
-      this.isConnected = true;
-  }
-
-  private simulateDeviceDiscovery() {
-      // Simulate finding a device after 1 second
-      setTimeout(() => {
-          const mockDevice = {
-              id: `sim_bt_${Date.now()}`,
-              name: "XitChat Mesh Node 1",
-              addEventListener: () => {},
-              removeEventListener: () => {}
-          } as unknown as BluetoothDevice;
-          
-          this.handleDiscoveredDevice(mockDevice, -65);
-      }, 1000);
-
-      // Simulate another one
-      setTimeout(() => {
-        const mockDevice = {
-            id: `sim_bt_2_${Date.now()}`,
-            name: "Off-Grid Relay",
-            addEventListener: () => {},
-            removeEventListener: () => {}
-        } as unknown as BluetoothDevice;
-        
-        this.handleDiscoveredDevice(mockDevice, -80);
-    }, 2500);
-  }
-
   private handleDiscoveredDevice(device: BluetoothDevice, rssi: number): void {
     if (!device) return;
 
@@ -190,7 +143,7 @@ class WorkingBluetoothMeshService {
         id: deviceId,
         name: device.name || `Unknown Device ${this.peers.size + 1}`,
         handle: `@${(device.name || 'user').replace(/\s+/g, '').toLowerCase().substring(0,8)}`,
-        device: this.isSimulationMode ? null : device,
+        device: device,
         distance: distance,
         lastSeen: Date.now(),
         signalStrength: signal
@@ -230,11 +183,9 @@ class WorkingBluetoothMeshService {
 
     console.log(`📤 Sending via Bluetooth to ${peer.name}: ${content}`);
 
-    // Simulation logic
-    if (this.isSimulationMode || !peer.device || !peer.device.gatt) {
-        await new Promise(r => setTimeout(r, 600)); // Fake latency
-        this.emit('messageSent', { to: peerId, content, timestamp: new Date() });
-        return true;
+    // Real Bluetooth transmission only
+    if (!peer.device || !peer.device.gatt) {
+        throw new Error('Real Bluetooth device connection required');
     }
 
     // Real logic (if connected)

@@ -161,7 +161,7 @@ const App: React.FC = () => {
         console.log('📡 Initializing real-time radar service...');
 
         // Try to connect to signaling server
-        const connected = await realtimeRadar.initialize('ws://localhost:8080');
+        const connected = await realtimeRadar.initialize(); // Let radar service determine the correct URL
 
         if (connected) {
           setIsRealMode(true);

@@ -45,7 +45,7 @@ class HybridAIService {
         console.log('✅ Groq is healthy - using as primary provider');
       } else {
         this.failureCount++;
-        console.warn(`⚠️ Groq health check failed (${this.failureCount}/${this.MAX_FAILURES})`);
+        console.debug(`Groq health check failed (${this.failureCount}/${this.MAX_FAILURES})`);
         
         if (this.failureCount >= this.MAX_FAILURES) {
           this.isGroqHealthy = false;

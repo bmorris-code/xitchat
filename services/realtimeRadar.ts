@@ -138,8 +138,8 @@ class RealtimeRadarService {
       
       if (isVercel) {
         console.log('🚫 Vercel detected - WebSocket radar disabled (Vercel doesn\'t support WebSockets)');
-        this.enableSimulationMode();
-        return Promise.resolve(true);
+        console.log('📡 Radar will operate in offline mode with limited functionality');
+        return Promise.resolve(false); // Return Promise.resolve instead of resolve
       }
 
       // 2. Determine correct URL (Secure vs Insecure)
@@ -171,18 +171,18 @@ class RealtimeRadarService {
             this.ws = new WebSocket(`${serverUrl}?peerId=${this.generatePeerId()}`);
         } catch(e) {
             // Instant failover if URL is malformed
-            this.enableSimulationMode();
-            resolve(true);
-            return;
+            console.error(`Invalid WebSocket URL: ${e}`);
+            console.log('📡 Radar will operate in offline mode with limited functionality');
+            resolve(false); // Return false instead of throwing error
         }
 
         const timeout = setTimeout(() => {
-          console.warn("⚠️ WebSocket connection timeout - No radar server running on port 8443");
-          console.log("💡 To enable real-time radar, start the signaling server: npm run dev:server");
+          console.debug("WebSocket connection timeout - No radar server running on port 8443");
+          console.debug("💡 To enable real-time radar, start signaling server: npm run dev:server");
           this.ws?.close();
-          this.enableSimulationMode();
-          resolve(true); // Resolve true so UI loads
-        }, 1500); // Reduced timeout to fail faster
+          console.debug('📡 Radar will operate in offline mode with limited functionality');
+          resolve(false); // Return false instead of throwing error
+        }, 3000);
 
         this.ws.onopen = () => {
           clearTimeout(timeout);
@@ -201,69 +201,28 @@ class RealtimeRadarService {
 
         this.ws.onclose = () => {
           clearTimeout(timeout);
-          console.log('🔌 Disconnected from radar server');
+          console.debug('🔌 Disconnected from radar server (expected when no server is running)');
           this.handleReconnect();
         };
 
         this.ws.onerror = (error) => {
           clearTimeout(timeout);
-          console.warn('⚠️ WebSocket error (will fallback to simulation):', error);
+          console.debug('WebSocket error (will fallback to simulation):', error);
           // Don't reject, just let the close handler trigger reconnect/simulation
         };
       });
     } catch (error) {
       console.error('Failed to initialize radar service:', error);
-      this.enableSimulationMode();
-      return Promise.resolve(true);
+      console.log('📡 Radar will operate in offline mode with limited functionality');
+      return Promise.resolve(false); // Return Promise.resolve instead of resolve
     }
   }
 
-  // Fallback mode when no backend is running
+  // Fallback mode when no backend is running - DISABLED for security
   private enableSimulationMode() {
-      if (this.simulationInterval) return;
-      console.log("🎮 Enabling Radar Simulation Mode (No Backend Detected)");
-      this.isRealMode = false;
-      
-      // Create some fake peers
-      this.handleWelcome({
-          peers: [
-              this.createMockPeer("Mock User 1", 0.001, 0.001),
-              this.createMockPeer("Mock User 2", -0.001, 0.002),
-              this.createMockPeer("Mock User 3", 0.002, -0.001),
-          ]
-      });
-
-      // Simulate movement every 3 seconds
-      this.simulationInterval = setInterval(() => {
-          this.peers.forEach(peer => {
-              if(peer.location) {
-                  // Jitter location slightly
-                  peer.location.lat += (Math.random() - 0.5) * 0.0001;
-                  peer.location.lng += (Math.random() - 0.5) * 0.0001;
-                  this.handlePeerUpdated(peer.id, peer);
-              }
-          });
-      }, 3000);
-      
-      this.notifyListeners('connected', true);
-  }
-
-  private createMockPeer(name: string, latOffset: number, lngOffset: number): RadarPeer {
-      const loc = this.myCurrentLocation || this.generateRandomLocation();
-      return {
-          id: `sim_${Math.random().toString(36).substr(2, 5)}`,
-          name: name,
-          handle: `@${name.replace(/\s/g, '').toLowerCase()}`,
-          location: {
-              lat: loc.lat + latOffset,
-              lng: loc.lng + lngOffset,
-              geohash: loc.geohash
-          },
-          capabilities: ['radar', 'chat'],
-          lastSeen: Date.now(),
-          isOnline: true,
-          connectionType: 'webrtc'
-      };
+      console.log("❌ Radar simulation mode disabled - real connections required");
+      console.log('📡 Radar will operate in offline mode with limited functionality');
+      // Don't throw error, just continue in offline mode
   }
 
   private handleServerMessage(message: any) {
@@ -391,8 +350,8 @@ class RealtimeRadarService {
             if (this.isRealMode) this.updateMyLocation();
         },
         (error) => {
-            console.warn(`Geolocation Error (${error.code}): ${error.message}. Using fallback.`);
-            // If denied or error, keep using the default random location
+            console.debug(`Geolocation Error (${error.code}): ${error.message}. Using fallback.`);
+            // If denied or error, keep using default random location
             if (!this.myCurrentLocation) {
                 this.myCurrentLocation = this.generateRandomLocation();
             }
@@ -437,9 +396,9 @@ class RealtimeRadarService {
 
   private handleReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('❌ Max reconnection attempts reached. Switching to Offline/Simulation mode.');
-      this.enableSimulationMode();
-      return;
+      console.log('❌ Max reconnection attempts reached. Radar will operate in offline mode.');
+      console.log('📡 Limited radar functionality available without server connection');
+      return; // Don't throw error, just stop reconnecting
     }
 
     this.reconnectAttempts++;
@@ -453,10 +412,9 @@ class RealtimeRadarService {
 
   // Public API
   async connectToPeer(peerId: string): Promise<boolean> {
-    // Use simulated success if in simulation mode
     if (!this.isRealMode) {
-        console.log(`🔗 [SIM] Connected to peer ${peerId}`);
-        return true;
+        console.log(`📡 [OFFLINE] Cannot connect to peer ${peerId} - radar server not connected`);
+        return false;
     }
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
@@ -475,8 +433,8 @@ class RealtimeRadarService {
 
   sendMessage(peerId: string, message: string): boolean {
     if (!this.isRealMode) {
-        console.log(`💬 [SIM] Sent to ${peerId}: ${message}`);
-        return true;
+        console.log(`📡 [OFFLINE] Cannot send message to ${peerId} - radar server not connected`);
+        return false;
     }
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
@@ -492,7 +450,9 @@ class RealtimeRadarService {
 
   // Getters
   getPeers(): RadarPeer[] { return Array.from(this.peers.values()); }
-  isConnected(): boolean { return this.ws?.readyState === WebSocket.OPEN || !this.isRealMode; } // Return true if simulating so UI shows "Online"
+  isConnected(): boolean { 
+    return this.ws?.readyState === WebSocket.OPEN; 
+  } // Only return true if actually connected
   isRealModeEnabled(): boolean { return this.isRealMode; }
 
   // Event Listeners

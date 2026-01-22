@@ -1,5 +1,6 @@
 // Simple Bluetooth Mesh Implementation for XitChat
 import { meshPermissions } from './meshPermissions';
+import { networkStateManager, NetworkService } from './networkStateManager';
 
 export interface MeshNode {
   id: string;
@@ -46,13 +47,33 @@ class BluetoothMeshService {
     relayNodes: 0
   };
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
+  private serviceInfo: NetworkService = {
+    name: 'bluetoothMesh',
+    isConnected: false,
+    isHealthy: false,
+    lastCheck: 0,
+    reconnectAttempts: 0,
+    maxReconnectAttempts: 3,
+    reconnectDelay: 3000
+  };
 
   async initialize(): Promise<boolean> {
     try {
       // Check if Bluetooth Web API is available
       if (!('bluetooth' in navigator)) {
-        console.warn('Bluetooth Web API not available - using simulation mode');
+        console.warn('Bluetooth Web API not available - using enhanced simulation mode');
+        
+        // Register with network state manager even in simulation mode
+        this.serviceInfo.healthCheck = () => this.performHealthCheck();
+        this.serviceInfo.reconnect = () => this.reconnect();
+        networkStateManager.registerService(this.serviceInfo);
+        
         this.isConnected = true;
+        this.serviceInfo.isConnected = true;
+        this.serviceInfo.isHealthy = true;
+        this.serviceInfo.lastCheck = Date.now();
+        networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
+        
         this.startDiscovery();
         this.startMeshRouting();
         return true;
@@ -65,13 +86,34 @@ class BluetoothMeshService {
       });
 
       this.isConnected = true;
+      
+      // Register with network state manager
+      this.serviceInfo.healthCheck = () => this.performHealthCheck();
+      this.serviceInfo.reconnect = () => this.reconnect();
+      networkStateManager.registerService(this.serviceInfo);
+      
+      this.serviceInfo.isConnected = true;
+      this.serviceInfo.isHealthy = true;
+      this.serviceInfo.lastCheck = Date.now();
+      networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
+      
       this.startDiscovery();
       this.startMeshRouting();
       return true;
     } catch (error) {
-      console.warn('Bluetooth initialization failed, falling back to simulation:', error);
-      // Fallback to simulation mode
+      console.warn('Bluetooth initialization failed, falling back to enhanced simulation:', error);
+      
+      // Enhanced fallback with network state manager integration
+      this.serviceInfo.healthCheck = () => this.performHealthCheck();
+      this.serviceInfo.reconnect = () => this.reconnect();
+      networkStateManager.registerService(this.serviceInfo);
+      
       this.isConnected = true;
+      this.serviceInfo.isConnected = true;
+      this.serviceInfo.isHealthy = true;
+      this.serviceInfo.lastCheck = Date.now();
+      networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
+      
       this.startDiscovery();
       this.startMeshRouting();
       return true;
@@ -252,7 +294,48 @@ class BluetoothMeshService {
   disconnect(): void {
     this.isConnected = false;
     this.peers.clear();
+    
+    // Unregister from network state manager
+    networkStateManager.unregisterService('bluetoothMesh');
+    
     this.emit('disconnected');
+  }
+
+  // Health check implementation
+  private async performHealthCheck(): Promise<boolean> {
+    try {
+      // For Bluetooth mesh, health is based on recent peer activity
+      const now = Date.now();
+      const recentActivity = Array.from(this.peers.values()).some(
+        peer => now - peer.lastSeen.getTime() < 60000 // Activity within last minute
+      );
+
+      // Even if no recent activity, if we're in simulation mode we consider it healthy
+      if (!('bluetooth' in navigator)) {
+        return this.isConnected;
+      }
+
+      return this.isConnected && (recentActivity || this.peers.size === 0);
+    } catch (error) {
+      console.error('Bluetooth mesh health check failed:', error);
+      return false;
+    }
+  }
+
+  // Reconnection implementation
+  private async reconnect(): Promise<boolean> {
+    try {
+      console.log('🔄 Attempting to reconnect Bluetooth mesh...');
+      
+      // Clean up existing state
+      this.peers.clear();
+      
+      // Reinitialize
+      return await this.initialize();
+    } catch (error) {
+      console.error('Bluetooth mesh reconnection failed:', error);
+      return false;
+    }
   }
 }
 

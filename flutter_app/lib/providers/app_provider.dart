@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:xitchat_mobile/models.dart';
 import '../models/chat.dart';
 import '../working_p2p_service.dart';
 import '../services/xc_economy.dart';

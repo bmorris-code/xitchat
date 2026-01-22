@@ -91,7 +91,31 @@ class LocalStorageService {
 
       // Decompress if needed
       const decompressed = this.compressionEnabled ? await this.decompress(stored) : stored;
-      return JSON.parse(decompressed);
+      
+      // Enhanced JSON parsing with error recovery
+      try {
+        return JSON.parse(decompressed);
+      } catch (parseError) {
+        console.warn(`JSON parse failed for key ${key}, attempting recovery...`, parseError.message);
+        
+        // Try to fix common JSON issues
+        let fixedJson = decompressed;
+        
+        // Remove trailing commas
+        fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
+        
+        // Fix quotes around property names
+        fixedJson = fixedJson.replace(/(\w+):/g, '"$1":');
+        
+        try {
+          return JSON.parse(fixedJson);
+        } catch (secondError) {
+          console.error(`JSON recovery failed for key ${key}, clearing corrupted data`);
+          // Clear corrupted data to prevent repeated errors
+          localStorage.removeItem(fullKey);
+          return null;
+        }
+      }
     } catch (error) {
       console.error('Failed to retrieve data:', error);
       return null;

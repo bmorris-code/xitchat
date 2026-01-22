@@ -2,6 +2,7 @@
 // Free tier: 6 million messages/month, 200 concurrent connections
 
 import * as Ably from 'ably';
+import { networkStateManager, NetworkService } from './networkStateManager';
 
 export interface AblyWebRTCPeer {
   id: string;
@@ -21,6 +22,15 @@ class AblyWebRTCService {
   private localPeer: RTCPeerConnection | null = null;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private currentRoom: string = 'xitchat-mesh';
+  private serviceInfo: NetworkService = {
+    name: 'ablyWebRTC',
+    isConnected: false,
+    isHealthy: false,
+    lastCheck: 0,
+    reconnectAttempts: 0,
+    maxReconnectAttempts: 5,
+    reconnectDelay: 2000
+  };
 
   async initialize(apiKey: string): Promise<boolean> {
     try {
@@ -59,11 +69,25 @@ class AblyWebRTCService {
       // Create local peer connection
       await this.createLocalPeer();
 
+      // Register with network state manager
+      this.serviceInfo.healthCheck = () => this.performHealthCheck();
+      this.serviceInfo.reconnect = () => this.reconnect(apiKey);
+      networkStateManager.registerService(this.serviceInfo);
+
+      // Update connection status
+      this.serviceInfo.isConnected = true;
+      this.serviceInfo.isHealthy = true;
+      this.serviceInfo.lastCheck = Date.now();
+      networkStateManager.updateServiceStatus('ablyWebRTC', true, true);
+
       console.log('✅ Ably WebRTC service initialized');
       return true;
 
     } catch (error) {
-      console.warn('⚠️ Ably WebRTC initialization skipped (Offline Mode):', error);
+      console.warn('⚠️ Ably WebRTC initialization failed:', error);
+      this.serviceInfo.isConnected = false;
+      this.serviceInfo.isHealthy = false;
+      networkStateManager.updateServiceStatus('ablyWebRTC', false, false);
       return false;
     }
   }
@@ -239,7 +263,50 @@ class AblyWebRTCService {
     this.ably?.close();
     this.localPeer?.close();
     this.peers.forEach(peer => peer.connection.close());
+    
+    // Unregister from network state manager
+    networkStateManager.unregisterService('ablyWebRTC');
+    
     this.emit('disconnected');
+  }
+
+  // Health check implementation
+  private async performHealthCheck(): Promise<boolean> {
+    try {
+      // Check if Ably connection is still active
+      if (!this.ably || this.ably.connection.state !== 'connected') {
+        return false;
+      }
+
+      // Check if we have any active peer connections
+      const hasActivePeers = Array.from(this.peers.values()).some(
+        peer => peer.connection.connectionState === 'connected'
+      );
+
+      // Even if no peers, if Ably is connected we consider it healthy
+      return true;
+    } catch (error) {
+      console.error('Ably WebRTC health check failed:', error);
+      return false;
+    }
+  }
+
+  // Reconnection implementation
+  private async reconnect(apiKey: string): Promise<boolean> {
+    try {
+      console.log('🔄 Attempting to reconnect Ably WebRTC...');
+      
+      // Clean up existing connection
+      this.ably?.close();
+      this.localPeer?.close();
+      this.peers.clear();
+      
+      // Reinitialize
+      return await this.initialize(apiKey);
+    } catch (error) {
+      console.error('Ably WebRTC reconnection failed:', error);
+      return false;
+    }
   }
 }
 

@@ -5,7 +5,7 @@ import Groq from 'groq-sdk';
 
 // Initialize Groq with environment variable or fallback
 const groq = new Groq({ 
-  apiKey: process.env.GROQ_API_KEY || 'gsk_demo_key', // Fallback for development
+  apiKey: process.env.VITE_GROQ_API_KEY || 'gsk_demo_key', // Fallback for development
   dangerouslyAllowBrowser: true // Enable browser usage for XitChat
 });
 
@@ -33,13 +33,13 @@ export const getXitBotResponseGroq = async (userMessage: string): Promise<string
   
   // Debug: Check if API key is available
   console.log('🔑 Groq API Key Check:', {
-    hasKey: !!process.env.GROQ_API_KEY,
-    keyValue: process.env.GROQ_API_KEY ? `${process.env.GROQ_API_KEY.substring(0, 10)}...` : 'missing',
-    isDemoKey: process.env.GROQ_API_KEY === 'gsk_demo_key'
+    hasKey: !!process.env.VITE_GROQ_API_KEY,
+    keyValue: process.env.VITE_GROQ_API_KEY ? `${process.env.VITE_GROQ_API_KEY.substring(0, 10)}...` : 'missing',
+    isDemoKey: process.env.VITE_GROQ_API_KEY === 'gsk_demo_key'
   });
   
   // Check if we have a valid API key
-  if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_demo_key') {
+  if (!process.env.VITE_GROQ_API_KEY || process.env.VITE_GROQ_API_KEY === 'gsk_demo_key') {
     console.log('⚠️ Groq API key not configured, using fallback response');
     return getFallbackChatResponse(userMessage);
   }
@@ -148,7 +148,7 @@ export const getQuickRepliesGroq = async (lastMessage: string): Promise<string[]
 
     const response = await groq.chat.completions.create({
       messages,
-      model: "llama3-8b-8192", // Fast model for simple tasks
+      model: "openai/gpt-oss-120b", // Fast model for simple tasks
       temperature: 0.9,
       max_tokens: 100,
       response_format: { type: "json_object" }
@@ -280,20 +280,23 @@ const getFallbackBuzz = (): BuzzItem[] => {
 // Health check function
 export const checkGroqHealth = async (): Promise<boolean> => {
   // Check if API key is configured
-  if (!process.env.GROQ_API_KEY || process.env.GROQ_API_KEY === 'gsk_demo_key') {
-    console.log('⚠️ Groq API key not configured, health check failed');
-    return false;
+  if (!process.env.VITE_GROQ_API_KEY || process.env.VITE_GROQ_API_KEY === 'gsk_demo_key') {
+    console.log('⚠️ Groq API key not configured, skipping health check');
+    return false; // Don't fail, just return false to use fallback
   }
   
   try {
+    // Use a very lightweight health check
     const response = await groq.chat.completions.create({
-      messages: [{ role: 'user', content: 'Hello' }],
+      messages: [{ role: 'user', content: 'Hi' }],
       model: 'llama3-8b-8192',
-      max_tokens: 10
+      max_tokens: 5,
+      temperature: 0
     });
     return !!response.choices[0]?.message?.content;
   } catch (error) {
-    console.error('Groq health check failed:', error);
+    // Don't log error as warning, just debug
+    console.debug('Groq health check failed:', error.message || error);
     return false;
   }
 };
