@@ -1,8 +1,9 @@
 // Simple Broadcast Channel Mesh for Vercel deployment
 // Uses BroadcastChannel API for same-origin communication
-// Falls back to localStorage for cross-tab communication
+// UPGRADED: Now uses Nostr for real-time cross-device communication
 
 import { safeJsonStringify } from '../utils/jsonUtils';
+import { nostrService } from './nostrService';
 
 export interface BroadcastPeer {
   id: string;
@@ -35,6 +36,7 @@ class BroadcastMeshService {
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private isConnected = false;
+  private nostrPrefix = 'xitchat-broadcast-v1-';
 
   constructor() {
     this.myId = `broadcast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -44,26 +46,29 @@ class BroadcastMeshService {
 
   async initialize(): Promise<boolean> {
     try {
-      console.log('📡 Initializing Broadcast Channel Mesh...');
-      
-      // Create broadcast channel for same-origin communication
+      console.log('📡 Initializing Broadcast Channel Mesh (Cross-Device Enabled)...');
+
+      // 1. Create broadcast channel for same-device communication
       if ('BroadcastChannel' in window) {
         this.broadcastChannel = new BroadcastChannel('xitchat-mesh');
-        this.broadcastChannel.onmessage = this.handleBroadcastMessage.bind(this);
+        this.broadcastChannel.onmessage = (event) => {
+          this.handleIncomingRawMessage(event.data, 'local');
+        };
         console.log('✅ BroadcastChannel created');
-      } else {
-        console.log('⚠️ BroadcastChannel not supported, using localStorage fallback');
       }
+
+      // 2. Setup Nostr for cross-device communication
+      this.setupNostrTransport();
 
       // Start heartbeat
       this.startHeartbeat();
-      
+
       // Announce presence
       this.announcePresence();
-      
+
       this.isConnected = true;
-      console.log('✅ Broadcast mesh initialized');
-      
+      console.log('✅ Broadcast mesh initialized with cross-device support');
+
       return true;
     } catch (error) {
       console.error('❌ Broadcast mesh initialization failed:', error);
@@ -71,14 +76,27 @@ class BroadcastMeshService {
     }
   }
 
-  private handleBroadcastMessage(event: MessageEvent) {
+  private setupNostrTransport() {
+    // Listen for broadcast mesh messages via Nostr
+    nostrService.subscribe('messageReceived', (message) => {
+      if (message.content && message.content.startsWith(this.nostrPrefix)) {
+        const rawData = message.content.replace(this.nostrPrefix, '');
+        this.handleIncomingRawMessage(rawData, 'nostr');
+      }
+    });
+  }
+
+  private handleIncomingRawMessage(rawData: string, source: 'local' | 'nostr') {
     try {
-      const message: BroadcastMessage = JSON.parse(event.data);
-      
+      const message: BroadcastMessage = JSON.parse(rawData);
+
       if (message.from === this.myId) return; // Ignore own messages
-      
-      console.log('📨 Received broadcast message:', message);
-      
+
+      // If it's a direct message, check if it's for us
+      if (message.to !== 'broadcast' && message.to !== this.myId) return;
+
+      console.log(`📨 Received ${source} broadcast message:`, message.type);
+
       switch (message.type) {
         case 'discovery':
           this.handleDiscoveryMessage(message);
@@ -91,71 +109,50 @@ class BroadcastMeshService {
           break;
       }
     } catch (error) {
-      console.error('Error handling broadcast message:', error);
+      console.error('Error handling raw broadcast message:', error);
     }
   }
 
   private handleDiscoveryMessage(message: BroadcastMessage) {
-    const peerData = JSON.parse(message.content);
-    
-    const peer: BroadcastPeer = {
-      id: message.from,
-      name: peerData.name || 'Unknown Device',
-      handle: peerData.handle || '@unknown',
-      connectionType: 'broadcast',
-      isConnected: false, // Start as not connected
-      lastSeen: Date.now(),
-      signalStrength: 75,
-      capabilities: ['discovery']
-    };
-    
-    // Don't add if already exists
-    if (!this.peers.has(message.from)) {
-      this.peers.set(message.from, peer);
-      console.log(`👋 Discovered peer: ${peer.name} (${peer.handle}) - Status: Unknown/Unsupported`);
-      
-      // Send reply discovery
-      this.announcePresence(message.from);
-      
-      this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
+    try {
+      const peerData = JSON.parse(message.content);
+
+      const peer: BroadcastPeer = {
+        id: message.from,
+        name: peerData.name || 'Unknown Device',
+        handle: peerData.handle || '@unknown',
+        connectionType: 'broadcast',
+        isConnected: true,
+        lastSeen: Date.now(),
+        signalStrength: 100,
+        capabilities: ['chat', 'broadcast']
+      };
+
+      if (!this.peers.has(message.from)) {
+        this.peers.set(message.from, peer);
+        console.log(`👋 Discovered cross-device peer: ${peer.name} (${peer.handle})`);
+
+        // Reply to discovery
+        this.announcePresence(message.from);
+
+        this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
+        this.notifyListeners('peerFound', peer);
+      } else {
+        // Update existing peer
+        const existing = this.peers.get(message.from)!;
+        existing.lastSeen = Date.now();
+        existing.isConnected = true;
+      }
+    } catch (e) {
+      console.error('Failed to parse discovery content', e);
     }
   }
 
   private handleDirectMessage(message: BroadcastMessage) {
-    try {
-      const messageData = JSON.parse(message.content);
-      
-      if (messageData.type === 'ping') {
-        // Handle ping response
-        console.log(`📡 Received ping from: ${messageData.from} (${messageData.handle})`);
-        
-        // Update or add the peer with connected status
-        const peer = this.peers.get(message.from);
-        if (peer) {
-          peer.name = messageData.from || 'Unknown Device';
-          peer.handle = messageData.handle || '@unknown';
-          peer.isConnected = true;
-          peer.capabilities = ['chat', 'broadcast'];
-          peer.lastSeen = Date.now();
-          
-          this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
-          console.log(`✅ Peer connected: ${peer.name} (${peer.handle})`);
-        }
-        return;
-      }
-      
-      // Handle regular chat messages
-      console.log(`💬 Direct message from ${message.from}: ${message.content}`);
-      this.notifyListeners('messageReceived', message);
-    } catch (error) {
-      // If not JSON, treat as regular message
-      console.log(`💬 Direct message from ${message.from}: ${message.content}`);
-      this.notifyListeners('messageReceived', message);
-    }
+    this.notifyListeners('messageReceived', message);
   }
 
   private handleBroadcastData(message: BroadcastMessage) {
-    console.log(`📢 Broadcast from ${message.from}: ${message.content}`);
     this.notifyListeners('messageReceived', message);
   }
 
@@ -182,80 +179,63 @@ class BroadcastMeshService {
   private startHeartbeat() {
     this.heartbeatInterval = setInterval(() => {
       this.announcePresence();
-    }, 30000); // Every 30 seconds
+      this.cleanupPeers();
+    }, 15000); // Every 15 seconds
   }
 
-  private sendMessageInternal(message: BroadcastMessage) {
+  private cleanupPeers() {
+    const now = Date.now();
+    let changed = false;
+    this.peers.forEach((peer, id) => {
+      if (now - peer.lastSeen > 60000) { // 1 minute timeout
+        this.peers.delete(id);
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
+    }
+  }
+
+  private async sendMessageInternal(message: BroadcastMessage) {
     const messageData = safeJsonStringify(message);
-    
-    // Send via BroadcastChannel
+
+    // 1. Send via local BroadcastChannel (same-device)
     if (this.broadcastChannel) {
       this.broadcastChannel.postMessage(messageData);
     }
-    
-    // Fallback to localStorage for cross-tab communication
+
+    // 2. Send via Nostr (cross-device)
+    try {
+      if (nostrService.isConnected()) {
+        await nostrService.broadcastMessage(`${this.nostrPrefix}${messageData}`);
+      }
+    } catch (error) {
+      // Silently fail for Nostr broadcast if not ready
+      // console.warn('Nostr broadcast failed for mesh:', error); 
+    }
+
+    // 3. Fallback to localStorage (same-device fallback)
     try {
       localStorage.setItem(`${this.storageKey}-${message.id}`, messageData);
       setTimeout(() => {
         localStorage.removeItem(`${this.storageKey}-${message.id}`);
       }, 1000);
     } catch (error) {
-      console.warn('localStorage fallback failed:', error);
+      // ignore
     }
   }
 
   async pingPeer(peerId: string): Promise<boolean> {
-    try {
-      const peer = this.peers.get(peerId);
-      if (!peer) {
-        console.log('❌ Peer not found for ping:', peerId);
-        return false;
-      }
+    const peer = this.peers.get(peerId);
+    if (!peer) return false;
 
-      console.log(`📡 Pinging peer: ${peer.name} (${peer.handle})`);
-      
-      // Send ping message
-      const pingMessage: BroadcastMessage = {
-        id: this.generateMessageId(),
-        from: this.myId,
-        to: peerId,
-        content: safeJsonStringify({
-          type: 'ping',
-          timestamp: Date.now(),
-          from: this.myName,
-          handle: this.myHandle
-        }),
-        timestamp: Date.now(),
-        type: 'direct',
-        encrypted: false
-      };
-
-      this.sendMessageInternal(pingMessage);
-      
-      // Update peer status to connecting
-      peer.isConnected = true;
-      peer.capabilities = ['chat', 'broadcast', 'connecting'];
-      this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
-      
-      // Simulate connection delay
-      setTimeout(() => {
-        peer.capabilities = ['chat', 'broadcast'];
-        this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
-        console.log(`✅ Connected to peer: ${peer.name} (${peer.handle})`);
-      }, 1500);
-      
-      return true;
-    } catch (error) {
-      console.error('Failed to ping peer:', error);
-      return false;
-    }
+    this.announcePresence(peerId);
+    return true;
   }
 
   async sendMessage(peerId: string, content: string): Promise<void> {
-    if (!this.isConnected) {
-      console.warn('Not connected to broadcast mesh');
-      return;
-    }
+    if (!this.isConnected) return;
 
     const message: BroadcastMessage = {
       id: this.generateMessageId(),
@@ -267,15 +247,12 @@ class BroadcastMeshService {
       encrypted: false
     };
 
-    this.sendMessageInternal(message);
-    console.log(`📤 Sent message to ${peerId}: ${content}`);
+    await this.sendMessageInternal(message);
+    console.log(`📤 Sent broadcast-mesh message to ${peerId}: ${content}`);
   }
 
   async broadcastMessage(content: string): Promise<void> {
-    if (!this.isConnected) {
-      console.warn('Not connected to broadcast mesh');
-      return;
-    }
+    if (!this.isConnected) return;
 
     const message: BroadcastMessage = {
       id: this.generateMessageId(),
@@ -287,8 +264,8 @@ class BroadcastMeshService {
       encrypted: false
     };
 
-    this.sendMessageInternal(message);
-    console.log(`📢 Broadcast message: ${content}`);
+    await this.sendMessageInternal(message);
+    console.log(`📢 Broadcast mesh message: ${content}`);
   }
 
   getPeers(): BroadcastPeer[] {
@@ -312,7 +289,7 @@ class BroadcastMeshService {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
-    
+
     return () => {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     };
@@ -332,11 +309,11 @@ class BroadcastMeshService {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
     }
-    
+
     if (this.broadcastChannel) {
       this.broadcastChannel.close();
     }
-    
+
     this.isConnected = false;
     console.log('📡 Broadcast mesh disconnected');
   }

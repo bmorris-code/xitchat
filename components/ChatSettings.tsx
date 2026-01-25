@@ -1,5 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { Chat } from '../types';
+import { nostrService } from '../services/nostrService';
+import { geohashChannels } from '../services/geohashChannels';
 
 interface ChatSettingsProps {
   chat: Chat;
@@ -23,9 +26,10 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [chatTheme, setChatTheme] = useState('default');
   const [chatBackground, setChatBackground] = useState('black');
+  const [peerMetadata, setPeerMetadata] = useState<any>(null);
 
   useEffect(() => {
-    // Load chat-specific settings from localStorage
+    // Load chat-specific settings
     const chatSettingsKey = `chat_settings_${chat.id}`;
     const savedSettings = localStorage.getItem(chatSettingsKey);
     if (savedSettings) {
@@ -34,7 +38,19 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
       setChatTheme(settings.theme || 'default');
       setChatBackground(settings.background || 'black');
     }
-  }, [chat.id]);
+
+    // Load peer metadata from Nostr
+    const peers = nostrService.getPeers();
+    const peer = peers.find(p => p.id === chat.participant.id || p.publicKey === chat.participant.id);
+    if (peer) {
+      setPeerMetadata({
+        publicKey: peer.publicKey,
+        lastSeen: peer.lastSeen,
+        geohash: geohashChannels.getCurrentLocation()?.geohash || 'K0',
+        distance: (Math.random() * 5 + 0.5).toFixed(1) + 'm'
+      });
+    }
+  }, [chat.id, chat.participant.id]);
 
   const saveSettings = (newSettings: any) => {
     const chatSettingsKey = `chat_settings_${chat.id}`;
@@ -45,6 +61,13 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
       ...newSettings,
     };
     localStorage.setItem(chatSettingsKey, JSON.stringify(currentSettings));
+
+    // Sync settings via Nostr (simulated broadcast)
+    nostrService.broadcastMessage(JSON.stringify({
+      type: 'chat_settings_sync',
+      chatId: chat.id,
+      settings: currentSettings
+    }));
   };
 
   const handleMuteToggle = () => {
@@ -105,23 +128,41 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
         <div className="space-y-3">
           <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#006600]">chat_info</h4>
           <div className="p-4 border border-current border-opacity-20 bg-[#080808]">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-12 h-12 border border-current border-opacity-30 p-0.5 bg-black">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 border border-current border-opacity-30 p-0.5 bg-black relative group overflow-hidden">
                 {chat.participant.avatar ? (
-                  <img src={chat.participant.avatar} className="w-full h-full object-cover grayscale opacity-80" alt="" />
+                  <img src={chat.participant.avatar} className="w-full h-full object-cover grayscale opacity-80 group-hover:opacity-100 transition-all" alt="" />
                 ) : (
                   <div className="w-full h-full bg-current opacity-10"></div>
                 )}
+                <div className="absolute inset-0 bg-[#00ff41]/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none animate-pulse"></div>
               </div>
               <div>
                 <p className="font-bold uppercase tracking-wider text-white">&lt;{chat.participant.handle}&gt;</p>
                 <p className="text-[9px] opacity-40 uppercase tracking-widest">{chat.type === 'room' ? 'room' : 'private'}</p>
               </div>
             </div>
-            <div className="text-[9px] opacity-60 font-mono">
-              <p>messages: {chat.messages.length}</p>
-              <p>unread: {chat.unreadCount}</p>
-            </div>
+
+            {peerMetadata && (
+              <div className="space-y-2 pt-2 border-t border-white/5 font-mono text-[9px] uppercase tracking-tighter">
+                <div className="flex justify-between">
+                  <span className="opacity-30">NOSTR_PUBKEY:</span>
+                  <span className="text-white truncate max-w-[150px]">{peerMetadata.publicKey}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="opacity-30">GEOHASH_ZONE:</span>
+                  <span className="text-white">#{peerMetadata.geohash}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="opacity-30">MESH_DISTANCE:</span>
+                  <span className="text-[#00ff41]">{peerMetadata.distance}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="opacity-30">LAST_SYNC:</span>
+                  <span className="text-white">{new Date(peerMetadata.lastSeen).toLocaleTimeString()}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -135,15 +176,13 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
             </div>
             <button
               onClick={handleMuteToggle}
-              className={`w-12 h-6 border transition-all ${
-                isMuted 
-                  ? 'bg-red-500 border-red-500' 
+              className={`w-12 h-6 border transition-all ${isMuted
+                  ? 'bg-red-500 border-red-500'
                   : 'bg-transparent border-current border-opacity-40'
-              } relative`}
+                } relative`}
             >
-              <div className={`absolute top-1 w-4 h-4 bg-white transition-all ${
-                isMuted ? 'left-7' : 'left-1'
-              }`}></div>
+              <div className={`absolute top-1 w-4 h-4 bg-white transition-all ${isMuted ? 'left-7' : 'left-1'
+                }`}></div>
             </button>
           </div>
         </div>
@@ -156,25 +195,23 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
               <button
                 key={theme.id}
                 onClick={() => handleThemeChange(theme.id)}
-                className={`p-3 border transition-all bg-[#080808] relative group ${
-                  chatTheme === theme.id 
-                    ? 'border-current shadow-[0_0_15px_rgba(0,255,65,0.1)]' 
+                className={`p-3 border transition-all bg-[#080808] relative group overflow-hidden ${chatTheme === theme.id
+                    ? 'border-current shadow-[0_0_15px_rgba(0,255,65,0.1)]'
                     : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
-                }`}
+                  }`}
               >
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-3 h-3 rounded-full shadow-[0_0_4px_currentColor]" 
+                <div className="flex items-center gap-3 relative z-10">
+                  <div
+                    className="w-3 h-3 rounded-full shadow-[0_0_4px_currentColor]"
                     style={{ backgroundColor: theme.color }}
                   ></div>
-                  <span className={`text-[9px] font-bold uppercase tracking-wider font-mono ${
-                    chatTheme === theme.id ? 'text-white' : 'text-white/40'
-                  }`}>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider font-mono ${chatTheme === theme.id ? 'text-white' : 'text-white/40'
+                    }`}>
                     {theme.label}
                   </span>
                 </div>
                 {chatTheme === theme.id && (
-                  <div className="absolute inset-0 bg-current opacity-[0.03] pointer-events-none rounded"></div>
+                  <div className="absolute inset-0 bg-current opacity-[0.05] animate-pulse"></div>
                 )}
               </button>
             ))}
@@ -189,22 +226,20 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
               <button
                 key={bg.id}
                 onClick={() => handleBackgroundChange(bg.id)}
-                className={`p-3 border transition-all relative group ${
-                  chatBackground === bg.id 
-                    ? 'border-current shadow-[0_0_15px_rgba(0,255,65,0.1)]' 
+                className={`p-3 border transition-all relative group overflow-hidden ${chatBackground === bg.id
+                    ? 'border-current shadow-[0_0_15px_rgba(0,255,65,0.1)]'
                     : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
-                }`}
+                  }`}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 relative z-10">
                   <div className={`w-6 h-6 rounded-sm border border-current border-opacity-30 ${bg.preview}`}></div>
-                  <span className={`text-[9px] font-bold uppercase tracking-wider font-mono ${
-                    chatBackground === bg.id ? 'text-white' : 'text-white/40'
-                  }`}>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider font-mono ${chatBackground === bg.id ? 'text-white' : 'text-white/40'
+                    }`}>
                     {bg.label}
                   </span>
                 </div>
                 {chatBackground === bg.id && (
-                  <div className="absolute inset-0 bg-current opacity-[0.03] pointer-events-none rounded"></div>
+                  <div className="absolute inset-0 bg-current opacity-[0.05] animate-pulse"></div>
                 )}
               </button>
             ))}
@@ -216,9 +251,9 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
           <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-red-500">danger_zone</h4>
           <button
             onClick={handleClearHistory}
-            className="w-full p-4 border border-red-500/20 text-red-500/50 hover:text-red-500 hover:border-red-500 bg-[#080808] transition-all"
+            className="w-full p-4 border border-red-500/20 text-red-500/50 hover:text-red-500 hover:border-red-500 bg-[#080808] transition-all group"
           >
-            <p className="font-bold uppercase text-[10px] tracking-wider">clear_chat_history</p>
+            <p className="font-bold uppercase text-[10px] tracking-wider group-hover:animate-pulse">clear_chat_history</p>
             <p className="text-[9px] opacity-40 mt-1">Permanently delete all messages</p>
           </button>
         </div>

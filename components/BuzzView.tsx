@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getLatestBuzz, BuzzItem } from '../services/hybridAI';
 import { liveIntelligenceFeed, IntelligenceItem } from '../services/liveIntelligenceFeed';
 import { xcEconomy } from '../services/xcEconomy';
+import { hybridMesh } from '../services/hybridMesh';
 
 interface Shoutout extends BuzzItem {
   id: string;
@@ -54,12 +55,12 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
   useEffect(() => {
     // Load intelligence feed immediately
     setIntelligenceItems(liveIntelligenceFeed.getIntelligenceItems());
-    
+
     // Subscribe to intelligence updates
     const unsubscribe = liveIntelligenceFeed.subscribe('intelligenceUpdated', (items: IntelligenceItem[]) => {
       setIntelligenceItems(items);
     });
-    
+
     const unsubscribeNew = liveIntelligenceFeed.subscribe('newIntelligence', (item: IntelligenceItem) => {
       // Trigger transmission toast for new intelligence
       if (window.dispatchEvent) {
@@ -108,18 +109,31 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
         isLiked: false
       }
     ];
-    
+
     setShoutouts(initialBuzz);
-    
+
+    // Listen for mesh buzz items
+    const handleMeshItem = (event: any) => {
+      const newItem = event.detail;
+      setShoutouts(prev => {
+        if (prev.find(s => s.id === newItem.id)) return prev;
+        return [newItem, ...prev];
+      });
+    };
+
+    window.addEventListener('meshBuzzItem', handleMeshItem);
+
     // Also try to fetch additional content
     fetchBuzz();
+
+    return () => window.removeEventListener('meshBuzzItem', handleMeshItem);
   }, []);
 
   const fetchBuzz = async () => {
     setLoading(true);
     try {
       const buzzItems = await getLatestBuzz();
-      
+
       const mapped: Shoutout[] = buzzItems.map((item, i) => ({
         ...item,
         id: Math.random().toString(36).substr(2, 9),
@@ -133,7 +147,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
         comments: Math.floor(Math.random() * 10),
         isLiked: false
       }));
-      
+
       setShoutouts(prev => [...mapped, ...prev]);
     } catch (error) {
       console.error('Failed to fetch buzz:', error);
@@ -142,7 +156,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
     }
   };
 
-  
+
   const handleLike = (id: string) => {
     setShoutouts(prev => prev.map(s => {
       if (s.id === id) {
@@ -151,7 +165,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
       }
       return s;
     }));
-    
+
     // Award XC for interaction (only once per post)
     const shout = shoutouts.find(s => s.id === id);
     if (shout && !shout.isLiked) {
@@ -178,9 +192,16 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
       commentsList: []
     };
     setShoutouts(prev => [item, ...prev]);
+
+    // Broadcast to mesh
+    hybridMesh.sendMessage(JSON.stringify({
+      type: 'buzz_item',
+      data: item
+    }));
+
     setNewBuzzText('');
     setShowPostModal(false);
-    
+
     // Award XC for posting buzz
     xcEconomy.awardBuzzPost();
   };
@@ -191,7 +212,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 
   const handlePostComment = () => {
     if (!newCommentText.trim() || !showCommentsModal) return;
-    
+
     const newComment: Comment = {
       id: Date.now().toString(),
       text: newCommentText,
@@ -217,7 +238,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 
     setNewCommentText('');
     setShowCommentsModal(null);
-    
+
     // Award XC for commenting
     xcEconomy.awardComment();
   };
@@ -231,7 +252,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
     if (!buzz) return;
 
     const shareText = `${buzz.snippet} - via XitChat Buzz by ${buzz.user.handle}`;
-    
+
     switch (method) {
       case 'copy':
         navigator.clipboard.writeText(shareText);
@@ -251,15 +272,15 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
         }
         break;
     }
-    
+
     setShowShareModal(null);
   };
 
   const filteredShoutouts = useMemo(() => {
     return shoutouts.filter(s => {
       const matchesCategory = currentFilter === 'ALL' || s.category === currentFilter;
-      const matchesSearch = !searchQuery.trim() || 
-        s.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      const matchesSearch = !searchQuery.trim() ||
+        s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.snippet.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.user.handle.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
@@ -278,7 +299,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
             <p className="text-[10px] font-bold opacity-50 uppercase tracking-[0.2em] mt-2 text-white/40">local_mesh_broadcast</p>
           </div>
         </div>
-        <button 
+        <button
           onClick={() => setShowPostModal(true)}
           className="terminal-btn active px-1 py-0.5 flex items-center gap-1 text-xs shadow-[0_0_15px_currentColor] animate-pulse"
         >
@@ -292,7 +313,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none opacity-40 group-focus-within:opacity-100 transition-opacity">
           <i className="fa-solid fa-magnifying-glass text-xs"></i>
         </div>
-        <input 
+        <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -300,7 +321,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
           className="w-full bg-[#050505] border border-current border-opacity-20 py-3 pl-10 pr-10 text-xs font-mono text-white focus:outline-none focus:border-opacity-100 focus:bg-white/[0.02] transition-all placeholder-white/20"
         />
         {searchQuery && (
-          <button 
+          <button
             onClick={() => setSearchQuery('')}
             className="absolute inset-y-0 right-4 flex items-center opacity-40 hover:opacity-100 transition-opacity"
           >
@@ -316,11 +337,10 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
             <button
               key={cat}
               onClick={() => setCurrentFilter(cat as FilterCategory)}
-              className={`terminal-btn uppercase tracking-widest text-[8px] min-h-0 h-8 font-bold whitespace-nowrap px-3 transition-all flex-shrink-0 ${
-                currentFilter === cat 
-                  ? 'active scale-105 shadow-[0_0_20px_currentColor]' 
+              className={`terminal-btn uppercase tracking-widest text-[8px] min-h-0 h-8 font-bold whitespace-nowrap px-3 transition-all flex-shrink-0 ${currentFilter === cat
+                  ? 'active scale-105 shadow-[0_0_20px_currentColor]'
                   : 'opacity-40 hover:opacity-100 hover:bg-white/5'
-              }`}
+                }`}
             >
               <i className={`fa-${cat === 'ALL' ? 'globe' : cat === 'NEWS' ? 'newspaper' : cat === 'GOSSIP' ? 'comments' : cat === 'UPDATE' ? 'refresh' : 'bullhorn'} mr-2`}></i>
               {cat}
@@ -333,7 +353,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
         {currentFilter !== 'ALL' && (
           <div className="mt-3 text-center">
             <p className="text-[10px] opacity-60 uppercase tracking-widest">
-              viewing: <span className="text-current font-bold">{currentFilter}</span> 
+              viewing: <span className="text-current font-bold">{currentFilter}</span>
               <span className="ml-2">({filteredShoutouts.length} posts)</span>
             </p>
           </div>
@@ -352,7 +372,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
             <p className="text-xs font-bold uppercase tracking-widest">no signals found</p>
             {searchQuery && <p className="text-[10px] opacity-40 mt-1">try a different frequency</p>}
             {!searchQuery && (
-              <button 
+              <button
                 onClick={() => setShowPostModal(true)}
                 className="mt-4 terminal-btn active px-6 py-2 text-xs"
               >
@@ -376,17 +396,16 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
                       </span>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
-                       <span className={`text-[7px] border px-1 font-black ${
-                         shout.category === 'AD' ? 'border-amber-500 text-amber-500 bg-amber-500/10' : 'border-current border-opacity-40 text-white/40'
-                       }`}>
-                         {shout.category}
-                       </span>
-                       <p className="text-[9px] font-bold opacity-30 uppercase text-white/30">{shout.time || 'now'}</p>
+                      <span className={`text-[7px] border px-1 font-black ${shout.category === 'AD' ? 'border-amber-500 text-amber-500 bg-amber-500/10' : 'border-current border-opacity-40 text-white/40'
+                        }`}>
+                        {shout.category}
+                      </span>
+                      <p className="text-[9px] font-bold opacity-30 uppercase text-white/30">{shout.time || 'now'}</p>
                     </div>
                   </div>
                 </div>
                 <div className="relative">
-                  <button 
+                  <button
                     onClick={(e) => { e.stopPropagation(); setShowOptionsMenu(showOptionsMenu === shout.id ? null : shout.id); }}
                     className="opacity-30 hover:opacity-100 transition-colors p-2"
                   >
@@ -415,23 +434,22 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
               </div>
 
               <div className="flex items-center gap-6 pt-4 border-t border-current border-opacity-10">
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); handleLike(shout.id); }}
-                  className={`flex items-center gap-2 text-[10px] font-bold transition-all ${
-                    shout.isLiked ? 'text-red-500 glow-text scale-110' : 'opacity-40 hover:opacity-100 text-white/60'
-                  }`}
+                  className={`flex items-center gap-2 text-[10px] font-bold transition-all ${shout.isLiked ? 'text-red-500 glow-text scale-110' : 'opacity-40 hover:opacity-100 text-white/60'
+                    }`}
                 >
                   <i className={`fa-${shout.isLiked ? 'solid' : 'regular'} fa-heart`}></i>
                   <span>{shout.likes}</span>
                 </button>
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); handleComment(shout.id); }}
                   className="flex items-center gap-2 text-[10px] font-bold opacity-40 hover:opacity-100 text-white/60"
                 >
                   <i className="fa-regular fa-comment"></i>
                   <span>{shout.comments}</span>
                 </button>
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); handleShare(shout.id); }}
                   className="flex items-center gap-2 text-[9px] font-bold opacity-40 hover:opacity-100 text-white/60 ml-auto uppercase tracking-widest hover:text-[#00ff41]"
                 >
@@ -445,7 +463,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
       </div>
 
       {/* Floating Action Button - Responsive Positioning */}
-      <button 
+      <button
         onClick={() => setShowPostModal(true)}
         className="fixed bottom-20 right-4 w-12 h-12 bg-current border-2 border-black rounded-full flex items-center justify-center shadow-[0_0_30px_currentColor] animate-pulse z-50 hover:scale-110 transition-transform md:bottom-24 md:right-6"
       >
@@ -459,13 +477,13 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
               <h3 className="text-xl font-bold uppercase tracking-widest glow-text">broadcast_signal</h3>
               <button onClick={() => setShowPostModal(false)} className="text-xl font-bold hover:text-white transition-colors">X</button>
             </div>
-            
+
             <div className="space-y-6">
               <div>
                 <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">signal_category</p>
                 <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                   {['NEWS', 'GOSSIP', 'UPDATE'].map(c => (
-                    <button 
+                    <button
                       key={c}
                       onClick={() => setNewBuzzCat(c as FilterCategory)}
                       className={`terminal-btn px-4 h-8 text-[9px] font-bold uppercase tracking-widest ${newBuzzCat === c ? 'active' : 'opacity-40'}`}
@@ -478,7 +496,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 
               <div>
                 <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">signal_data</p>
-                <textarea 
+                <textarea
                   value={newBuzzText}
                   onChange={(e) => setNewBuzzText(e.target.value)}
                   className="w-full bg-black border border-current border-opacity-30 p-4 text-xs font-mono text-white focus:outline-none focus:border-opacity-100 min-h-[120px]"
@@ -486,7 +504,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
                 ></textarea>
               </div>
 
-              <button 
+              <button
                 onClick={handlePostBuzz}
                 disabled={!newBuzzText.trim()}
                 className="terminal-btn active w-full py-4 uppercase font-bold text-xs tracking-[0.3em] shadow-lg disabled:opacity-20"
@@ -506,7 +524,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
               <h3 className="text-xl font-bold uppercase tracking-widest glow-text">comments</h3>
               <button onClick={() => setShowCommentsModal(null)} className="text-xl font-bold hover:text-white transition-colors">X</button>
             </div>
-            
+
             {/* Comments List */}
             <div className="space-y-4 mb-6 max-h-60 overflow-y-auto">
               {shoutouts.find(s => s.id === showCommentsModal)?.commentsList?.map(comment => (
@@ -523,22 +541,22 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
                   <p className="text-xs text-white/70">{comment.text}</p>
                 </div>
               )) || (
-                <p className="text-center opacity-40 text-sm">no comments yet</p>
-              )}
+                  <p className="text-center opacity-40 text-sm">no comments yet</p>
+                )}
             </div>
 
             {/* Add Comment */}
             <div className="space-y-4">
               <div>
                 <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">add_comment</p>
-                <textarea 
+                <textarea
                   value={newCommentText}
                   onChange={(e) => setNewCommentText(e.target.value)}
                   className="w-full bg-black border border-current border-opacity-30 p-3 text-xs font-mono text-white focus:outline-none focus:border-opacity-100 min-h-[80px]"
                   placeholder="type your comment here..."
                 ></textarea>
               </div>
-              <button 
+              <button
                 onClick={handlePostComment}
                 disabled={!newCommentText.trim()}
                 className="terminal-btn active w-full py-3 uppercase font-bold text-xs tracking-[0.3em] shadow-lg disabled:opacity-20"
@@ -558,7 +576,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
               <h3 className="text-xl font-bold uppercase tracking-widest glow-text">share_signal</h3>
               <button onClick={() => setShowShareModal(null)} className="text-xl font-bold hover:text-white transition-colors">X</button>
             </div>
-            
+
             <div className="space-y-4">
               <div className="p-4 border border-current border-opacity-20 bg-black">
                 <p className="text-xs font-mono text-white/80 leading-relaxed">
@@ -570,21 +588,21 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
               </div>
 
               <div className="space-y-2">
-                <button 
+                <button
                   onClick={() => handleShareAction('copy')}
                   className="w-full p-3 border border-current border-opacity-20 text-left hover:bg-white/5 transition-colors flex items-center gap-3"
                 >
                   <i className="fa-solid fa-copy"></i>
                   <span className="text-sm font-bold">copy to clipboard</span>
                 </button>
-                <button 
+                <button
                   onClick={() => handleShareAction('mesh')}
                   className="w-full p-3 border border-current border-opacity-20 text-left hover:bg-white/5 transition-colors flex items-center gap-3"
                 >
                   <i className="fa-solid fa-share-nodes"></i>
                   <span className="text-sm font-bold">share to mesh network</span>
                 </button>
-                <button 
+                <button
                   onClick={() => handleShareAction('external')}
                   className="w-full p-3 border border-current border-opacity-20 text-left hover:bg-white/5 transition-colors flex items-center gap-3"
                 >

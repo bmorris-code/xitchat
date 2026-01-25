@@ -1,3 +1,4 @@
+
 // Privacy Service - User permission controls for viewing messages and images
 // All data stays local on device with user-controlled access
 
@@ -95,8 +96,8 @@ class PrivacyService {
       return false; // Active session
     }
 
-    return contentType === 'message' 
-      ? this.settings.requireAuthForMessages 
+    return contentType === 'message'
+      ? this.settings.requireAuthForMessages
       : this.settings.requireAuthForImages;
   }
 
@@ -104,9 +105,8 @@ class PrivacyService {
   async authenticate(method: 'pin' | 'biometric' | 'password', credential: string): Promise<boolean> {
     try {
       // In a real implementation, this would verify against stored credentials
-      // For demo, we'll use a simple PIN verification
       const storedPin = localStorage.getItem('xitchat_auth_pin') || '1234';
-      
+
       if (method === 'pin' && credential === storedPin) {
         this.authSession = {
           isActive: true,
@@ -116,9 +116,7 @@ class PrivacyService {
         return true;
       }
 
-      // Biometric authentication would use Web Authentication API
       if (method === 'biometric') {
-        // Simplified biometric check
         this.authSession = {
           isActive: true,
           expiresAt: Date.now() + (10 * 60 * 1000), // 10 minutes
@@ -136,17 +134,15 @@ class PrivacyService {
 
   // Request permission to view content
   async requestContentPermission(
-    contentId: string, 
+    contentId: string,
     contentType: 'message' | 'image',
     senderId?: string
   ): Promise<boolean> {
-    // Check if permission already exists and is valid
     const existingPermission = this.permissions.get(contentId);
     if (existingPermission && existingPermission.expiresAt > Date.now()) {
       return true;
     }
 
-    // Check if authentication is required
     if (this.requiresAuthentication(contentType)) {
       const authenticated = await this.showAuthDialog(contentType);
       if (!authenticated) {
@@ -154,7 +150,6 @@ class PrivacyService {
       }
     }
 
-    // For new chats, require verification
     if (this.settings.requireVerificationForNewChats && senderId) {
       const verified = await this.verifySender(senderId);
       if (!verified) {
@@ -162,9 +157,8 @@ class PrivacyService {
       }
     }
 
-    // Grant permission
-    const timeout = contentType === 'message' 
-      ? this.settings.messageViewTimeout 
+    const timeout = contentType === 'message'
+      ? this.settings.messageViewTimeout
       : this.settings.imageViewTimeout;
 
     const permission: ContentPermission = {
@@ -177,9 +171,8 @@ class PrivacyService {
 
     this.permissions.set(contentId, permission);
 
-    // Set auto-deletion timer if enabled
     if ((contentType === 'message' && this.settings.autoDeleteMessages) ||
-        (contentType === 'image' && this.settings.autoDeleteImages)) {
+      (contentType === 'image' && this.settings.autoDeleteImages)) {
       this.scheduleAutoDelete(contentId, timeout);
     }
 
@@ -208,8 +201,7 @@ class PrivacyService {
   // Revoke permission for content
   revokePermission(contentId: string): void {
     this.permissions.delete(contentId);
-    
-    // Clear auto-delete timer
+
     const timer = this.viewTimers.get(contentId);
     if (timer) {
       clearTimeout(timer);
@@ -217,22 +209,26 @@ class PrivacyService {
     }
   }
 
-  // Show authentication dialog
+  // Show authentication dialog with Matrix styling
   private async showAuthDialog(contentType: 'message' | 'image'): Promise<boolean> {
     return new Promise((resolve) => {
-      // Create modal dialog for authentication
       const modal = document.createElement('div');
-      modal.className = 'fixed inset-0 z-[300] bg-black/90 flex items-center justify-center p-6';
+      modal.className = 'fixed inset-0 z-[400] bg-black/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300';
       modal.innerHTML = `
-        <div class="max-w-sm w-full border border-current bg-[#050505] p-6 text-center">
-          <h3 class="text-lg font-bold uppercase mb-4">Authentication Required</h3>
-          <p class="text-xs opacity-60 mb-6">Enter PIN to view ${contentType}</p>
-          <input type="password" id="auth-pin" maxlength="4" 
-                 class="w-full bg-black border border-current px-3 py-2 text-center font-mono text-lg mb-4"
-                 placeholder="****" autocomplete="off">
-          <div class="grid grid-cols-2 gap-2">
-            <button id="auth-cancel" class="terminal-btn py-2 text-xs">Cancel</button>
-            <button id="auth-submit" class="terminal-btn active py-2 text-xs">Unlock</button>
+        <div class="max-w-sm w-full border-2 border-[#00ff41] bg-[#050505] p-8 shadow-[0_0_50px_rgba(0,255,65,0.2)] relative overflow-hidden">
+          <div class="absolute inset-0 bg-gradient-to-b from-[#00ff41]/5 to-transparent pointer-events-none"></div>
+          <div class="relative z-10">
+            <h3 class="text-xl font-black uppercase tracking-[0.2em] mb-6 text-center glow-text">auth_required.exe</h3>
+            <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-8 text-center">
+              Secure access to ${contentType} payload requires PIN verification.
+            </p>
+            <input type="password" id="auth-pin" maxlength="4" 
+                   class="w-full bg-black border border-[#00ff41] border-opacity-30 px-4 py-4 text-center font-mono text-2xl mb-8 text-[#00ff41] outline-none focus:border-opacity-100 transition-all"
+                   placeholder="****" autocomplete="off">
+            <div class="grid grid-cols-2 gap-4">
+              <button id="auth-cancel" class="terminal-btn py-3 text-[10px] uppercase font-bold">abort</button>
+              <button id="auth-submit" class="terminal-btn active py-3 text-[10px] uppercase font-bold">unlock</button>
+            </div>
           </div>
         </div>
       `;
@@ -270,18 +266,23 @@ class PrivacyService {
     });
   }
 
-  // Verify sender for new chats
+  // Verify sender for new chats with Matrix styling
   private async verifySender(senderId: string): Promise<boolean> {
     return new Promise((resolve) => {
       const modal = document.createElement('div');
-      modal.className = 'fixed inset-0 z-[300] bg-black/90 flex items-center justify-center p-6';
+      modal.className = 'fixed inset-0 z-[400] bg-black/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300';
       modal.innerHTML = `
-        <div class="max-w-sm w-full border border-current bg-[#050505] p-6 text-center">
-          <h3 class="text-lg font-bold uppercase mb-4">New Contact</h3>
-          <p class="text-xs opacity-60 mb-6">Allow content from new contact?</p>
-          <div class="grid grid-cols-2 gap-2">
-            <button id="verify-deny" class="terminal-btn py-2 text-xs">Block</button>
-            <button id="verify-allow" class="terminal-btn active py-2 text-xs">Allow</button>
+        <div class="max-w-sm w-full border-2 border-amber-500 bg-[#050505] p-8 shadow-[0_0_50px_rgba(245,158,11,0.2)] relative overflow-hidden">
+          <div class="absolute inset-0 bg-gradient-to-b from-amber-500/5 to-transparent pointer-events-none"></div>
+          <div class="relative z-10">
+            <h3 class="text-xl font-black uppercase tracking-[0.2em] mb-6 text-center text-amber-500">unverified_node.exe</h3>
+            <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-8 text-center">
+              Incoming transmission from unverified node: ${senderId.substring(0, 12)}...
+            </p>
+            <div class="grid grid-cols-2 gap-4">
+              <button id="verify-deny" class="terminal-btn py-3 text-[10px] uppercase font-bold border-red-500 text-red-500">block_node</button>
+              <button id="verify-allow" class="terminal-btn active py-3 text-[10px] uppercase font-bold bg-amber-500 border-amber-500">allow_uplink</button>
+            </div>
           </div>
         </div>
       `;
@@ -308,7 +309,6 @@ class PrivacyService {
   private scheduleAutoDelete(contentId: string, timeoutMinutes: number): void {
     const timer = setTimeout(() => {
       this.revokePermission(contentId);
-      // Emit event for UI to update
       window.dispatchEvent(new CustomEvent('contentAutoDeleted', { detail: { contentId } }));
     }, timeoutMinutes * 60 * 1000);
 
@@ -329,8 +329,6 @@ class PrivacyService {
   clearAllPermissions(): void {
     this.permissions.clear();
     this.authSession = null;
-    
-    // Clear all timers
     for (const timer of this.viewTimers.values()) {
       clearTimeout(timer);
     }

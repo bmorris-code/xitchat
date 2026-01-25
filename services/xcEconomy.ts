@@ -1,4 +1,5 @@
 // XC Economy Service - Virtual Currency System
+import { nostrService } from './nostrService';
 export interface XCTransaction {
   id: string;
   type: 'earn' | 'spend' | 'bonus' | 'achievement';
@@ -42,6 +43,32 @@ class XCEconomyService {
     this.loadState();
     this.initializeAchievements();
     this.checkDailyStreak();
+    this.subscribeToNostrSync();
+  }
+
+  private subscribeToNostrSync() {
+    // Listen for economy sync events from other devices
+    nostrService.subscribe('messageReceived', (message) => {
+      if (message.content && message.content.startsWith('xitchat-economy-sync:')) {
+        try {
+          const encryptedData = message.content.replace('xitchat-economy-sync:', '');
+          // In a real app, we would decrypt this. For now, we'll assume it's JSON for the demo.
+          const data = JSON.parse(encryptedData);
+
+          if (data.timestamp > (this.transactions[0]?.timestamp || 0)) {
+            console.log('💰 Syncing economy state from Nostr...');
+            this.balance = data.balance;
+            this.transactions = data.transactions;
+            this.streak = data.streak;
+            this.saveState();
+            this.notifyListeners('balanceUpdated', this.balance);
+            this.notifyListeners('transactionAdded', null);
+          }
+        } catch (e) {
+          console.error('Failed to parse economy sync:', e);
+        }
+      }
+    });
   }
 
   private loadState() {
@@ -59,11 +86,17 @@ class XCEconomyService {
   }
 
   private saveState() {
-    localStorage.setItem('xc_economy', JSON.stringify({
+    const state = {
       balance: this.balance,
       transactions: this.transactions,
-      streak: this.streak
-    }));
+      streak: this.streak,
+      timestamp: Date.now()
+    };
+
+    localStorage.setItem('xc_economy', JSON.stringify(state));
+
+    // Sync to Nostr (cross-device)
+    nostrService.broadcastMessage(`xitchat-economy-sync:${JSON.stringify(state)}`);
   }
 
   private initializeAchievements() {
@@ -154,10 +187,10 @@ class XCEconomyService {
   private checkDailyStreak() {
     const today = new Date().toDateString();
     const lastActive = this.streak.lastActiveDate;
-    
+
     if (lastActive !== today) {
       const yesterday = new Date(Date.now() - 86400000).toDateString();
-      
+
       if (lastActive === yesterday) {
         // Continue streak
         this.streak.currentStreak++;
@@ -168,15 +201,15 @@ class XCEconomyService {
         this.streak.currentStreak = 1;
         this.streak.nextBonus = 10;
       }
-      
+
       this.streak.lastActiveDate = today;
-      
+
       // Award daily bonus
       this.addXC(this.streak.nextBonus, 'Daily Login Bonus', 'daily_bonus');
-      
+
       // Check streak achievement
       this.updateAchievement('daily_warrior', this.streak.currentStreak);
-      
+
       this.saveState();
     }
   }
@@ -200,9 +233,9 @@ class XCEconomyService {
 
   addXC(amount: number, description: string, source: string): boolean {
     if (amount <= 0) return false;
-    
+
     this.balance += amount;
-    
+
     const transaction: XCTransaction = {
       id: Date.now().toString(),
       type: 'earn',
@@ -211,24 +244,24 @@ class XCEconomyService {
       timestamp: Date.now(),
       source
     };
-    
+
     this.transactions.push(transaction);
-    
+
     // Update XC collector achievement
     this.updateAchievement('xc_collector', this.balance);
-    
+
     this.saveState();
     this.notifyListeners('balanceUpdated', this.balance);
     this.notifyListeners('transactionAdded', transaction);
-    
+
     return true;
   }
 
   spendXC(amount: number, description: string, source: string): boolean {
     if (amount <= 0 || this.balance < amount) return false;
-    
+
     this.balance -= amount;
-    
+
     const transaction: XCTransaction = {
       id: Date.now().toString(),
       type: 'spend',
@@ -237,13 +270,13 @@ class XCEconomyService {
       timestamp: Date.now(),
       source
     };
-    
+
     this.transactions.push(transaction);
-    
+
     this.saveState();
     this.notifyListeners('balanceUpdated', this.balance);
     this.notifyListeners('transactionAdded', transaction);
-    
+
     return true;
   }
 
@@ -297,11 +330,11 @@ class XCEconomyService {
     const achievement = this.achievements.find(a => a.id === achievementId);
     if (achievement && !achievement.completed) {
       achievement.progress = Math.min(achievement.progress + increment, achievement.maxProgress);
-      
+
       if (achievement.progress >= achievement.maxProgress) {
         this.awardAchievement(achievementId);
       }
-      
+
       this.saveState();
       this.notifyListeners('achievementUpdated', achievement);
     }
@@ -313,7 +346,7 @@ class XCEconomyService {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
-    
+
     return () => {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     };

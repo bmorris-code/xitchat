@@ -12,6 +12,7 @@ import { realTorService } from './services/realTorService';
 import { realPowService } from './services/realPowService';
 import { realMarketplaceService } from './services/realMarketplaceService';
 import { nostrService, NostrPeer } from './services/nostrService';
+import { geohashChannels } from './services/geohashChannels';
 import Sidebar from './components/Sidebar';
 import ChatList from './components/ChatList';
 import ChatWindow from './components/ChatWindow';
@@ -148,7 +149,7 @@ const App: React.FC = () => {
   // Initialize Real-time Radar Service
   useEffect(() => {
     console.log('📡 Initializing services...');
-    
+
     // iOS Debug: Run blank screen check
     if (iOSFixes.isIOS || iOSFixes.isSafari) {
       setTimeout(() => {
@@ -263,12 +264,11 @@ const App: React.FC = () => {
         hybridMesh.subscribe('messageReceived', (message) => {
           console.log('Mesh message received:', message);
 
-          // Record handshake for new peers
           // Support both 'from' (HybridMeshMessage) and 'senderId' (App Message) property names
           const senderId = message.from || message.senderId;
 
           if (senderId && senderId !== 'me') {
-            // Map mesh connection type to handshake specific type
+            // Record handshake for new peers
             let handshakeType: 'bluetooth' | 'wifi' | 'global' = 'global';
             if (message.connectionType === 'bluetooth') handshakeType = 'bluetooth';
             else if (message.connectionType === 'wifi' || message.connectionType === 'broadcast') handshakeType = 'wifi';
@@ -280,6 +280,25 @@ const App: React.FC = () => {
               avatar: `https://picsum.photos/seed/${senderId}/200`,
               connectionType: handshakeType
             });
+
+            // Add message to chats if it's a chat message
+            const targetChat = chats.find(c => c.participant.id === senderId);
+            if (targetChat) {
+              const newMessage: Message = {
+                id: message.id,
+                senderId: senderId,
+                senderHandle: message.senderHandle || targetChat.participant.handle,
+                text: message.content,
+                timestamp: message.timestamp,
+                encryptedData: message.encryptedData // Extract encrypted data from mesh message
+              };
+
+              setChats(prev => prev.map(c =>
+                c.id === targetChat.id
+                  ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
+                  : c
+              ));
+            }
 
             // Trigger transmission toast
             const event = new CustomEvent('newTransmission', {
@@ -411,6 +430,10 @@ const App: React.FC = () => {
 
           const unsubscribeProfile = nostrService.subscribe('profileLoaded', (profile) => {
             console.log('👤 Nostr profile loaded:', profile);
+            if (profile.name) setMyHandle(profile.name);
+            if (profile.picture) setMyAvatar(profile.picture);
+            if (profile.about) setMyMood(prev => ({ ...prev, text: profile.about }));
+            if (profile.custom_fields?.emoji) setMyMood(prev => ({ ...prev, emoji: profile.custom_fields.emoji }));
           });
 
           // Load initial peers
@@ -674,7 +697,7 @@ const App: React.FC = () => {
     setView('chats');
   };
 
-  const handleSendMessage = useCallback(async (text: string, options?: { imageUrl?: string; videoUrl?: string; replyTo?: Message['replyTo'], nostrRecipient?: string }) => {
+  const handleSendMessage = useCallback(async (text: string, options?: { imageUrl?: string; videoUrl?: string; replyTo?: Message['replyTo'], nostrRecipient?: string, encryptedData?: any }) => {
     if (!activeChatId) return;
     const newMessage: Message = {
       id: Math.random().toString(36).substr(2, 9),
@@ -684,7 +707,8 @@ const App: React.FC = () => {
       imageUrl: options?.imageUrl,
       videoUrl: options?.videoUrl,
       replyTo: options?.replyTo,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      encryptedData: options?.encryptedData
     };
 
     const lastMsgPreview = options?.imageUrl ? "[IMAGE TRANSMISSION]" : options?.videoUrl ? "[VIDEO TRANSMISSION]" : text;
@@ -705,8 +729,8 @@ const App: React.FC = () => {
 
     // Send message via hybrid mesh (Bluetooth first, WebRTC fallback)
     try {
-      await hybridMesh.sendMessage(text, activeChat?.participant?.id);
-      console.log('Message sent via hybrid mesh:', { text, targetId: activeChat?.participant?.id });
+      await hybridMesh.sendMessage(text, activeChat?.participant?.id, options?.encryptedData);
+      console.log('Message sent via hybrid mesh:', { text, targetId: activeChat?.participant?.id, encrypted: !!options?.encryptedData });
     } catch (error) {
       console.error('Failed to send via hybrid mesh:', error);
     }
@@ -1144,20 +1168,24 @@ const App: React.FC = () => {
     if (existing) {
       setActiveChatId(existing.id);
     } else {
+      // Get channel info to check encryption status
+      const channel = (geohashChannels as any).channels.get(roomId);
+
       const roomChat: Chat = {
         id: `chat-${Date.now()}`,
         type: 'room',
         participant: {
           id: roomId,
-          name: roomId.replace('room-', '').replace('_', ' '),
-          handle: `#${roomId.replace('room-', '')}`,
+          name: channel?.name || roomId.replace('room-', '').replace('_', ' '),
+          handle: channel ? `#${channel.name.toLowerCase().replace(/\s+/g, '_')}` : `#${roomId.replace('room-', '')}`,
           avatar: '',
           status: 'Online',
           mood: 'Connected node.'
         },
         lastMessage: 'system: joined room.',
         unreadCount: 0,
-        messages: [{ id: 'sys-1', senderId: 'system', text: `[SYSTEM] established connection to room_${roomId}`, timestamp: Date.now() }]
+        messages: [{ id: 'sys-1', senderId: 'system', text: `[SYSTEM] established connection to room_${roomId}`, timestamp: Date.now() }],
+        isEncrypted: channel?.isEncrypted || false
       };
       setChats(prev => [roomChat, ...prev]);
       setActiveChatId(roomChat.id);

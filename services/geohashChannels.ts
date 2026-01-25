@@ -1,7 +1,11 @@
 import { meshPermissions } from './meshPermissions';
-import { bluetoothMesh, MeshMessage } from './bluetoothMesh';
+import { nostrService } from './nostrService';
+import { hybridMesh } from './hybridMesh';
+import { encryptionService } from './encryptionService';
 
 export interface GeohashChannel {
+  desc: string;
+  tags: any[];
   id: string;
   geohash: string;
   name: string;
@@ -13,6 +17,8 @@ export interface GeohashChannel {
   createdAt: number;
   lastActivity: number;
   messageCount: number;
+  isEncrypted: boolean;
+  isTradingChannel?: boolean;
 }
 
 export interface GeohashMessage {
@@ -42,34 +48,158 @@ class GeohashChannelsService {
   private nearbyChannels: GeohashChannel[] = [];
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private isConnected = false;
-  private relayNodes: string[] = [];
+  private myHandle: string = '@anon';
+  private nostrChannelPrefix = 'xitchat-local-'; // Prefix for Nostr channel IDs
 
   constructor() {
-    this.initializeGeohashService();
     this.loadChannels();
+    this.initializeGeohashService();
   }
 
-  private initializeGeohashService() {
+  private async initializeGeohashService() {
+    // Load user handle
+    const savedHandle = localStorage.getItem('xitchat_handle');
+    if (savedHandle) {
+      this.myHandle = `@${savedHandle}`;
+    }
+
     // Initialize location services
     this.initializeLocationServices();
-    
-    // Connect to public relays
-    this.connectToRelays();
-    
+
+    // Subscribe to Nostr channel messages for cross-device communication
+    this.subscribeToNostrMessages();
+
+    // Subscribe to hybrid mesh messages for local P2P
+    this.subscribeToMeshMessages();
+
     // Start background sync
     this.startBackgroundSync();
   }
 
- private initializeLocationServices() {
+  private subscribeToNostrMessages() {
+    // Listen for channel messages from Nostr (this enables cross-device chat!)
+    nostrService.subscribe('channelMessageReceived', (message) => {
+      // Check if this is a local geohash channel message
+      if (message.channelId && message.channelId.startsWith(this.nostrChannelPrefix)) {
+        const geohash = message.channelId.replace(this.nostrChannelPrefix, '');
+
+        // Only process if it's for our area
+        if (this.currentLocation && this.isNearbyGeohash(geohash)) {
+          const geoMessage: GeohashMessage = {
+            id: message.id,
+            channelId: message.channelId,
+            nodeId: message.from,
+            nodeHandle: `@nostr_${message.from.substring(0, 8)}`,
+            content: message.content,
+            timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
+            type: 'text'
+          };
+
+          this.addReceivedMessage(geoMessage);
+        }
+      }
+    });
+
+    // Also listen for broadcast messages tagged with geohash
+    nostrService.subscribe('messageReceived', (message) => {
+      if (message.content && message.content.startsWith('[GEOHASH:')) {
+        const match = message.content.match(/\[GEOHASH:([^\]]+)\]/);
+        if (match && this.isNearbyGeohash(match[1])) {
+          const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
+          const geoMessage: GeohashMessage = {
+            id: message.id || `nostr_${Date.now()}`,
+            channelId: `${this.nostrChannelPrefix}${match[1]}`,
+            nodeId: message.from,
+            nodeHandle: `@${message.from?.substring(0, 8) || 'unknown'}`,
+            content: cleanContent,
+            timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
+            type: 'text'
+          };
+          this.addReceivedMessage(geoMessage);
+        }
+      }
+    });
+  }
+
+  private subscribeToMeshMessages() {
+    // Listen for messages from local mesh (Bluetooth, WiFi P2P, Broadcast)
+    hybridMesh.subscribe('messageReceived', async (message) => {
+      if (message.content && message.content.startsWith('[GEOHASH:')) {
+        const match = message.content.match(/\[GEOHASH:([^\]]+)\]/);
+        if (match) {
+          const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
+
+          let finalContent = cleanContent;
+          let isEncrypted = false;
+
+          // Try to decrypt if it looks like encrypted group data
+          if (cleanContent.startsWith('{') && cleanContent.includes('data') && cleanContent.includes('iv')) {
+            try {
+              const parsed = JSON.parse(cleanContent);
+              finalContent = await encryptionService.decryptGroupMessage(parsed, match[1]);
+              isEncrypted = true;
+            } catch (e) {
+              // Not encrypted or wrong key, keep as is
+            }
+          }
+
+          const geoMessage: GeohashMessage = {
+            id: message.id || `mesh_${Date.now()}`,
+            channelId: `${this.nostrChannelPrefix}${match[1]}`,
+            nodeId: message.from,
+            nodeHandle: message.senderHandle || `@${message.from?.substring(0, 8) || 'unknown'}`,
+            content: finalContent,
+            timestamp: message.timestamp || Date.now(),
+            type: 'text',
+            // @ts-ignore
+            encrypted: isEncrypted
+          };
+          this.addReceivedMessage(geoMessage);
+        }
+      }
+    });
+  }
+
+  private addReceivedMessage(message: GeohashMessage) {
+    // Don't add our own messages
+    if (message.nodeHandle === this.myHandle) return;
+
+    // Add to local messages
+    if (!this.messages.has(message.channelId)) {
+      this.messages.set(message.channelId, []);
+    }
+
+    // Check for duplicate
+    const existingMessages = this.messages.get(message.channelId)!;
+    if (!existingMessages.find(m => m.id === message.id)) {
+      existingMessages.push(message);
+      this.saveMessages();
+      this.notifyListeners('messageReceived', message);
+      console.log(`📨 Received local area message: ${message.content}`);
+    }
+  }
+
+  private isNearbyGeohash(geohash: string): boolean {
+    if (!this.currentLocation) return true; // Accept all if no location
+
+    // Check if the first 4 characters match (approximately same area ~39km)
+    const currentPrefix = this.currentLocation.geohash.substring(0, 4);
+    const messagePrefix = geohash.substring(0, 4);
+    return currentPrefix === messagePrefix;
+  }
+
+  private initializeLocationServices() {
     if (!('geolocation' in navigator)) {
       console.warn('Geolocation is not supported by this browser.');
+      // Use default location
+      this.updateLocation(-26.2041, 28.0473); // Johannesburg default
       return;
     }
 
-    // Delay location request to avoid user gesture violation
+    // Delay location request
     setTimeout(() => {
       this.requestLocationWithUserGesture();
-    }, 2000); // Wait 2 seconds for user interaction
+    }, 1000);
   }
 
   private requestLocationWithUserGesture() {
@@ -77,76 +207,35 @@ class GeohashChannelsService {
       this.updateLocation(position.coords.latitude, position.coords.longitude);
     };
 
-    // 1. Final Safety Net: If everything fails, set location to (0,0) so app doesn't crash
     const onTotalFailure = (error: GeolocationPositionError) => {
-      console.error(`Location totally failed (${error.message}). Defaulting to fallback.`);
-      
-      // Check if it's a secure origin issue
-      if (error.message.includes('secure origins') || error.message.includes('Only secure origins')) {
-        console.warn('🌐 Geolocation requires HTTPS in production. In development, use https://localhost:3000 or allow insecure location in browser settings.');
-      }
-      
-      this.updateLocation(0, 0); 
+      console.warn(`Location failed (${error.message}). Using default.`);
+      this.updateLocation(-26.2041, 28.0473); // Default Johannesburg
     };
 
-    // 2. Fallback: Try Low Accuracy (Wifi/Cell)
-    const startLowAccuracyWatch = () => {
-      console.log('Switching to low accuracy location mode...');
-      
-      const lowAccWatchId = navigator.geolocation.watchPosition(
-        onLocationSuccess,
-        (error) => {
-          // If this fails too, STOP watching and use the safety net
-          console.error('Low accuracy also failed:', error);
-          navigator.geolocation.clearWatch(lowAccWatchId);
-          onTotalFailure(error);
-        },
-        {
-          enableHighAccuracy: false, 
-          timeout: 30000,
-          maximumAge: 60000
-        }
-      );
-    };
-
-    // Check if we're on a secure origin
-    const isSecureOrigin = window.location.protocol === 'https:' || 
-                          window.location.hostname === 'localhost' || 
-                          window.location.hostname === '127.0.0.1';
+    const isSecureOrigin = window.location.protocol === 'https:' ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
 
     if (!isSecureOrigin) {
-      console.debug('🌐 Geolocation requires HTTPS. Current location is not secure. Using fallback location.');
-      this.updateLocation(40.7128, -74.0060); // Default to NYC
+      console.debug('🌐 Geolocation requires HTTPS. Using fallback location.');
+      this.updateLocation(-26.2041, 28.0473);
       return;
     }
 
-    // 3. First Attempt: High Accuracy (GPS)
-    const highAccWatchId = navigator.geolocation.watchPosition(
+    navigator.geolocation.watchPosition(
       onLocationSuccess,
-      (error) => {
-        // Stop the high accuracy watcher immediately on error
-        navigator.geolocation.clearWatch(highAccWatchId);
-
-        // If it was a timeout (3) or unavailable (2), try the fallback
-        if (error.code === 3 || error.code === 2) {
-          console.warn(`High accuracy failed (${error.message}). Falling back.`);
-          startLowAccuracyWatch();
-        } else {
-          // If Permission Denied (1), give up immediately
-          onTotalFailure(error);
-        }
-      },
+      onTotalFailure,
       {
-        enableHighAccuracy: true,
-        timeout: 15000, 
-        maximumAge: 10000
+        enableHighAccuracy: false,
+        timeout: 15000,
+        maximumAge: 60000
       }
     );
   }
-  
+
   private updateLocation(latitude: number, longitude: number) {
-    const geohash = this.encodeGeohash(latitude, longitude, 7); // 7 chars = ~150m precision
-    
+    const geohash = this.encodeGeohash(latitude, longitude, 7);
+
     this.currentLocation = {
       latitude,
       longitude,
@@ -155,93 +244,101 @@ class GeohashChannelsService {
       timestamp: Date.now()
     };
 
+    console.log(`📍 Location updated: ${geohash} (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`);
+
+    // Auto-create or join the local area channel
+    this.ensureLocalAreaChannel();
+
     // Find nearby channels
     this.findNearbyChannels();
-    
+
     // Notify listeners
     this.notifyListeners('locationUpdated', this.currentLocation);
+
+    this.isConnected = true;
+  }
+
+  private ensureLocalAreaChannel() {
+    if (!this.currentLocation) return;
+
+    const localChannelId = `${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`;
+
+    if (!this.channels.has(localChannelId)) {
+      const channel: GeohashChannel = {
+        id: localChannelId,
+        geohash: this.currentLocation.geohash.substring(0, 5),
+        name: `Local Area ${this.currentLocation.geohash.substring(0, 5)}`,
+        description: 'Auto-created channel for your local area',
+        desc: 'Auto-created channel for your local area',
+        tags: ['local', 'auto'],
+        participants: ['me'],
+        isPublic: true,
+        requiresInvite: false,
+        createdBy: 'system',
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        messageCount: 0,
+        isEncrypted: false
+      };
+
+      this.channels.set(localChannelId, channel);
+      this.saveChannels();
+      console.log(`🏠 Created local area channel: ${localChannelId}`);
+    }
   }
 
   private encodeGeohash(lat: number, lng: number, precision: number): string {
-    // Simplified geohash encoding
     const base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
     let hash = '';
     let latRange = [-90, 90];
     let lngRange = [-180, 180];
-    let bit = 0;
     let even = true;
+    let bit = 0;
+    let ch = 0;
 
     while (hash.length < precision) {
       let mid;
       if (even) {
         mid = (lngRange[0] + lngRange[1]) / 2;
         if (lng >= mid) {
-          hash += '1';
+          ch = ch * 2 + 1;
           lngRange[0] = mid;
         } else {
-          hash += '0';
+          ch = ch * 2;
           lngRange[1] = mid;
         }
       } else {
         mid = (latRange[0] + latRange[1]) / 2;
         if (lat >= mid) {
-          hash += '1';
+          ch = ch * 2 + 1;
           latRange[0] = mid;
         } else {
-          hash += '0';
+          ch = ch * 2;
           latRange[1] = mid;
         }
       }
       even = !even;
-    }
+      bit++;
 
-    // Convert binary to base32
-    let result = '';
-    for (let i = 0; i < hash.length; i += 5) {
-      const chunk = hash.substr(i, 5);
-      const index = parseInt(chunk, 2);
-      result += base32[index] || '0';
-    }
-
-    return result;
-  }
-
-  private async connectToRelays() {
-    // Connect to public internet relays for extended range
-    try {
-      const relayServers = [
-        'relay1.xitchat.net',
-        'relay2.xitchat.net',
-        'relay3.xitchat.net'
-      ];
-
-      for (const relay of relayServers) {
-        // In real implementation, establish WebSocket connection
-        this.relayNodes.push(relay);
+      if (bit === 5) {
+        hash += base32[ch];
+        bit = 0;
+        ch = 0;
       }
-
-      this.isConnected = true;
-      this.notifyListeners('relayConnected', this.relayNodes);
-    } catch (error) {
-      console.error('Failed to connect to relays:', error);
     }
+
+    return hash;
   }
 
   private findNearbyChannels() {
     if (!this.currentLocation) return;
 
     const nearby: GeohashChannel[] = [];
-    const currentGeohash = this.currentLocation.geohash;
-
-    // Check channels in same geohash and adjacent ones
-    const geohashesToCheck = [
-      currentGeohash,
-      this.getAdjacentGeohashes(currentGeohash)
-    ].flat();
+    const currentGeohashPrefix = this.currentLocation.geohash.substring(0, 4);
 
     this.channels.forEach(channel => {
-      if (geohashesToCheck.includes(channel.geohash)) {
-        // Check if user has permission to view this channel
+      // Check if channel is in nearby area
+      if (channel.geohash.startsWith(currentGeohashPrefix) || channel.isPublic) {
         if (this.canViewChannel(channel)) {
           nearby.push(channel);
         }
@@ -252,104 +349,45 @@ class GeohashChannelsService {
     this.notifyListeners('nearbyChannelsUpdated', this.nearbyChannels);
   }
 
-  private getAdjacentGeohashes(geohash: string): string[] {
-    // Simplified adjacent geohash calculation
-    // In real implementation, this would calculate all 8 adjacent geohashes
-    const adjacent = [];
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        if (i === 0 && j === 0) continue;
-        adjacent.push(geohash); // Simplified - would calculate actual adjacent
-      }
-    }
-    return adjacent;
-  }
-
   canViewChannel(channel: GeohashChannel): boolean {
-    // Public channels are visible to everyone
     if (channel.isPublic) return true;
-
-    // Private channels require invitation
     if (channel.requiresInvite) {
       return channel.participants.includes('me') || channel.createdBy === 'me';
     }
-
-    // Check if creator granted permission
     return meshPermissions.canViewMarketplace(channel.createdBy);
   }
 
   private startBackgroundSync() {
     // Sync channels every 2 minutes
     setInterval(() => {
-      this.syncChannels();
+      this.findNearbyChannels();
     }, 120000);
-
-    // Sync messages every 30 seconds
-    setInterval(() => {
-      this.syncMessages();
-    }, 30000);
-  }
-
-  private async syncChannels() {
-    if (!this.isConnected) return;
-
-    // Request channel updates from relays
-    const syncRequest = {
-      type: 'channel_sync_request',
-      geohash: this.currentLocation?.geohash,
-      timestamp: Date.now()
-    };
-
-    // Send to all relay nodes
-    for (const relay of this.relayNodes) {
-      // In real implementation, send via WebSocket
-      console.log('Syncing channels with relay:', relay);
-    }
-  }
-
-  private async syncMessages() {
-    // Sync recent messages for active channels
-    this.nearbyChannels.forEach(channel => {
-      if (this.canViewChannel(channel)) {
-        this.requestChannelMessages(channel.id);
-      }
-    });
-  }
-
-  private async requestChannelMessages(channelId: string) {
-    const messageRequest = {
-      type: 'message_sync_request',
-      channelId,
-      lastSync: Date.now() - (5 * 60 * 1000), // Last 5 minutes
-      timestamp: Date.now()
-    };
-
-    // Send to relay nodes
-    for (const relay of this.relayNodes) {
-      console.log('Requesting messages for channel:', channelId);
-    }
   }
 
   // PUBLIC API METHODS
-  async createChannel(name: string, description: string, isPublic: boolean = true): Promise<string> {
+  async createChannel(name: string, description: string, isPublic: boolean = true, isEncrypted?: boolean, isTradingChannel?: boolean): Promise<string> {
     if (!this.currentLocation) {
       throw new Error('Location required to create channel');
     }
 
-    const channelId = `channel_${Date.now()}`;
-    
+    const channelId = `${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}_${Date.now()}`;
+
     const channel: GeohashChannel = {
       id: channelId,
       geohash: this.currentLocation.geohash,
       name,
       description,
+      desc: description,
+      tags: isTradingChannel ? ['trade', 'private'] : (isPublic ? ['local', 'auto'] : ['private']),
       participants: ['me'],
       isPublic,
       requiresInvite: !isPublic,
       createdBy: 'me',
       createdAt: Date.now(),
       lastActivity: Date.now(),
-      messageCount: 0
+      messageCount: 0,
+      isEncrypted: isTradingChannel ? true : (isEncrypted !== undefined ? isEncrypted : !isPublic),
+      isTradingChannel
     };
 
     this.channels.set(channelId, channel);
@@ -371,10 +409,9 @@ class GeohashChannelsService {
     if (!channel.participants.includes('me')) {
       channel.participants.push('me');
       channel.lastActivity = Date.now();
-      
-      // Send join message
-      await this.sendMessage(channelId, `@symbolic joined the channel`, 'system');
-      
+
+      await this.sendMessage(channelId, `${this.myHandle} joined the channel`, 'system');
+
       this.saveChannels();
       this.notifyListeners('channelJoined', channel);
     }
@@ -387,10 +424,9 @@ class GeohashChannelsService {
     if (!channel) return false;
 
     channel.participants = channel.participants.filter(p => p !== 'me');
-    
-    // Send leave message
-    await this.sendMessage(channelId, `@symbolic left the channel`, 'system');
-    
+
+    await this.sendMessage(channelId, `${this.myHandle} left the channel`, 'system');
+
     this.saveChannels();
     this.notifyListeners('channelLeft', channel);
 
@@ -399,23 +435,32 @@ class GeohashChannelsService {
 
   async sendMessage(channelId: string, content: string, type: GeohashMessage['type'] = 'text'): Promise<string> {
     const channel = this.channels.get(channelId);
-    if (!channel) {
+    if (!channel && !channelId.startsWith(this.nostrChannelPrefix)) {
       throw new Error('Channel not found');
     }
 
-    if (!this.canViewChannel(channel)) {
-      throw new Error('No permission to send messages to this channel');
-    }
+    const geohash = this.currentLocation?.geohash || 'unknown';
 
     const message: GeohashMessage = {
       id: `msg_${Date.now()}`,
       channelId,
       nodeId: 'me',
-      nodeHandle: '@symbolic',
+      nodeHandle: this.myHandle,
       content,
       timestamp: Date.now(),
       type
     };
+
+    // Encrypt for group if not a system message AND channel is encrypted
+    let broadcastContent = content;
+    if (type !== 'system' && channel?.isEncrypted) {
+      try {
+        const encrypted = await encryptionService.encryptGroupMessage(content, geohash);
+        broadcastContent = JSON.stringify(encrypted);
+      } catch (e) {
+        console.warn('Failed to encrypt group message, sending plain');
+      }
+    }
 
     // Add to local messages
     if (!this.messages.has(channelId)) {
@@ -424,11 +469,13 @@ class GeohashChannelsService {
     this.messages.get(channelId)!.push(message);
 
     // Update channel activity
-    channel.lastActivity = Date.now();
-    channel.messageCount++;
+    if (channel) {
+      channel.lastActivity = Date.now();
+      channel.messageCount++;
+    }
 
-    // Broadcast via mesh and relays
-    await this.broadcastMessage(message);
+    // Broadcast via ALL available channels for cross-device real-time chat
+    await this.broadcastMessage(message.id, broadcastContent, geohash);
 
     this.saveChannels();
     this.saveMessages();
@@ -437,24 +484,39 @@ class GeohashChannelsService {
     return message.id;
   }
 
-  private async broadcastMessage(message: GeohashMessage) {
-    const messageData = {
-      type: 'geohash_message',
-      payload: message,
-      timestamp: Date.now()
-    };
-
-    // Send via Bluetooth mesh to all available peers
-    const peers = bluetoothMesh.getPeers();
-    for (const peer of peers) {
-      await bluetoothMesh.sendMessage(peer.id, JSON.stringify(messageData));
+  // Send message to local area (cross-device via Nostr + local mesh)
+  async sendToLocalArea(content: string): Promise<string> {
+    if (!this.currentLocation) {
+      throw new Error('Location required to send local area message');
     }
 
-    // Send via relay nodes for extended range
-    for (const relay of this.relayNodes) {
-      // In real implementation, send via WebSocket
-      console.log('Broadcasting message via relay:', relay);
+    const localChannelId = `${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`;
+    return this.sendMessage(localChannelId, content);
+  }
+
+  private async broadcastMessage(messageId: string, content: string, geohash: string) {
+    const taggedContent = `[GEOHASH:${geohash}]${content}`;
+
+    // 1. Send via Nostr (CROSS-DEVICE - reaches other phones!)
+    try {
+      await nostrService.broadcastMessage(taggedContent);
+      console.log('📡 Message sent via Nostr (cross-device)');
+    } catch (error) {
+      console.warn('Nostr broadcast failed:', error);
     }
+
+    // 2. Send via Hybrid Mesh (local devices - Bluetooth, WiFi P2P, BroadcastChannel)
+    try {
+      await hybridMesh.sendMessage(taggedContent);
+      console.log('📶 Message sent via local mesh');
+    } catch (error) {
+      console.warn('Mesh broadcast failed:', error);
+    }
+  }
+
+  // Quick method to send to friends in same room/area
+  async chatInRoom(content: string): Promise<string> {
+    return this.sendToLocalArea(content);
   }
 
   // GETTERS
@@ -470,11 +532,23 @@ class GeohashChannelsService {
     return this.messages.get(channelId) || [];
   }
 
+  getLocalAreaChannel(): GeohashChannel | null {
+    if (!this.currentLocation) return null;
+    const localChannelId = `${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`;
+    return this.channels.get(localChannelId) || null;
+  }
+
+  getLocalAreaMessages(): GeohashMessage[] {
+    const localChannel = this.getLocalAreaChannel();
+    if (!localChannel) return [];
+    return this.getChannelMessages(localChannel.id);
+  }
+
   getMyChannels(): GeohashChannel[] {
     return Array.from(this.channels.values()).filter(c => c.participants.includes('me'));
   }
 
-  isConnectedToRelays(): boolean {
+  isConnectedToNetwork(): boolean {
     return this.isConnected;
   }
 
@@ -519,7 +593,7 @@ class GeohashChannelsService {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
-    
+
     return () => {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     };
@@ -533,5 +607,3 @@ class GeohashChannelsService {
 }
 
 export const geohashChannels = new GeohashChannelsService();
-
-// Force recompilation - remove this line after fixing import issues

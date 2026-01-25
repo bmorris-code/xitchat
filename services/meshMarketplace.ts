@@ -1,6 +1,7 @@
-import { bluetoothMesh, MeshNode, MeshMessage } from './bluetoothMesh';
+import { hybridMesh, HybridMeshPeer, HybridMeshMessage } from './hybridMesh';
 import { meshDataSync } from './meshDataSync';
 import { Listing } from '../types';
+import { xcEconomy } from './xcEconomy';
 
 export interface MeshListing extends Listing {
   nodeId: string;
@@ -19,12 +20,32 @@ export interface TradeRequest {
   message: string;
   timestamp: number;
   status: 'pending' | 'accepted' | 'declined' | 'completed';
+  paymentStatus?: 'none' | 'pending' | 'paid';
+  price?: number;
+}
+
+export interface PaymentRequest {
+  id: string;
+  requestId: string; // Trade request ID
+  listingId: string;
+  amount: number;
+  fromNode: string;
+  toNode: string;
+  timestamp: number;
+}
+
+export interface PaymentResponse {
+  id: string;
+  paymentId: string;
+  success: boolean;
+  message: string;
+  timestamp: number;
 }
 
 class MeshMarketplaceService {
   private localListings: MeshListing[] = [];
   private tradeRequests: TradeRequest[] = [];
-  private nearbyNodes: Map<string, MeshNode> = new Map();
+  private nearbyNodes: Map<string, HybridMeshPeer> = new Map();
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
 
   constructor() {
@@ -32,31 +53,54 @@ class MeshMarketplaceService {
   }
 
   private initializeMeshIntegration() {
-    // Listen for mesh peer updates
-    window.addEventListener('meshPeersUpdated', (event: CustomEvent) => {
+    // Listen for hybrid mesh peer updates
+    hybridMesh.subscribe('peersUpdated', (peers: HybridMeshPeer[]) => {
       this.nearbyNodes.clear();
-      event.detail.forEach((node: MeshNode) => {
+      peers.forEach((node: HybridMeshPeer) => {
         this.nearbyNodes.set(node.id, node);
       });
       this.notifyListeners('nearbyNodes', this.getNearbyNodes());
     });
 
-    // Listen for incoming mesh messages
-    window.addEventListener('meshMessageReceived', (event: CustomEvent) => {
-      this.handleMeshMessage(event.detail);
+    // Listen for incoming hybrid mesh messages
+    hybridMesh.subscribe('messageReceived', (message: HybridMeshMessage) => {
+      this.handleMeshMessage(message);
+    });
+
+    // Listen for specific marketplace events from hybridMesh
+    window.addEventListener('meshMarketplaceListing', (event: any) => {
+      this.handleIncomingListing(event.detail);
+    });
+
+    window.addEventListener('meshTradeRequest', (event: any) => {
+      this.handleTradeRequest(event.detail);
+    });
+
+    window.addEventListener('meshPaymentRequest', (event: any) => {
+      this.handleIncomingPayment(event.detail);
+    });
+
+    window.addEventListener('meshPaymentResponse', (event: any) => {
+      this.handlePaymentResponse(event.detail);
     });
   }
 
-  private handleMeshMessage(message: MeshMessage) {
+  private handleMeshMessage(message: HybridMeshMessage) {
     try {
-      const data = JSON.parse(message.content);
-      
-      if (data.type === 'listing_broadcast') {
-        this.handleIncomingListing(data.payload);
-      } else if (data.type === 'trade_request') {
-        this.handleTradeRequest(data.payload);
-      } else if (data.type === 'listing_update') {
-        this.handleListingUpdate(data.payload);
+      // If content is already parsed by hybridMesh, use it
+      const data = typeof message.content === 'string' && message.content.startsWith('{')
+        ? JSON.parse(message.content)
+        : message.content;
+
+      const payload = data.payload || data;
+      const type = data.type || (data.listingId ? 'listing_update' : '');
+
+      if (type === 'listing_broadcast') {
+        this.handleIncomingListing(payload);
+      } else if (type === 'trade_request') {
+        this.handleTradeRequest(payload);
+      } else if (type === 'listing_update') {
+        this.handleListingUpdate(payload);
       }
     } catch (error) {
       console.error('Failed to parse mesh message:', error);
@@ -67,8 +111,8 @@ class MeshMarketplaceService {
     // Add distance info from nearby nodes
     const node = this.nearbyNodes.get(listing.nodeId);
     if (node) {
-      listing.distance = node.distance;
-      listing.isProximity = true;
+      listing.distance = node.signalStrength ? (100 - node.signalStrength) / 2 : 10;
+      listing.isProximity = node.connectionType === 'bluetooth' || node.connectionType === 'wifi';
     }
 
     // Check if listing already exists
@@ -109,19 +153,13 @@ class MeshMarketplaceService {
 
     // Broadcast to mesh network using data sync
     await meshDataSync.syncMarketplaceListing(meshListing);
-    
-    // Also send via traditional mesh message for backward compatibility
-    const broadcastMessage = {
-      type: 'listing_broadcast',
-      payload: meshListing,
-      timestamp: Date.now()
-    };
 
-    // Broadcast to all available peers
-    const peers = bluetoothMesh.getPeers();
-    for (const peer of peers) {
-      await bluetoothMesh.sendMessage(peer.id, JSON.stringify(broadcastMessage));
-    }
+    // Broadcast via unified hybrid mesh
+    await hybridMesh.sendMessage(JSON.stringify({
+      type: 'marketplace_listing',
+      data: meshListing
+    }));
+
     this.notifyListeners('listings', this.getAllListings());
   }
 
@@ -139,13 +177,12 @@ class MeshMarketplaceService {
       status: 'pending'
     };
 
-    // Send direct message to listing node
-    const directMessage = {
+    // Send via hybrid mesh
+    await hybridMesh.sendMessage(JSON.stringify({
       type: 'trade_request',
-      payload: tradeRequest
-    };
+      data: tradeRequest
+    }), listing.nodeId);
 
-    await bluetoothMesh.sendMessage(listing.nodeId, JSON.stringify(directMessage));
     this.tradeRequests.push(tradeRequest);
     this.notifyListeners('tradeRequests', this.tradeRequests);
   }
@@ -156,37 +193,121 @@ class MeshMarketplaceService {
 
     request.status = accept ? 'accepted' : 'declined';
 
-    const response = {
+    await hybridMesh.sendMessage(JSON.stringify({
       type: 'trade_response',
-      payload: {
+      data: {
         requestId: request.id,
         accepted: accept,
         fromNode: 'me'
       }
+    }), request.fromNode);
+
+    this.notifyListeners('tradeRequests', this.tradeRequests);
+  }
+
+  async payForListing(requestId: string): Promise<boolean> {
+    const request = this.tradeRequests.find(r => r.id === requestId);
+    if (!request || request.status !== 'accepted') return false;
+
+    const listing = this.localListings.find(l => l.id === request.listingId);
+    if (!listing) return false;
+
+    // Parse price (e.g., "200 XC" -> 200)
+    const amount = parseInt(listing.price.replace(/[^0-9]/g, ''));
+    if (isNaN(amount)) return false;
+
+    // Check balance
+    if (xcEconomy.getBalance() < amount) {
+      alert('Insufficient XC balance!');
+      return false;
+    }
+
+    // Spend XC
+    const spent = xcEconomy.spendXC(amount, `Payment for ${listing.title}`, 'marketplace');
+    if (!spent) return false;
+
+    const paymentId = `pay_${Date.now()}`;
+    const paymentRequest: PaymentRequest = {
+      id: paymentId,
+      requestId,
+      listingId: listing.id,
+      amount,
+      fromNode: 'me',
+      toNode: listing.nodeId,
+      timestamp: Date.now()
     };
 
-    await bluetoothMesh.sendMessage(request.fromNode, JSON.stringify(response));
+    // Send via hybrid mesh
+    await hybridMesh.sendMessage(JSON.stringify({
+      type: 'payment_request',
+      data: paymentRequest
+    }), listing.nodeId);
+
+    request.paymentStatus = 'pending';
     this.notifyListeners('tradeRequests', this.tradeRequests);
+    return true;
+  }
+
+  private async handleIncomingPayment(payment: PaymentRequest) {
+    console.log(`💰 Received payment request for ${payment.amount} XC from ${payment.fromNode}`);
+
+    // Add XC to balance
+    const listing = this.localListings.find(l => l.id === payment.listingId);
+    const description = listing ? `Sold: ${listing.title}` : 'Marketplace Sale';
+
+    xcEconomy.addXC(payment.amount, description, 'marketplace_sale');
+
+    // Update trade request status if we have it
+    const request = this.tradeRequests.find(r => r.id === payment.requestId);
+    if (request) {
+      request.paymentStatus = 'paid';
+      request.status = 'completed';
+    }
+
+    // Send response
+    const response: PaymentResponse = {
+      id: `pay_resp_${Date.now()}`,
+      paymentId: payment.id,
+      success: true,
+      message: 'Payment received and processed!',
+      timestamp: Date.now()
+    };
+
+    await hybridMesh.sendMessage(JSON.stringify({
+      type: 'payment_response',
+      data: response
+    }), payment.fromNode);
+
+    this.notifyListeners('tradeRequests', this.tradeRequests);
+  }
+
+  private handlePaymentResponse(response: PaymentResponse) {
+    console.log(`💰 Payment response received: ${response.success ? 'Success' : 'Failed'}`);
+
+    // Find the request that matches this payment
+    // In a real app we'd track payment IDs, but for now we'll update any pending
+    const request = this.tradeRequests.find(r => r.paymentStatus === 'pending');
+    if (request && response.success) {
+      request.paymentStatus = 'paid';
+      request.status = 'completed';
+      this.notifyListeners('tradeRequests', this.tradeRequests);
+    }
   }
 
   async updateListingStatus(listingId: string, status: 'active' | 'sold' | 'removed'): Promise<void> {
     const listing = this.localListings.find(l => l.id === listingId);
     if (!listing) return;
 
-    const update = {
+    // Broadcast update via hybrid mesh
+    await hybridMesh.sendMessage(JSON.stringify({
       type: 'listing_update',
-      payload: {
+      data: {
         listingId,
         status,
         nodeId: 'me'
       }
-    };
+    }));
 
-    // Broadcast update to all peers
-    const peers = bluetoothMesh.getPeers();
-    for (const peer of peers) {
-      await bluetoothMesh.sendMessage(peer.id, JSON.stringify(update));
-    }
     this.notifyListeners('listings', this.getAllListings());
   }
 
@@ -195,19 +316,19 @@ class MeshMarketplaceService {
       // Prioritize proximity listings
       if (a.isProximity && !b.isProximity) return -1;
       if (!a.isProximity && b.isProximity) return 1;
-      
+
       // Then by timestamp (newest first)
       return b.timestamp - a.timestamp;
     });
   }
 
   getProximityListings(maxDistance: number = 50): MeshListing[] {
-    return this.localListings.filter(listing => 
+    return this.localListings.filter(listing =>
       listing.isProximity && listing.distance && listing.distance <= maxDistance
     );
   }
 
-  getNearbyNodes(): Array<MeshNode & { hasListings: boolean }> {
+  getNearbyNodes(): Array<HybridMeshPeer & { hasListings: boolean }> {
     return Array.from(this.nearbyNodes.values()).map(node => ({
       ...node,
       hasListings: this.localListings.some(l => l.nodeId === node.id)
@@ -223,7 +344,7 @@ class MeshMarketplaceService {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
-    
+
     return () => {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     };
@@ -235,18 +356,18 @@ class MeshMarketplaceService {
     }
   }
 
-  // Initialize Bluetooth mesh connection
+  // Initialize Hybrid mesh connection
   async initialize(): Promise<boolean> {
     try {
-      // Initialize Bluetooth mesh
-      const meshConnected = await bluetoothMesh.initialize();
-      
+      // Ensure hybrid mesh is initialized
+      const meshInfo = hybridMesh.getConnectionInfo();
+
       // Add some demo listings if none exist
       if (this.localListings.length === 0) {
         this.addDemoListings();
       }
-      
-      return meshConnected;
+
+      return meshInfo.isConnected;
     } catch (error) {
       console.error('Failed to initialize mesh marketplace:', error);
       return false;
@@ -267,7 +388,7 @@ class MeshMarketplaceService {
         location: 'Sector 428F - Zone A'
       },
       {
-        id: 'mesh_2', 
+        id: 'mesh_2',
         title: 'Need Phone Charger',
         price: '50 XC',
         senderHandle: '@battery_low',

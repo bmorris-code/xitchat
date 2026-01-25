@@ -2,6 +2,7 @@
 import React from 'react';
 import { View } from '../types';
 
+
 interface SidebarProps {
   currentView: View;
   setView: (view: View) => void;
@@ -39,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar }) =
       <div className="hidden md:block py-8 text-2xl glow-text animate-pulse">
         <i className="fa-solid fa-ghost"></i>
       </div>
-      
+
       {/* Navigation Hubs */}
       <div className="
         flex-1 flex flex-row md:flex-col 
@@ -69,7 +70,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar }) =
               {active && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-[3px] bg-[#00ff41] shadow-[0_0_12px_#00ff41] rounded-b-full md:hidden"></div>
               )}
-              
+
               <div className={`
                 p-1.5 rounded-xl transition-all
                 ${active ? 'bg-white/[0.05]' : 'group-hover:bg-white/[0.02]'}
@@ -89,18 +90,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar }) =
         })}
       </div>
 
+
+
       {/* Desktop Version Settings Button */}
       <div className="hidden md:flex mt-auto py-8">
-         <button 
-           onClick={() => setView('profile')}
-           className="w-10 h-10 rounded-full border border-[#004400] flex items-center justify-center overflow-hidden hover:border-[#00ff41] transition-colors"
-         >
-            <img 
-              src={userAvatar || "https://picsum.photos/seed/me/60"} 
-              className="grayscale opacity-50 hover:opacity-100 transition-opacity w-full h-full object-cover" 
-              alt="Me" 
-            />
-         </button>
+        <button
+          onClick={() => setView('profile')}
+          className="w-10 h-10 rounded-full border border-[#004400] flex items-center justify-center overflow-hidden hover:border-[#00ff41] transition-colors"
+        >
+          <img
+            src={userAvatar || "https://picsum.photos/seed/me/60"}
+            className="grayscale opacity-50 hover:opacity-100 transition-opacity w-full h-full object-cover"
+            alt="Me"
+          />
+        </button>
       </div>
     </div>
   );

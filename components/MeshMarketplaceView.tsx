@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { meshMarketplace, MeshListing, TradeRequest } from '../services/meshMarketplace';
-import { bluetoothMesh, MeshNode } from '../services/bluetoothMesh';
-import { wifiP2P, WiFiPeer } from '../services/wifiP2P';
+import { hybridMesh, HybridMeshPeer } from '../services/hybridMesh';
 
 interface MeshMarketplaceViewProps {
   onBack: () => void;
@@ -12,13 +11,12 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
   const [filter, setFilter] = useState<'ALL' | 'HAVE' | 'WANT' | 'SERVICE' | 'EVENT' | 'NEARBY'>('ALL');
   const [showPostModal, setShowPostModal] = useState(false);
   const [listings, setListings] = useState<MeshListing[]>([]);
-  const [nearbyNodes, setNearbyNodes] = useState<Array<MeshNode & { hasListings: boolean }>>([]);
-  const [wifiPeers, setWifiPeers] = useState<WiFiPeer[]>([]);
+  const [nearbyNodes, setNearbyNodes] = useState<Array<HybridMeshPeer & { hasListings: boolean }>>([]);
   const [tradeRequests, setTradeRequests] = useState<TradeRequest[]>([]);
   const [isConnected, setIsConnected] = useState(false);
-  const [isWifiDiscovering, setIsWifiDiscovering] = useState(false);
+  const [activeServices, setActiveServices] = useState<any>({});
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Form states
   const [newListing, setNewListing] = useState({
     title: '',
@@ -30,68 +28,43 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
 
   useEffect(() => {
     initializeMeshMarketplace();
-    initializeWiFiP2P();
   }, []);
-
-  const initializeWiFiP2P = async () => {
-    try {
-      const initialized = await wifiP2P.initialize();
-      if (initialized) {
-        // Subscribe to WiFi P2P events
-        wifiP2P.on('peerFound', (peer: WiFiPeer) => {
-          setWifiPeers(prev => [...prev, peer]);
-        });
-
-        wifiP2P.on('peerLost', (peer: WiFiPeer) => {
-          setWifiPeers(prev => prev.filter(p => p.id !== peer.id));
-        });
-
-        wifiP2P.on('peerConnected', (peer: WiFiPeer) => {
-          console.log(`✅ Connected to ${peer.name} via WiFi P2P`);
-        });
-
-        wifiP2P.on('messageReceived', (message) => {
-          console.log('📨 WiFi P2P message:', message);
-        });
-
-        wifiP2P.on('discoveryStarted', () => {
-          setIsWifiDiscovering(true);
-        });
-
-        wifiP2P.on('discoveryStopped', () => {
-          setIsWifiDiscovering(false);
-        });
-      }
-    } catch (error) {
-      console.error('WiFi P2P initialization failed:', error);
-    }
-  };
 
   const initializeMeshMarketplace = async () => {
     try {
       setIsLoading(true);
       const connected = await meshMarketplace.initialize();
-      setIsConnected(connected);
-      
+
       // Subscribe to updates
       const unsubscribeListings = meshMarketplace.subscribe('listings', (updatedListings) => {
         setListings(updatedListings);
       });
-      
+
       const unsubscribeNodes = meshMarketplace.subscribe('nearbyNodes', (nodes) => {
         setNearbyNodes(nodes);
       });
-      
+
       const unsubscribeRequests = meshMarketplace.subscribe('tradeRequests', (requests) => {
         setTradeRequests(requests);
       });
 
+      const unsubscribeMesh = hybridMesh.subscribe('peersUpdated', () => {
+        const info = hybridMesh.getConnectionInfo();
+        setIsConnected(info.isConnected);
+        setActiveServices(info.activeServices);
+      });
+
+      const info = hybridMesh.getConnectionInfo();
+      setIsConnected(info.isConnected);
+      setActiveServices(info.activeServices);
+
       setIsLoading(false);
-      
+
       return () => {
         unsubscribeListings();
         unsubscribeNodes();
         unsubscribeRequests();
+        unsubscribeMesh();
       };
     } catch (error) {
       console.error('Failed to initialize mesh marketplace:', error);
@@ -150,31 +123,15 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
     }
   };
 
-  // WiFi P2P Functions
-  const startWiFiDiscovery = () => {
-    wifiP2P.startDiscovery();
-  };
-
-  const stopWiFiDiscovery = () => {
-    wifiP2P.stopDiscovery();
-  };
-
-  const connectToWiFiPeer = async (peerId: string) => {
+  const handlePayment = async (requestId: string) => {
     try {
-      const success = await wifiP2P.connectToPeer(peerId);
+      const success = await meshMarketplace.payForListing(requestId);
       if (success) {
-        alert('Connected to peer via WiFi P2P!');
+        alert('Payment sent via mesh network!');
       }
     } catch (error) {
-      console.error('Failed to connect to peer:', error);
-      alert('Failed to connect to peer');
-    }
-  };
-
-  const sendWiFiMessage = (peerId: string, message: string) => {
-    const success = wifiP2P.sendMessage(peerId, message);
-    if (success) {
-      console.log('Message sent via WiFi P2P');
+      console.error('Failed to send payment:', error);
+      alert('Failed to send payment');
     }
   };
 
@@ -199,23 +156,18 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
           <div>
             <h2 className="text-lg font-bold uppercase tracking-tighter glow-text">mesh_market.bbs</h2>
             <p className="text-[10px] font-bold opacity-50 uppercase tracking-widest text-white/30">
-              {isConnected ? 'bluetooth_mesh_active' : isWifiDiscovering ? 'wifi_p2p_active' : 'mesh_offline'}
+              {Object.entries(activeServices)
+                .filter(([_, active]) => active)
+                .map(([name]) => name)
+                .join('_') || 'mesh_offline'}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-right">
-            <p className="text-[8px] font-bold opacity-50 uppercase tracking-widest text-white/40">nearby_nodes</p>
-            <p className="text-xl font-bold glow-text text-white">{nearbyNodes.length + wifiPeers.length}</p>
+            <p className="text-[8px] font-bold opacity-50 uppercase tracking-widest text-white/40">active_nodes</p>
+            <p className="text-xl font-bold glow-text text-white">{nearbyNodes.length}</p>
           </div>
-          <button 
-            onClick={isWifiDiscovering ? stopWiFiDiscovery : startWiFiDiscovery}
-            className={`terminal-btn px-2 py-1 text-[8px] uppercase font-bold ${
-              isWifiDiscovering ? 'bg-red-500 text-black' : 'active'
-            }`}
-          >
-            {isWifiDiscovering ? 'stop_scan' : 'wifi_scan'}
-          </button>
           <button onClick={() => setShowPostModal(true)} className="terminal-btn active px-2 py-1 text-[8px] uppercase font-bold">
             + broadcast
           </button>
@@ -226,7 +178,7 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
       {!isConnected && (
         <div className="mb-6 p-4 border border-red-500 bg-red-500/10 text-red-400 text-xs">
           <i className="fa-solid fa-triangle-exclamation mr-2"></i>
-          Bluetooth mesh not connected. Enable Bluetooth to use proximity trading.
+          Hybrid mesh not connected. Enable Bluetooth or WiFi to use proximity trading.
         </div>
       )}
 
@@ -243,56 +195,9 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
                     <span className="text-[8px] bg-green-500 text-black px-1">active</span>
                   )}
                 </div>
-                <p className={`text-[8px] ${getDistanceColor(node.distance)}`}>
-                  {node.distance?.toFixed(1)}m away
+                <p className={`text-[8px] ${getDistanceColor(node.signalStrength ? (100 - node.signalStrength) / 2 : 10)}`}>
+                  {node.connectionType.toUpperCase()} • {node.signalStrength || '??'}%
                 </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* WiFi P2P Peers */}
-      {wifiPeers.length > 0 && (
-        <div className="mb-8">
-          <h3 className="text-lg font-bold uppercase mb-4 text-cyan-400">wifi_p2p_peers</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {wifiPeers.map(peer => (
-              <div key={peer.id} className="p-3 border border-cyan-500/30 bg-[#050505]">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-cyan-400">{peer.name}</span>
-                    <p className="text-[8px] opacity-60">{peer.handle}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {peer.isConnected ? (
-                      <span className="text-[8px] bg-green-500 text-black px-1">connected</span>
-                    ) : (
-                      <button 
-                        onClick={() => connectToWiFiPeer(peer.id)}
-                        className="terminal-btn active px-2 py-1 text-[8px] uppercase"
-                      >
-                        connect
-                      </button>
-                    )}
-                    <span className="text-[8px] text-cyan-400">wifi</span>
-                  </div>
-                </div>
-                {peer.isConnected && (
-                  <div className="mt-2 pt-2 border-t border-current border-opacity-20">
-                    <input 
-                      type="text" 
-                      placeholder="send message..."
-                      className="w-full bg-black border border-current border-opacity-30 px-2 py-1 text-[10px] font-mono"
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter') {
-                          sendWiFiMessage(peer.id, e.currentTarget.value);
-                          e.currentTarget.value = '';
-                        }
-                      }}
-                    />
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -312,13 +217,13 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
                     <p className="text-xs opacity-60">{request.message}</p>
                   </div>
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => handleTradeResponse(request.id, false)}
                       className="terminal-btn px-2 py-1 text-[8px] uppercase"
                     >
                       decline
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleTradeResponse(request.id, true)}
                       className="terminal-btn active px-2 py-1 text-[8px] uppercase"
                     >
@@ -326,6 +231,34 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
                     </button>
                   </div>
                 </div>
+
+                {/* Payment Status / Action */}
+                {request.status === 'accepted' && request.fromNode === 'me' && (
+                  <div className="mt-3 pt-3 border-t border-current border-opacity-10 flex justify-between items-center">
+                    <p className="text-[10px] font-bold text-white/60">
+                      {request.paymentStatus === 'pending' ? '⌛ PAYMENT_PENDING...' :
+                        request.paymentStatus === 'paid' ? '✅ PAYMENT_COMPLETE' :
+                          'READY_FOR_PAYMENT'}
+                    </p>
+                    {(!request.paymentStatus || request.paymentStatus === 'none') && (
+                      <button
+                        onClick={() => handlePayment(request.id)}
+                        className="terminal-btn active px-4 py-1 text-[10px] uppercase font-bold bg-green-500/20 border-green-500/50 text-green-400"
+                      >
+                        pay_with_xc
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {request.status === 'completed' && (
+                  <div className="mt-3 pt-3 border-t border-current border-opacity-10">
+                    <p className="text-[10px] font-bold text-green-400 uppercase tracking-widest">
+                      <i className="fa-solid fa-check-double mr-2"></i>
+                      trade_completed_successfully
+                    </p>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -335,12 +268,11 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
       {/* Filters */}
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
         {['ALL', 'NEARBY', 'HAVE', 'WANT', 'SERVICE', 'EVENT'].map(cat => (
-          <button 
-            key={cat} 
+          <button
+            key={cat}
             onClick={() => setFilter(cat as any)}
-            className={`terminal-btn px-4 h-8 text-[9px] uppercase tracking-widest transition-all ${
-              filter === cat ? 'active' : 'opacity-40 hover:opacity-100'
-            }`}
+            className={`terminal-btn px-4 h-8 text-[9px] uppercase tracking-widest transition-all ${filter === cat ? 'active' : 'opacity-40 hover:opacity-100'
+              }`}
           >
             {cat === 'NEARBY' && <i className="fa-solid fa-bluetooth-b mr-2"></i>}
             {cat}
@@ -357,9 +289,8 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
       ) : (
         <div className="space-y-4">
           {filteredListings.map(item => (
-            <div key={item.id} className={`border border-current border-opacity-10 bg-[#050505] p-5 group hover:border-white/40 transition-all flex flex-col gap-3 relative ${
-              item.isProximity ? 'border-green-500/30 bg-green-500/5' : ''
-            }`}>
+            <div key={item.id} className={`border border-current border-opacity-10 bg-[#050505] p-5 group hover:border-white/40 transition-all flex flex-col gap-3 relative ${item.isProximity ? 'border-green-500/30 bg-green-500/5' : ''
+              }`}>
               {/* Proximity Indicator */}
               {item.isProximity && (
                 <div className="absolute top-2 right-2 px-2 py-1 bg-green-500 text-black text-[8px] font-black uppercase tracking-widest">
@@ -367,15 +298,14 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
                   {item.distance?.toFixed(1)}m
                 </div>
               )}
-              
+
               <div className="flex justify-between items-start">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className={`text-[8px] font-bold px-2 py-0.5 border ${
-                      item.category === 'HAVE' ? 'border-green-500 text-green-500' : 
-                      item.category === 'WANT' ? 'border-amber-500 text-amber-500' : 
-                      item.category === 'EVENT' ? 'border-white text-white' : 'border-cyan-500 text-cyan-500'
-                    }`}>
+                    <span className={`text-[8px] font-bold px-2 py-0.5 border ${item.category === 'HAVE' ? 'border-green-500 text-green-500' :
+                      item.category === 'WANT' ? 'border-amber-500 text-amber-500' :
+                        item.category === 'EVENT' ? 'border-white text-white' : 'border-cyan-500 text-cyan-500'
+                      }`}>
                       {item.category}
                     </span>
                     {item.nodeHandle !== '@symbolic' && (
@@ -396,21 +326,21 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
                   <p className="text-[8px] opacity-30 uppercase mt-1">val_units</p>
                 </div>
               </div>
-              
+
               <p className="text-xs opacity-60 leading-relaxed text-white/70 italic">
                 &gt; {item.description}
               </p>
-              
+
               <div className="flex gap-4 mt-2">
                 {item.nodeHandle !== '@symbolic' ? (
                   <>
-                    <button 
+                    <button
                       onClick={() => handleTradeRequest(item)}
                       className="terminal-btn active flex-1 py-1 text-[10px] uppercase font-bold"
                     >
                       trade_request
                     </button>
-                    <button 
+                    <button
                       onClick={() => onContact(item.nodeHandle)}
                       className="terminal-btn flex-1 py-1 text-[10px] uppercase font-bold"
                     >
@@ -433,13 +363,13 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
             <h3 className="text-xl font-bold uppercase tracking-widest mb-6 glow-text text-center">mesh_broadcast.exe</h3>
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
-                <input 
+                <input
                   value={newListing.title}
                   onChange={(e) => setNewListing(prev => ({ ...prev, title: e.target.value }))}
-                  className="bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
-                  placeholder="listing_title" 
+                  className="bg-black border border-current p-3 text-xs text-white placeholder-white/20"
+                  placeholder="listing_title"
                 />
-                <select 
+                <select
                   value={newListing.category}
                   onChange={(e) => setNewListing(prev => ({ ...prev, category: e.target.value as any }))}
                   className="bg-black border border-current p-3 text-xs text-white"
@@ -450,36 +380,36 @@ const MeshMarketplaceView: React.FC<MeshMarketplaceViewProps> = ({ onBack, onCon
                   <option value="EVENT">EVENT (Local Meetup)</option>
                 </select>
               </div>
-              
-              <input 
+
+              <input
                 value={newListing.price}
                 onChange={(e) => setNewListing(prev => ({ ...prev, price: e.target.value }))}
-                className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
-                placeholder="price / xc_units (or 'Negotiable' / 'Free')" 
+                className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20"
+                placeholder="price / xc_units (or 'Negotiable' / 'Free')"
               />
-              
-              <input 
+
+              <input
                 value={newListing.location}
                 onChange={(e) => setNewListing(prev => ({ ...prev, location: e.target.value }))}
-                className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
-                placeholder="location (optional)" 
+                className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20"
+                placeholder="location (optional)"
               />
-              
-              <textarea 
+
+              <textarea
                 value={newListing.description}
                 onChange={(e) => setNewListing(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full bg-black border border-current p-3 text-xs text-white min-h-[120px] placeholder-white/20" 
-                placeholder="detailed_listing_description..." 
+                className="w-full bg-black border border-current p-3 text-xs text-white min-h-[120px] placeholder-white/20"
+                placeholder="detailed_listing_description..."
               />
-              
+
               <div className="grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => setShowPostModal(false)} 
+                <button
+                  onClick={() => setShowPostModal(false)}
                   className="terminal-btn py-3 uppercase text-[10px]"
                 >
                   abort
                 </button>
-                <button 
+                <button
                   onClick={handleCreateListing}
                   disabled={!newListing.title.trim() || !newListing.description.trim()}
                   className="terminal-btn active py-3 uppercase text-[10px] disabled:opacity-20"

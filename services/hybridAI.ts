@@ -3,6 +3,7 @@
 
 import { getXitBotResponse as getXitBotResponseGemini, getQuickReplies as getQuickRepliesGemini, getLatestBuzz as getLatestBuzzGemini } from './gemini';
 import { getXitBotResponseGroq, getQuickRepliesGroq, getLatestBuzzGroq, checkGroqHealth } from './groq';
+import { hybridMesh, HybridMeshPeer } from './hybridMesh';
 
 export type AIProvider = 'groq' | 'gemini' | 'fallback';
 
@@ -13,9 +14,53 @@ class HybridAIService {
   private readonly HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
   private failureCount = 0;
   private readonly MAX_FAILURES = 3;
+  private isOnline = false;
+  private aiPeers: string[] = [];
+  private pendingRequests: Map<string, (response: string) => void> = new Map();
+  private listeners: { [key: string]: ((data: any) => void)[] } = {};
 
   constructor() {
     this.initializeHealthCheck();
+    this.initializeMeshIntegration();
+  }
+
+  private initializeMeshIntegration() {
+    // Listen for mesh AI responses
+    window.addEventListener('meshAIResponse', (event: any) => {
+      const { requestId, response } = event.detail;
+      const callback = this.pendingRequests.get(requestId);
+      if (callback) {
+        callback(response);
+        this.pendingRequests.delete(requestId);
+      }
+    });
+
+    // Listen for mesh AI requests (if we are online)
+    window.addEventListener('meshAIRequest', async (event: any) => {
+      if (this.isOnline && this.isGroqHealthy) {
+        const { requestId, userMessage, fromNode } = event.detail;
+        console.log(`🤖 Mesh AI Proxy: Processing request from ${fromNode}`);
+        
+        try {
+          const response = await this.getXitBotResponse(userMessage, true); // true = skip mesh check to avoid loops
+          await hybridMesh.sendMessage(JSON.stringify({
+            type: 'ai_response',
+            data: { requestId, response }
+          }), fromNode);
+        } catch (error) {
+          console.error('Failed to proxy AI request:', error);
+        }
+      }
+    });
+
+    // Track peers with AI capability
+    hybridMesh.subscribe('peersUpdated', (peers: HybridMeshPeer[]) => {
+      // In a real implementation, peers would advertise 'ai_proxy' capability
+      // For now, we'll assume any peer with a connectionType of 'nostr' might be online
+      this.aiPeers = peers
+        .filter(p => p.connectionType === 'nostr' || p.id.includes('proxy'))
+        .map(p => p.id);
+    });
   }
 
   private async initializeHealthCheck() {
@@ -37,6 +82,7 @@ class HybridAIService {
     try {
       // Check Groq health
       const groqHealthy = await checkGroqHealth();
+      this.isOnline = groqHealthy; // If we can reach Groq, we are online
       
       if (groqHealthy) {
         this.isGroqHealthy = true;
@@ -53,14 +99,17 @@ class HybridAIService {
           console.log('🔄 Switching to Gemini as primary provider');
         }
       }
+      this.notifyListeners('statusChanged', this.getProviderStatus());
     } catch (error) {
       console.error('Health check failed:', error);
+      this.isOnline = false;
       this.failureCount++;
       
       if (this.failureCount >= this.MAX_FAILURES) {
         this.isGroqHealthy = false;
         this.primaryProvider = 'gemini';
       }
+      this.notifyListeners('statusChanged', this.getProviderStatus());
     }
   }
 
@@ -68,7 +117,9 @@ class HybridAIService {
     groqFn: () => Promise<T>,
     geminiFn: () => Promise<T>,
     fallbackFn: () => T,
-    operation: string
+    operation: string,
+    skipMesh: boolean = false,
+    userMessage?: string
   ): Promise<T> {
     // Try primary provider first
     if (this.primaryProvider === 'groq' && this.isGroqHealthy) {
@@ -93,7 +144,17 @@ class HybridAIService {
       console.log(`✅ ${operation} completed with Gemini`);
       return result;
     } catch (error) {
-      console.warn(`⚠️ Gemini failed for ${operation}, using fallback:`, error);
+      console.warn(`⚠️ Gemini failed for ${operation}, trying Mesh Proxy:`, error);
+    }
+
+    // Try Mesh Proxy if offline and not skipping
+    if (!this.isOnline && !skipMesh && this.aiPeers.length > 0 && operation === 'Chat Response' && userMessage) {
+      try {
+        const meshResult = await this.requestMeshAI(userMessage);
+        if (meshResult) return meshResult as unknown as T;
+      } catch (error) {
+        console.warn('⚠️ Mesh AI Proxy failed:', error);
+      }
     }
 
     // Final fallback
@@ -101,15 +162,43 @@ class HybridAIService {
     return fallbackFn();
   }
 
-  async getXitBotResponse(userMessage: string): Promise<string> {
+  private async requestMeshAI(userMessage: string): Promise<string | null> {
+    if (this.aiPeers.length === 0) return null;
+
+    const requestId = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const targetPeer = this.aiPeers[0]; // Use first available proxy
+
+    console.log(`📡 Requesting AI via Mesh Peer: ${targetPeer}`);
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.pendingRequests.delete(requestId);
+        resolve(null);
+      }, 15000); // 15s timeout for mesh AI
+
+      this.pendingRequests.set(requestId, (response) => {
+        clearTimeout(timeout);
+        resolve(response);
+      });
+
+      hybridMesh.sendMessage(JSON.stringify({
+        type: 'ai_request',
+        data: { requestId, userMessage }
+      }), targetPeer);
+    });
+  }
+
+  async getXitBotResponse(userMessage: string, skipMesh: boolean = false): Promise<string> {
     console.log('🤖 Hybrid AI: Getting response for:', userMessage);
-    console.log('🔧 Current provider:', this.primaryProvider, 'Groq healthy:', this.isGroqHealthy);
+    console.log('🔧 Current provider:', this.primaryProvider, 'Groq healthy:', this.isGroqHealthy, 'Online:', this.isOnline);
     
     return this.executeWithFallback(
       () => getXitBotResponseGroq(userMessage),
       () => getXitBotResponseGemini(userMessage),
       () => this.getFallbackResponse(userMessage),
-      'Chat Response'
+      'Chat Response',
+      skipMesh,
+      userMessage
     );
   }
 
@@ -191,6 +280,23 @@ class HybridAIService {
   resetFailures(): void {
     this.failureCount = 0;
     console.log('🔄 Reset failure count');
+  }
+
+  subscribe(event: string, callback: (data: any) => void): () => void {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(callback);
+
+    return () => {
+      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+    };
+  }
+
+  private notifyListeners(event: string, data: any) {
+    if (this.listeners[event]) {
+      this.listeners[event].forEach(callback => callback(data));
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { meshDataSync } from '../services/meshDataSync';
 import { realTorService } from '../services/realTorService';
 import { realPowService } from '../services/realPowService';
+import { nostrService } from '../services/nostrService';
 
 interface ProfileViewProps {
   myHandle: string;
@@ -50,6 +51,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   const [uplinkCore, setUplinkCore] = useState('ghost');
   const [torStatus, setTorStatus] = useState<any>(null);
   const [powStats, setPowStats] = useState<any>(null);
+  const [showNostrKeys, setShowNostrKeys] = useState(false);
+  const [nostrKeys, setNostrKeys] = useState({ pub: '', priv: '' });
 
   // Load saved uplink core from localStorage
   useEffect(() => {
@@ -57,6 +60,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     if (savedUplinkCore) {
       setUplinkCore(savedUplinkCore);
     }
+
+    // Load Nostr keys
+    setNostrKeys({
+      pub: nostrService.getPublicKey() || '',
+      priv: nostrService.getPrivateKey() || ''
+    });
   }, []);
 
   // Initialize TOR and POW services
@@ -64,37 +73,37 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     // Load TOR status
     setTor(realTorService.getTorEnabled());
     setTorStatus(realTorService.getStatus());
-    
+
     // Load POW status
     setPow(realPowService.getPOWEnabled());
     setPowStats(realPowService.getStats());
-    
+
     // Subscribe to TOR updates
     const unsubscribeTor = realTorService.subscribe('statusUpdated', (status) => {
       setTorStatus(status);
     });
-    
+
     const unsubscribeTorEnabled = realTorService.subscribe('torEnabled', () => {
       setTor(true);
     });
-    
+
     const unsubscribeTorDisabled = realTorService.subscribe('torDisabled', () => {
       setTor(false);
     });
-    
+
     // Subscribe to POW updates
     const unsubscribePow = realPowService.subscribe('statsUpdated', (stats) => {
       setPowStats(stats);
     });
-    
+
     const unsubscribePowEnabled = realPowService.subscribe('powEnabled', () => {
       setPow(true);
     });
-    
+
     const unsubscribePowDisabled = realPowService.subscribe('powDisabled', () => {
       setPow(false);
     });
-    
+
     return () => {
       unsubscribeTor();
       unsubscribeTorEnabled();
@@ -105,7 +114,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, []);
 
-  // Sync profile changes to mesh network
+  // Sync profile changes to mesh network and Nostr
   useEffect(() => {
     const profileData = {
       handle: myHandle,
@@ -116,8 +125,25 @@ const ProfileView: React.FC<ProfileViewProps> = ({
       lastUpdated: Date.now()
     };
 
-    // Broadcast profile changes to mesh
+    // 1. Broadcast profile changes to local mesh
     meshDataSync.syncUserProfile(profileData);
+
+    // 2. Sync to Nostr for cross-device real-time updates
+    const syncToNostr = async () => {
+      await nostrService.updateProfile({
+        name: myHandle,
+        picture: myAvatar,
+        about: myMood.text,
+        custom_fields: {
+          emoji: myMood.emoji,
+          theme: theme,
+          uplinkCore: uplinkCore
+        }
+      });
+    };
+
+    const timeoutId = setTimeout(syncToNostr, 2000); // Debounce Nostr updates
+    return () => clearTimeout(timeoutId);
   }, [myHandle, myAvatar, myMood, theme, uplinkCore]);
 
   // TOR toggle handler
@@ -147,6 +173,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 
   const handleUplinkCoreChange = (coreId: string) => {
     setUplinkCore(coreId);
+    localStorage.setItem('xitchat_uplink_core', coreId);
     if (onUplinkCoreChange) {
       onUplinkCoreChange(coreId);
     }
@@ -175,6 +202,11 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('Copied to clipboard!');
+  };
+
   const themes: Array<{ id: 'green' | 'amber' | 'cyan' | 'red'; label: string; dotColor: string }> = [
     { id: 'green', label: 'MATRIX_GREEN', dotColor: 'bg-[#00ff41]' },
     { id: 'amber', label: 'AMBER_TERMINAL', dotColor: 'bg-[#ffb000]' },
@@ -185,88 +217,125 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   return (
     <div className="flex-1 p-6 md:p-12 flex flex-col items-center overflow-y-auto bg-black no-scrollbar animate-in fade-in zoom-in-95 duration-300">
       <div className="max-w-md w-full space-y-10 pb-20 relative">
-        
+
         {/* Header with Version and Close */}
         <div className="flex justify-between items-start mb-6">
-           <div className="flex items-baseline gap-2">
-              <h1 className="text-4xl font-bold text-current lowercase tracking-tighter">xitchat</h1>
-              <span className="text-[10px] opacity-40 font-mono">v1.3.1</span>
-           </div>
-           <button 
-             onClick={onClose}
-             className="text-current font-bold uppercase text-xs tracking-widest hover:opacity-70 transition-opacity"
-           >
-             Close
-           </button>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-4xl font-bold text-current lowercase tracking-tighter">xitchat</h1>
+            <span className="text-[10px] opacity-40 font-mono">v1.0.0</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-current font-bold uppercase text-xs tracking-widest hover:opacity-70 transition-opacity"
+          >
+            Close
+          </button>
         </div>
 
         {/* Profile Identity Card */}
         <div className="border border-current border-opacity-30 p-8 space-y-6 bg-[#050505] relative overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-            <div className="flex justify-between items-start">
-                <div 
-                  className="w-20 h-20 border-2 border-current border-opacity-30 p-1 relative bg-black group cursor-pointer overflow-hidden shadow-[0_0_10px_rgba(0,255,65,0.1)]" 
-                  onClick={() => avatarInputRef.current?.click()}
-                >
-                  <img src={myAvatar} className="w-full h-full object-cover grayscale opacity-80 group-hover:opacity-100 transition-all" alt="" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                    <i className="fa-solid fa-camera text-white"></i>
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 text-3xl bg-black rounded-full p-1 border-2 border-current shadow-[0_0_10px_rgba(0,255,65,0.2)]">
-    <i className={`fa-solid ${uplinkCores.find(c => c.id === uplinkCore)?.icon || 'fa-ghost'}`} 
-       style={{ color: uplinkCores.find(c => c.id === uplinkCore)?.color || '#00ff41' }}></i>
-  </div>
-                </div>
-                <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
-                
-                <div className="text-right flex-1 ml-6">
-                  <div className="flex items-center gap-2 justify-end mb-1">
-                    <span className="text-white opacity-40 text-[9px] uppercase font-bold tracking-widest">node:</span>
-                    <input 
-                      value={myHandle} 
-                      onChange={(e) => setMyHandle(e.target.value)}
-                      className="text-right bg-transparent border-none outline-none text-lg font-bold uppercase tracking-tighter glow-text text-white w-full max-w-[120px] focus:text-current transition-colors"
-                    />
-                  </div>
-                  <p className="text-[9px] font-bold opacity-30 uppercase tracking-widest text-white/30">id: 48F2-A812</p>
-                </div>
+          <div className="flex justify-between items-start">
+            <div
+              className="w-20 h-20 border-2 border-current border-opacity-30 p-1 relative bg-black group cursor-pointer overflow-hidden shadow-[0_0_10px_rgba(0,255,65,0.1)]"
+              onClick={() => avatarInputRef.current?.click()}
+            >
+              <img src={myAvatar} className="w-full h-full object-cover grayscale opacity-80 group-hover:opacity-100 transition-all" alt="" />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
+                <i className="fa-solid fa-camera text-white"></i>
+              </div>
+              <div className="absolute -bottom-1 -right-1 text-3xl bg-black rounded-full p-1 border-2 border-current shadow-[0_0_10px_rgba(0,255,65,0.2)]">
+                <i className={`fa-solid ${uplinkCores.find(c => c.id === uplinkCore)?.icon || 'fa-ghost'}`}
+                  style={{ color: uplinkCores.find(c => c.id === uplinkCore)?.color || '#00ff41' }}></i>
+              </div>
             </div>
+            <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
 
-            <div className="space-y-3">
-               <p className="text-[9px] font-bold opacity-30 uppercase tracking-[0.3em] text-current">broadcast_signal</p>
-               <div className="flex items-center gap-4 bg-[#080808] p-3 border border-current border-opacity-20">
-                  <span className="text-lg drop-shadow-[0_0_5px_currentColor]">{myMood.emoji}</span>
-                  <input 
-                    value={myMood.text} 
-                    onChange={(e) => setMyMood({ ...myMood, text: e.target.value })}
-                    className="bg-transparent border-none outline-none text-xs w-full text-white font-mono placeholder-white/10"
-                    placeholder="broadcast_status..."
-                  />
-               </div>
+            <div className="text-right flex-1 ml-6">
+              <div className="flex items-center gap-2 justify-end mb-1">
+                <span className="text-white opacity-40 text-[9px] uppercase font-bold tracking-widest">node:</span>
+                <input
+                  value={myHandle}
+                  onChange={(e) => setMyHandle(e.target.value)}
+                  className="text-right bg-transparent border-none outline-none text-lg font-bold uppercase tracking-tighter glow-text text-white w-full max-w-[120px] focus:text-current transition-colors"
+                />
+              </div>
+              <p className="text-[9px] font-bold opacity-30 uppercase tracking-widest text-white/30">id: {nostrKeys.pub.substring(0, 8).toUpperCase()}</p>
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-[9px] font-bold opacity-30 uppercase tracking-[0.3em] text-current">broadcast_signal</p>
+            <div className="flex items-center gap-4 bg-[#080808] p-3 border border-current border-opacity-20">
+              <span className="text-lg drop-shadow-[0_0_5px_currentColor]">{myMood.emoji}</span>
+              <input
+                value={myMood.text}
+                onChange={(e) => setMyMood({ ...myMood, text: e.target.value })}
+                className="bg-transparent border-none outline-none text-xs w-full text-white font-mono placeholder-white/10"
+                placeholder="broadcast_status..."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Nostr Keys Section */}
+        <div className="space-y-4 border-t border-current border-opacity-10 pt-10">
+          <div className="flex justify-between items-center">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#006600]">NOSTR_IDENTITY_KEYS</h4>
+            <button
+              onClick={() => setShowNostrKeys(!showNostrKeys)}
+              className="text-[9px] uppercase font-bold text-current opacity-60 hover:opacity-100"
+            >
+              {showNostrKeys ? 'hide_keys' : 'show_keys'}
+            </button>
+          </div>
+
+          {showNostrKeys && (
+            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+              <div className="bg-[#080808] border border-current border-opacity-20 p-4 space-y-2">
+                <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest text-white/40">public_key (npub)</p>
+                <div className="flex items-center gap-2">
+                  <code className="text-[10px] text-white opacity-80 break-all flex-1">{nostrKeys.pub}</code>
+                  <button onClick={() => copyToClipboard(nostrKeys.pub)} className="text-current hover:scale-110 transition-transform">
+                    <i className="fa-solid fa-copy"></i>
+                  </button>
+                </div>
+              </div>
+              <div className="bg-[#080808] border border-red-500 border-opacity-20 p-4 space-y-2">
+                <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest text-red-500/40">private_key (nsec) - DO NOT SHARE</p>
+                <div className="flex items-center gap-2">
+                  <code className="text-[10px] text-red-500 opacity-80 break-all flex-1">••••••••••••••••••••••••••••••••</code>
+                  <button onClick={() => copyToClipboard(nostrKeys.priv)} className="text-red-500 hover:scale-110 transition-transform">
+                    <i className="fa-solid fa-copy"></i>
+                  </button>
+                </div>
+              </div>
+              <p className="text-[9px] opacity-40 italic">Use these keys to log in to XitChat on other devices.</p>
+            </div>
+          )}
         </div>
 
         {/* Feature Highlights Section */}
         <div className="space-y-8 py-4 border-t border-current border-opacity-10 pt-10">
           <div className="flex items-start gap-5">
             <div className="mt-1 text-current w-6 text-center text-lg">
-              <i className="fa-solid fa-bluetooth"></i>
+              <i className="fa-solid fa-satellite-dish"></i>
             </div>
             <div>
-              <h3 className="text-current font-bold text-base tracking-tight mb-1">Offline Mesh Chat</h3>
+              <h3 className="text-current font-bold text-base tracking-tight mb-1">Real-time Nostr Sync</h3>
               <p className="text-[11px] opacity-60 leading-relaxed text-current">
-                Communicate directly via Bluetooth LE without internet or servers. Messages relay through nearby devices to extend range.
+                Your profile, status, and settings are synced across all your devices in real-time using the decentralized Nostr network.
               </p>
             </div>
           </div>
 
           <div className="flex items-start gap-5">
             <div className="mt-1 text-current w-6 text-center text-lg">
-              <i className="fa-solid fa-globe"></i>
+              <i className="fa-solid fa-network-wired"></i>
             </div>
             <div>
-              <h3 className="text-current font-bold text-base tracking-tight mb-1">Online Geohash Channels</h3>
+              <h3 className="text-current font-bold text-base tracking-tight mb-1">Zero-Server Mesh</h3>
               <p className="text-[11px] opacity-60 leading-relaxed text-current">
-                Connect with people in your area using geohash-based channels. Extend the mesh using public internet relays.
+                No central database. Your data lives on your device and is shared directly with peers or via decentralized relays.
               </p>
             </div>
           </div>
@@ -280,20 +349,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               <button
                 key={core.id}
                 onClick={() => handleUplinkCoreChange(core.id)}
-                className={`flex flex-col items-center gap-2 p-3 border transition-all bg-[#080808] relative group ${
-                  uplinkCore === core.id 
-                    ? 'border-current shadow-[0_0_15px_rgba(0,255,65,0.1)]' 
-                    : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
-                }`}
+                className={`flex flex-col items-center gap-2 p-3 border transition-all bg-[#080808] relative group ${uplinkCore === core.id
+                  ? 'border-current shadow-[0_0_15px_rgba(0,255,65,0.1)]'
+                  : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
+                  }`}
               >
-                <div className={`text-lg transition-all ${
-                  uplinkCore === core.id ? 'scale-110' : 'scale-100'
-                }`} style={{ color: core.color }}>
+                <div className={`text-lg transition-all ${uplinkCore === core.id ? 'scale-110' : 'scale-100'
+                  }`} style={{ color: core.color }}>
                   <i className={`fa-solid ${core.icon}`}></i>
                 </div>
-                <span className={`text-[8px] font-bold uppercase tracking-wider font-mono ${
-                  uplinkCore === core.id ? 'text-white' : 'text-white/40'
-                }`}>
+                <span className={`text-[8px] font-bold uppercase tracking-wider font-mono ${uplinkCore === core.id ? 'text-white' : 'text-white/40'
+                  }`}>
                   {core.label}
                 </span>
                 {uplinkCore === core.id && (
@@ -312,18 +378,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               <button
                 key={t.id}
                 onClick={() => setTheme(t.id)}
-                className={`flex items-center gap-4 p-4 border transition-all text-left bg-[#080808] relative group ${
-                  theme === t.id 
-                    ? 'border-[#00ff41] shadow-[0_0_15px_rgba(0,255,65,0.05)]' 
-                    : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
-                }`}
+                className={`flex items-center gap-4 p-4 border transition-all text-left bg-[#080808] relative group ${theme === t.id
+                  ? 'border-[#00ff41] shadow-[0_0_15px_rgba(0,255,65,0.05)]'
+                  : 'border-current border-opacity-20 opacity-40 hover:opacity-100 hover:border-opacity-100'
+                  }`}
               >
-                <div className={`w-3.5 h-3.5 rounded-full shrink-0 ${t.dotColor} ${
-                  theme === t.id ? 'shadow-[0_0_8px_currentColor] ring-2 ring-current ring-opacity-20' : 'opacity-40'
-                }`}></div>
-                <span className={`text-[10px] font-bold uppercase tracking-wider font-mono ${
-                  theme === t.id ? 'text-white' : 'text-white/40'
-                }`}>
+                <div className={`w-3.5 h-3.5 rounded-full shrink-0 ${t.dotColor} ${theme === t.id ? 'shadow-[0_0_8px_currentColor] ring-2 ring-current ring-opacity-20' : 'opacity-40'
+                  }`}></div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider font-mono ${theme === t.id ? 'text-white' : 'text-white/40'
+                  }`}>
                   {t.label}
                 </span>
                 {theme === t.id && (
@@ -336,7 +399,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Other Settings Sections */}
         <div className="space-y-10 border-t border-current border-opacity-10 pt-10">
-          
+
           {/* Appearance Section */}
           <div className="space-y-4">
             <h4 className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] text-current">appearance</h4>
@@ -345,9 +408,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   key={mode}
                   onClick={() => setAppearance(mode)}
-                  className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
-                    appearance === mode ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
-                  }`}
+                  className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${appearance === mode ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                    }`}
                 >
                   {mode}
                 </button>
@@ -361,17 +423,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="flex gap-3">
               <button
                 onClick={() => handlePowToggle(false)}
-                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
-                  !pow ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
-                }`}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${!pow ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                  }`}
               >
                 pow off
               </button>
               <button
                 onClick={() => handlePowToggle(true)}
-                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
-                  pow ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
-                }`}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${pow ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                  }`}
               >
                 pow on
               </button>
@@ -402,17 +462,15 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             <div className="flex gap-3">
               <button
                 onClick={() => handleTorToggle(false)}
-                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${
-                  !tor ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
-                }`}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all ${!tor ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                  }`}
               >
                 tor off
               </button>
               <button
                 onClick={() => handleTorToggle(true)}
-                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all relative ${
-                  tor ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
-                }`}
+                className={`px-6 py-2 border border-current text-[11px] font-mono tracking-widest transition-all relative ${tor ? 'bg-white/10 text-white border-opacity-100' : 'opacity-40 border-opacity-30'
+                  }`}
               >
                 tor on
                 {tor && <span className="absolute right-2 top-2 w-1.5 h-1.5 rounded-full bg-[#00ff41] animate-pulse"></span>}
@@ -455,7 +513,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               <p className="text-[11px] opacity-60 mb-4 text-current">
                 Install XitChat to your home screen for instant access and a native app experience.
               </p>
-              <button 
+              <button
                 onClick={onInstallApp}
                 className="w-full bg-[#00ff41] text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:bg-[#00cc33] transition-all flex items-center justify-center gap-2"
               >
@@ -484,17 +542,17 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
             <div className="border border-current border-opacity-10 p-4 bg-[#080808]">
               <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest mb-1 text-white/40">uptime</p>
-              <p className="text-lg font-bold text-white glow-text">{Math.floor(uptime/60)}m</p>
+              <p className="text-lg font-bold text-white glow-text">{Math.floor(uptime / 60)}m</p>
             </div>
           </div>
 
-          <button 
+          <button
             onClick={onSOS}
             className="w-full bg-red-900/40 border border-red-500 text-red-500 py-4 font-black uppercase text-xs tracking-[0.4em] hover:bg-red-500 hover:text-white transition-all"
           >
             emergency_sos
           </button>
-          <button 
+          <button
             onClick={onWipe}
             className="w-full border border-red-500/20 text-red-500/50 hover:text-red-500 hover:border-red-500 py-3 uppercase text-[10px] font-bold tracking-[0.2em] transition-all"
           >

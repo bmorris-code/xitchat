@@ -1,4 +1,5 @@
 import { bluetoothMesh, MeshNode } from './bluetoothMesh';
+import { nostrService } from './nostrService';
 
 export interface UserPermissions {
   nodeId: string;
@@ -34,13 +35,32 @@ class MeshPermissionsService {
   constructor() {
     this.initializePermissions();
     this.loadPermissions();
+    this.subscribeToNostrSignals();
+  }
+
+  private subscribeToNostrSignals() {
+    // Listen for permission requests via Nostr
+    nostrService.subscribe('messageReceived', (message) => {
+      try {
+        const data = JSON.parse(message.content);
+        if (data.type === 'permission_request') {
+          this.handlePermissionRequest(data.payload);
+        } else if (data.type === 'permission_approved') {
+          this.handlePermissionApproved(data.payload);
+        } else if (data.type === 'permission_denied') {
+          this.handlePermissionDenied(data.payload);
+        }
+      } catch (e) {
+        // Not a permission message
+      }
+    });
   }
 
   private initializePermissions() {
     // Default permissions for current user
     this.myPermissions = {
-      nodeId: 'me',
-      handle: '@symbolic', // Current user handle
+      nodeId: nostrService.getPublicKey() || 'me',
+      handle: localStorage.getItem('xitchat_handle') || '@symbolic', // Current user handle
       grantedPermissions: {
         profileView: true,      // Everyone can see basic profile
         chatAccess: false,     // Must grant chat access
@@ -94,12 +114,15 @@ class MeshPermissionsService {
       payload: this.myPermissions,
       timestamp: Date.now()
     };
-    
-    // Broadcast to all available peers
+
+    // 1. Broadcast to local mesh
     const peers = bluetoothMesh.getPeers();
     for (const peer of peers) {
       bluetoothMesh.sendMessage(peer.id, JSON.stringify(message));
     }
+
+    // 2. Broadcast to Nostr (cross-device sync)
+    nostrService.broadcastMessage(JSON.stringify(message));
   }
 
   // GRANT PERMISSIONS TO SPECIFIC USER
@@ -125,13 +148,19 @@ class MeshPermissionsService {
       },
       timestamp: Date.now()
     };
+    // 1. Send via local mesh
     bluetoothMesh.sendMessage(nodeId, JSON.stringify(confirmation));
+
+    // 2. Send via Nostr (if it's a Nostr pubkey)
+    if (nodeId.length === 64) {
+      nostrService.sendDirectMessage(nodeId, JSON.stringify(confirmation));
+    }
   }
 
   // REQUEST PERMISSIONS FROM USER
   async requestPermissions(nodeId: string, handle: string, requestedPermissions: string[], message: string): Promise<string> {
     const requestId = `perm_${Date.now()}`;
-    
+
     const request: PermissionRequest = {
       id: requestId,
       fromNode: 'me',
@@ -151,11 +180,36 @@ class MeshPermissionsService {
       payload: request
     };
 
+    // 1. Send via local mesh
     await bluetoothMesh.sendMessage(nodeId, JSON.stringify(meshMessage));
+
+    // 2. Send via Nostr (if it's a Nostr pubkey)
+    if (nodeId.length === 64) {
+      await nostrService.sendDirectMessage(nodeId, JSON.stringify(meshMessage));
+    }
+
     this.savePermissions();
     this.notifyListeners('permissionRequestSent', request);
 
     return requestId;
+  }
+
+  private handlePermissionApproved(payload: any) {
+    const request = this.sentRequests.find(r => r.id === payload.requestId);
+    if (request) {
+      request.status = 'approved';
+      this.savePermissions();
+      this.notifyListeners('permissionRequestApproved', request);
+    }
+  }
+
+  private handlePermissionDenied(payload: any) {
+    const request = this.sentRequests.find(r => r.id === payload.requestId);
+    if (request) {
+      request.status = 'denied';
+      this.savePermissions();
+      this.notifyListeners('permissionRequestDenied', request);
+    }
   }
 
   // HANDLE INCOMING PERMISSION REQUEST
@@ -227,35 +281,35 @@ class MeshPermissionsService {
   // PERMISSION CHECKS
   canViewProfile(nodeId: string): boolean {
     if (nodeId === 'me') return true; // Can always view own profile
-    
+
     const userPermission = this.grantedToOthers.get(nodeId);
     return userPermission?.grantedPermissions.profileView || false;
   }
 
   canChatWith(nodeId: string): boolean {
     if (nodeId === 'me') return true;
-    
+
     const userPermission = this.grantedToOthers.get(nodeId);
     return userPermission?.grantedPermissions.chatAccess || false;
   }
 
   canViewMarketplace(nodeId: string): boolean {
     if (nodeId === 'me') return true;
-    
+
     const userPermission = this.grantedToOthers.get(nodeId);
     return userPermission?.grantedPermissions.marketplaceView || false;
   }
 
   canViewProximity(nodeId: string): boolean {
     if (nodeId === 'me') return true;
-    
+
     const userPermission = this.grantedToOthers.get(nodeId);
     return userPermission?.grantedPermissions.proximityData || false;
   }
 
   canViewNodeStatus(nodeId: string): boolean {
     if (nodeId === 'me') return true;
-    
+
     const userPermission = this.grantedToOthers.get(nodeId);
     return userPermission?.grantedPermissions.nodeStatus || false;
   }
@@ -283,7 +337,7 @@ class MeshPermissionsService {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
-    
+
     return () => {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     };
@@ -298,12 +352,12 @@ class MeshPermissionsService {
   // CLEANUP
   cleanupExpiredRequests() {
     const now = Date.now();
-    
-    this.receivedRequests = this.receivedRequests.filter(r => 
+
+    this.receivedRequests = this.receivedRequests.filter(r =>
       r.status === 'pending' ? r.expiresAt > now : true
     );
-    
-    this.sentRequests = this.sentRequests.filter(r => 
+
+    this.sentRequests = this.sentRequests.filter(r =>
       r.status === 'pending' ? r.expiresAt > now : true
     );
 

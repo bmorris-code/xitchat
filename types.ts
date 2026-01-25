@@ -50,6 +50,11 @@ export interface Message {
   reactions?: Reaction[];
   timestamp: number;
   isAi?: boolean;
+  encryptedData?: {
+    data: string;
+    iv: string;
+    salt: string;
+  };
 }
 
 export interface Chat {
@@ -59,6 +64,7 @@ export interface Chat {
   lastMessage: string;
   unreadCount: number;
   messages: Message[];
+  isEncrypted?: boolean;
 }
 
 export type View = 'chats' | 'map' | 'apps' | 'tradepost' | 'joebanker' | 'buzz' | 'gallery' | 'rooms' | 'games' | 'profile' | 'settings' | 'marketplace' | 'native' | 'xc_dashboard';

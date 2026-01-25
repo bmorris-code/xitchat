@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { hybridMesh } from '../services/hybridMesh';
 
 interface GalleryImage {
   id: string;
@@ -21,7 +22,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
   const [caption, setCaption] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  // const [forceRemount, setForceRemount] = useState(0); // This state was unused, removed for cleanliness
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Reset selectedImage when component unmounts
@@ -43,6 +43,20 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
     } else {
       loadDefaultImages();
     }
+
+    // Listen for mesh gallery items
+    const handleMeshItem = (event: any) => {
+      const newItem = event.detail;
+      setImages(prev => {
+        if (prev.find(img => img.id === newItem.id)) return prev;
+        const updated = [newItem, ...prev];
+        localStorage.setItem('xitchat_gallery_images', JSON.stringify(updated));
+        return updated;
+      });
+    };
+
+    window.addEventListener('meshGalleryItem', handleMeshItem);
+    return () => window.removeEventListener('meshGalleryItem', handleMeshItem);
   }, []);
 
   const loadDefaultImages = () => {
@@ -180,28 +194,34 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
 
   const handleUpload = () => {
     if (!caption.trim() || !selectedFile) return;
-    
+
     setIsUploading(true);
-    
+
     setTimeout(() => {
       const newImage: GalleryImage = {
         id: `img-${Date.now()}`,
-        url: selectedFile, 
+        url: selectedFile,
         caption: caption.trim(),
         timestamp: Date.now(),
         uploader: 'me',
         likes: 0,
         isLiked: false
       };
-      
+
       const newImages = [newImage, ...images];
       saveImages(newImages);
-      
+
+      // Broadcast to mesh
+      hybridMesh.sendMessage(JSON.stringify({
+        type: 'gallery_item',
+        data: newImage
+      }));
+
       setCaption('');
       setUploadModal(false);
       setIsUploading(false);
       setSelectedFile(null);
-      
+
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -265,14 +285,14 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
       const response = await fetch(image.url);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      
+
       const link = document.createElement('a');
       link.href = url;
       link.download = `xitchat_${image.id}_${image.caption.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       window.URL.revokeObjectURL(url);
       alert('Image saved successfully!');
     } catch (error) {
@@ -308,7 +328,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
   const formatTimestamp = (timestamp: number) => {
     const now = Date.now();
     const diff = now - timestamp;
-    
+
     if (diff < 60000) return 'just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
@@ -323,9 +343,9 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-current border-opacity-20">
           <div className="flex items-center gap-4">
-             {/* FIXED: Back button now closes the viewer (setSelectedImage(null)) */}
-             <button onClick={() => setSelectedImage(null)}
-               className="terminal-btn px-2 py-0 h-8 text-[10px] uppercase">back_to_grid</button>
+            {/* FIXED: Back button now closes the viewer (setSelectedImage(null)) */}
+            <button onClick={() => setSelectedImage(null)}
+              className="terminal-btn px-2 py-0 h-8 text-[10px] uppercase">back_to_grid</button>
             <div>
               <h2 className="text-xl font-bold">IMAGE_VIEWER</h2>
               <p className="text-xs opacity-60">Node Transmission</p>
@@ -338,13 +358,13 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="max-w-4xl w-full">
             <div className="mb-4">
-              <img 
-                src={selectedImage.url} 
+              <img
+                src={selectedImage.url}
                 alt={selectedImage.caption}
                 className="w-full h-auto max-h-[60vh] object-contain border border-current border-opacity-30"
               />
             </div>
-            
+
             {/* Image Info */}
             <div className="text-center space-y-4">
               <h3 className="text-lg font-bold">{selectedImage.caption}</h3>
@@ -355,22 +375,22 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
                 <span>•</span>
                 <span>{selectedImage.likes} likes</span>
               </div>
-              
+
               {/* Actions */}
               <div className="flex justify-center gap-4">
-                <button 
+                <button
                   onClick={() => handleLike(selectedImage.id)}
                   className={`terminal-btn px-4 py-2 text-sm ${selectedImage.isLiked ? 'text-red-400' : ''}`}
                 >
                   {selectedImage.isLiked ? '❤️ liked' : '🤍 like'}
                 </button>
-                <button 
+                <button
                   onClick={() => handleShare(selectedImage)}
                   className="terminal-btn px-4 py-2 text-sm"
                 >
                   🔗 share
                 </button>
-                <button 
+                <button
                   onClick={() => handleSave(selectedImage)}
                   className="terminal-btn px-4 py-2 text-sm"
                 >
@@ -390,15 +410,15 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
       {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-current border-opacity-20">
         <div className="flex items-center gap-4">
-            {/* Back button here calls onBack to go to the Hub */}
-            <button onClick={onBack} className="terminal-btn text-xs px-2 py-1 h-8 min-h-0 uppercase">back_to_hub</button>
-          
+          {/* Back button here calls onBack to go to the Hub */}
+          <button onClick={onBack} className="terminal-btn text-xs px-2 py-1 h-8 min-h-0 uppercase">back_to_hub</button>
+
           <div>
             <h2 className="text-lg font-bold">pics_gallery.exe</h2>
             <p className="text-xs opacity-60">Shared node transmissions</p>
           </div>
         </div>
-        <button 
+        <button
           onClick={() => fileInputRef.current?.click()}
           className="terminal-btn text-xs px-2 py-1 h-8 min-h-0 uppercase"
         >
@@ -439,14 +459,14 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
             </div>
           ))}
         </div>
-        
+
         {images.length === 0 && (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
               <div className="text-6xl mb-4">📷</div>
               <h3 className="text-xl font-bold mb-2">No images yet</h3>
               <p className="text-sm opacity-60 mb-4">Be the first to share a node transmission!</p>
-              <button 
+              <button
                 onClick={() => fileInputRef.current?.click()}
                 className="terminal-btn active px-4 py-2"
               >
@@ -462,21 +482,21 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
         <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-6">
           <div className="max-w-md w-full border-2 border-current bg-[#050505] p-6">
             <h3 className="text-lg font-bold mb-4">UPLOAD_TRANSMISSION</h3>
-            
+
             {/* Image Preview */}
             {selectedFile && (
               <div className="mb-4">
                 <label className="block text-xs opacity-60 mb-2">PREVIEW</label>
                 <div className="border border-current border-opacity-30 p-2">
-                  <img 
-                    src={selectedFile} 
-                    alt="Upload preview" 
+                  <img
+                    src={selectedFile}
+                    alt="Upload preview"
                     className="w-full h-48 object-cover"
                   />
                 </div>
               </div>
             )}
-            
+
             <div className="mb-4">
               <label className="block text-xs opacity-60 mb-2">CAPTION</label>
               <textarea
@@ -489,7 +509,7 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
               />
               <div className="text-xs opacity-40 mt-1">{caption.length}/200</div>
             </div>
-            
+
             <div className="flex gap-2">
               <button
                 onClick={handleUpload}

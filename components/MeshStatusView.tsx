@@ -12,6 +12,7 @@ const MeshStatusView: React.FC = () => {
   const [lastSyncTime, setLastSyncTime] = useState<number>(0);
   const [connectionType, setConnectionType] = useState<MeshConnectionType>('simulation');
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
+  const [bridgeStats, setBridgeStats] = useState({ bridgedIn: 0, bridgedOut: 0 });
 
   useEffect(() => {
     initializeMeshStatus();
@@ -22,7 +23,7 @@ const MeshStatusView: React.FC = () => {
     const connType = await hybridMesh.initialize();
     setConnectionType(connType);
     setConnectionInfo(hybridMesh.getConnectionInfo());
-    
+
     // Check connection status
     setIsConnected(hybridMesh.isConnectedToMesh());
 
@@ -61,6 +62,7 @@ const MeshStatusView: React.FC = () => {
 
     const unsubscribeHybridMessages = hybridMesh.subscribe('messageReceived', (message) => {
       console.log('Hybrid mesh message received:', message);
+      setBridgeStats(hybridMesh.getBridgeStats());
     });
 
     return () => {
@@ -171,6 +173,30 @@ const MeshStatusView: React.FC = () => {
         </div>
       </div>
 
+      {/* Bridging Status */}
+      <div className="border border-cyan-500/30 bg-cyan-500/5 p-4 mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-sm font-bold uppercase text-cyan-400 flex items-center gap-2">
+            <i className="fa-solid fa-bridge"></i>
+            mesh_bridging_active
+          </h3>
+          <span className="text-[8px] bg-cyan-500 text-black px-2 py-0.5 font-black uppercase">bridge_node_v1</span>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="text-center p-3 border border-cyan-500/20 bg-black/40">
+            <p className="text-[8px] opacity-50 uppercase mb-1">bridged_in (nostr &gt; local)</p>
+            <p className="text-xl font-bold text-white">{bridgeStats.bridgedIn}</p>
+          </div>
+          <div className="text-center p-3 border border-cyan-500/20 bg-black/40">
+            <p className="text-[8px] opacity-50 uppercase mb-1">bridged_out (local &gt; nostr)</p>
+            <p className="text-xl font-bold text-white">{bridgeStats.bridgedOut}</p>
+          </div>
+        </div>
+        <p className="text-[8px] opacity-30 mt-3 italic text-center uppercase tracking-widest">
+          &gt; extending_network_range_via_multi_layer_routing
+        </p>
+      </div>
+
       {/* Node Statuses */}
       <div className="mb-8">
         <h3 className="text-lg font-bold uppercase mb-4">mesh_nodes</h3>
@@ -179,10 +205,9 @@ const MeshStatusView: React.FC = () => {
             <div key={node.nodeId} className="border border-current border-opacity-10 p-4 bg-[#050505]">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    node.status === 'online' ? 'bg-green-500' : 
+                  <div className={`w-2 h-2 rounded-full ${node.status === 'online' ? 'bg-green-500' :
                     node.status === 'away' ? 'bg-yellow-500' : 'bg-red-500'
-                  }`}></div>
+                    }`}></div>
                   <span className="font-bold text-white">{node.handle}</span>
                 </div>
                 <span className="text-[8px] opacity-60">v{node.dataVersion}</span>
@@ -260,13 +285,13 @@ const MeshStatusView: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button 
+                  <button
                     onClick={() => handleResolveConflict(conflict.packetId, 'local_wins')}
                     className="terminal-btn px-3 py-1 text-[8px] uppercase"
                   >
                     keep_local
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleResolveConflict(conflict.packetId, 'remote_wins')}
                     className="terminal-btn active px-3 py-1 text-[8px] uppercase"
                   >

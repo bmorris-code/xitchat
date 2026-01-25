@@ -1,5 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { enhancedDiscovery, DiscoveredPeer } from '../services/enhancedDiscovery';
+import { nostrService } from '../services/nostrService';
 
 interface QRDiscoveryProps {
   onPeerConnected: (peer: DiscoveredPeer) => void;
@@ -17,13 +19,15 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
   }, []);
 
   const generateMyQRCode = () => {
+    const pubKey = nostrService.getPublicKey();
     const myData = {
-      id: generatePeerId(),
-      name: localStorage.getItem('xitchat_name') || 'XitChat User',
-      handle: localStorage.getItem('xitchat_handle') || '@user',
-      timestamp: Date.now()
+      id: pubKey || generatePeerId(),
+      name: localStorage.getItem('xitchat_handle') || 'XitChat User',
+      handle: `@${localStorage.getItem('xitchat_handle') || 'user'}`,
+      timestamp: Date.now(),
+      type: 'xitchat-identity'
     };
-    
+
     const qrString = JSON.stringify(myData);
     setMyQRData(qrString);
   };
@@ -35,9 +39,13 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
   const handleScanResult = (result: string) => {
     try {
       const peerData = JSON.parse(result);
-      addPeerFromQR(peerData);
-      setScanResult(result);
-      setShowScanner(false);
+      if (peerData.type === 'xitchat-identity' || peerData.id) {
+        addPeerFromQR(peerData);
+        setScanResult(result);
+        setShowScanner(false);
+      } else {
+        throw new Error('Invalid XitChat QR');
+      }
     } catch (error) {
       console.error('Invalid QR code data:', error);
       alert('Invalid QR code. Please scan a valid XitChat QR code.');
@@ -51,7 +59,7 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
         name: peerData.name,
         handle: peerData.handle
       });
-      
+
       // Try to connect to the peer
       const connected = await enhancedDiscovery.connectToPeer(peerData.id);
       if (connected) {
@@ -81,7 +89,7 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
         name: manualPeerName,
         handle: `@${manualPeerName.toLowerCase().replace(/\s+/g, '')}`
       });
-      
+
       setManualPeerId('');
       setManualPeerName('');
       alert('Peer added successfully!');
@@ -93,7 +101,7 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(myQRData).then(() => {
-      alert('QR data copied to clipboard! Share this with other users.');
+      alert('Identity data copied to clipboard!');
     });
   };
 
@@ -101,9 +109,9 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'XitChat Peer Connection',
-          text: `Connect with me on XitChat! Peer ID: ${JSON.parse(myQRData).id}`,
-          url: myQRData
+          title: 'XitChat Identity',
+          text: `Connect with me on XitChat! My Public Key: ${JSON.parse(myQRData).id}`,
+          url: window.location.href
         });
       } catch (error) {
         console.log('Share cancelled or failed:', error);
@@ -114,112 +122,141 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
   };
 
   return (
-    <div className="p-6 bg-[#0a0a0a] border border-green-500/30 rounded-lg">
-      <h3 className="text-xl font-bold text-green-400 mb-4">🔗 Peer Discovery</h3>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* My QR Code */}
-        <div className="space-y-4">
-          <h4 className="text-lg font-semibold text-green-300">Share Your QR Code</h4>
-          
-          <div className="bg-white p-4 rounded-lg flex items-center justify-center">
+    <div className="flex-1 p-6 overflow-y-auto bg-black text-current font-mono no-scrollbar">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8 border-b border-current pb-4">
+        <div>
+          <h2 className="text-3xl font-bold uppercase tracking-tighter glow-text">discovery.exe</h2>
+          <p className="text-[10px] font-bold opacity-50 uppercase tracking-widest text-white/30">secure_peer_handshake</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+        {/* My Identity Card */}
+        <div className="border border-current border-opacity-30 p-6 bg-[#050505] space-y-6">
+          <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-current opacity-60">my_identity_qr</h3>
+
+          <div className="bg-white p-6 rounded-xl flex flex-col items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.1)]">
             {myQRData && (
-              <div className="text-center">
-                <div className="w-48 h-48 bg-gray-800 flex items-center justify-center rounded">
-                  <div className="text-xs text-gray-400 p-2">
-                    QR Code Placeholder<br/>
-                    (Install QR library for display)
+              <div className="text-center space-y-4">
+                <div className="w-48 h-48 bg-black flex items-center justify-center border-4 border-black">
+                  {/* In a real app, we'd use a QR library here. For now, a stylized placeholder */}
+                  <div className="grid grid-cols-4 gap-1 opacity-20">
+                    {[...Array(16)].map((_, i) => (
+                      <div key={i} className={`w-8 h-8 ${Math.random() > 0.5 ? 'bg-[#00ff41]' : 'bg-transparent'}`}></div>
+                    ))}
+                  </div>
+                  <div className="absolute text-[8px] text-[#00ff41] font-black uppercase tracking-widest">
+                    identity_locked
                   </div>
                 </div>
-                <p className="text-xs text-gray-600 mt-2 break-all">
-                  {JSON.parse(myQRData).id}
-                </p>
+                <div className="space-y-1">
+                  <p className="text-[10px] text-black font-black uppercase tracking-tighter">
+                    {JSON.parse(myQRData).handle}
+                  </p>
+                  <p className="text-[8px] text-black/40 font-mono break-all max-w-[180px]">
+                    {JSON.parse(myQRData).id}
+                  </p>
+                </div>
               </div>
             )}
           </div>
-          
-          <div className="flex gap-2">
+
+          <div className="grid grid-cols-2 gap-4">
             <button
               onClick={copyToClipboard}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+              className="terminal-btn py-3 text-[10px] uppercase font-bold"
             >
-              📋 Copy
+              copy_id
             </button>
             <button
               onClick={shareMyQR}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+              className="terminal-btn active py-3 text-[10px] uppercase font-bold"
             >
-              📤 Share
+              share_link
             </button>
           </div>
         </div>
 
-        {/* Add Peer */}
-        <div className="space-y-4">
-          <h4 className="text-lg font-semibold text-green-300">Add Peer</h4>
-          
-          {/* Manual Entry */}
-          <div className="space-y-2">
-            <input
-              type="text"
-              placeholder="Peer ID"
-              value={manualPeerId}
-              onChange={(e) => setManualPeerId(e.target.value)}
-              className="w-full px-3 py-2 bg-black/50 border border-green-500/30 rounded text-white placeholder-gray-500"
-            />
-            <input
-              type="text"
-              placeholder="Peer Name"
-              value={manualPeerName}
-              onChange={(e) => setManualPeerName(e.target.value)}
-              className="w-full px-3 py-2 bg-black/50 border border-green-500/30 rounded text-white placeholder-gray-500"
-            />
-            <button
-              onClick={handleManualAdd}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-            >
-              ➕ Add Peer Manually
-            </button>
-          </div>
+        {/* Scanner / Manual Entry */}
+        <div className="space-y-8">
+          <div className="border border-current border-opacity-30 p-6 bg-[#050505] space-y-6">
+            <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-current opacity-60">scan_peer_node</h3>
 
-          {/* QR Scanner */}
-          <div className="space-y-2">
             <button
               onClick={() => setShowScanner(!showScanner)}
-              className="w-full px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+              className={`w-full py-6 border-2 border-dashed transition-all flex flex-col items-center justify-center gap-3 ${showScanner ? 'border-[#00ff41] bg-[#00ff41]/5' : 'border-current border-opacity-20 hover:border-opacity-100'
+                }`}
             >
-              📷 {showScanner ? 'Hide' : 'Show'} QR Scanner
+              <i className={`fa-solid ${showScanner ? 'fa-video' : 'fa-camera'} text-2xl`}></i>
+              <span className="text-[10px] font-bold uppercase tracking-widest">
+                {showScanner ? 'initializing_optics...' : 'launch_qr_scanner'}
+              </span>
             </button>
-            
+
             {showScanner && (
-              <div className="bg-black/50 border border-purple-500/30 rounded p-4">
-                <div className="w-full h-48 bg-gray-800 flex items-center justify-center rounded">
-                  <div className="text-center text-gray-400">
-                    📷 QR Scanner<br/>
-                    (Install camera/QR library)
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-4">
+                <div className="aspect-square bg-black border border-current border-opacity-20 relative overflow-hidden">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-20">
+                    <i className="fa-solid fa-expand text-6xl"></i>
                   </div>
+                  <div className="absolute inset-x-0 top-1/2 h-0.5 bg-[#00ff41] shadow-[0_0_15px_#00ff41] animate-scan"></div>
                 </div>
                 <input
                   type="text"
-                  placeholder="Or paste QR data here"
+                  placeholder="paste_raw_handshake_data..."
                   value={scanResult}
                   onChange={(e) => handleScanResult(e.target.value)}
-                  className="w-full mt-2 px-3 py-2 bg-black/50 border border-purple-500/30 rounded text-white placeholder-gray-500"
+                  className="w-full bg-black border border-current border-opacity-30 p-3 text-[10px] text-white font-mono placeholder-white/20 focus:border-opacity-100 outline-none transition-all"
                 />
               </div>
             )}
           </div>
+
+          <div className="border border-current border-opacity-30 p-6 bg-[#050505] space-y-6">
+            <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-current opacity-60">manual_uplink</h3>
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="node_public_key..."
+                value={manualPeerId}
+                onChange={(e) => setManualPeerId(e.target.value)}
+                className="w-full bg-black border border-current border-opacity-30 p-3 text-[10px] text-white font-mono placeholder-white/20"
+              />
+              <input
+                type="text"
+                placeholder="node_alias..."
+                value={manualPeerName}
+                onChange={(e) => setManualPeerName(e.target.value)}
+                className="w-full bg-black border border-current border-opacity-30 p-3 text-[10px] text-white font-mono placeholder-white/20"
+              />
+              <button
+                onClick={handleManualAdd}
+                className="terminal-btn active w-full py-3 text-[10px] uppercase font-bold"
+              >
+                establish_manual_connection
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="mt-6 p-4 bg-yellow-900/20 border border-yellow-500/30 rounded">
-        <h4 className="text-sm font-semibold text-yellow-400 mb-2">💡 Connection Tips:</h4>
-        <ul className="text-xs text-yellow-300 space-y-1">
-          <li>• Both users must be on the same local network for automatic discovery</li>
-          <li>• QR codes work for manual connections across any network</li>
-          <li>• Bluetooth requires Android devices with location permissions</li>
-          <li>• Share your Peer ID with friends to connect directly</li>
-        </ul>
+      <div className="mt-12 p-6 border border-current border-opacity-10 bg-[#050505] rounded-lg">
+        <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-current mb-4 opacity-60">discovery_protocols</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="flex gap-4">
+            <i className="fa-solid fa-wifi text-[#00ff41] mt-1"></i>
+            <p className="text-[10px] leading-relaxed opacity-40">
+              <span className="text-white opacity-100 font-bold">LOCAL_MESH:</span> Automatic discovery via Bluetooth LE and WiFi P2P when in physical proximity.
+            </p>
+          </div>
+          <div className="flex gap-4">
+            <i className="fa-solid fa-link text-[#00ff41] mt-1"></i>
+            <p className="text-[10px] leading-relaxed opacity-40">
+              <span className="text-white opacity-100 font-bold">QR_HANDSHAKE:</span> Secure manual connection using Nostr Public Keys. Works across any network.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

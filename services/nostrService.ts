@@ -3,6 +3,7 @@
 
 import * as nostrTools from 'nostr-tools';
 import * as secp256k1 from '@noble/secp256k1';
+import { networkStateManager, NetworkService } from './networkStateManager';
 
 export interface NostrPeer {
   id: string;
@@ -48,9 +49,18 @@ class NostrService {
   private subscriptionRetryCount = new Map<string, number>();
   private lastSubscriptionTime = new Map<string, number>();
   private lastPublishTime = new Map<string, number>();
-  private readonly RATE_LIMIT_DELAY = 5000; // 5 seconds between subscriptions
-  private readonly PUBLISH_RATE_LIMIT = 2000; // 2 seconds between publishes
+  private readonly RATE_LIMIT_DELAY = 30000; // 30 seconds between subscriptions
+  private readonly PUBLISH_RATE_LIMIT = 15000; // 15 seconds between publishes
   private isInitialized = false;
+  private serviceInfo: NetworkService = {
+    name: 'nostr',
+    isConnected: false,
+    isHealthy: false,
+    lastCheck: 0,
+    reconnectAttempts: 0,
+    maxReconnectAttempts: 5,
+    reconnectDelay: 3000
+  };
 
   // Default public Nostr relays - using only most reliable ones
   private readonly defaultRelays = [
@@ -102,7 +112,16 @@ class NostrService {
       // Subscribe to relevant events
       await this.subscribeToEvents();
 
+      // Register with network state manager
+      this.serviceInfo.healthCheck = () => this.performHealthCheckInternal();
+      this.serviceInfo.reconnect = () => this.initialize(privateKey);
+      networkStateManager.registerService(this.serviceInfo);
+
       this.isInitialized = true;
+      this.serviceInfo.isConnected = true;
+      this.serviceInfo.isHealthy = true;
+      networkStateManager.updateServiceStatus('nostr', true, true);
+
       console.log('✅ Nostr service initialized successfully');
       this.emit('initialized', { publicKey: this.publicKey });
 
@@ -113,20 +132,20 @@ class NostrService {
     }
   }
 
- private async connectToRelays(): Promise<void> {
+  private async connectToRelays(): Promise<void> {
     console.log('🌐 Connecting to Nostr relays...');
 
     // Process all connections in parallel
     const connectionPromises = this.defaultRelays.map(async (relayUrl) => {
       try {
-        // Add a 5-second timeout so a bad relay doesn't hang the process
+        // Add a 10-second timeout so a bad relay doesn't hang the process
         const relay = await Promise.race([
-            this.pool!.ensureRelay(relayUrl),
-            new Promise<never>((_, reject) => 
-                setTimeout(() => reject(new Error('Connection timeout')), 5000)
-            )
+          this.pool!.ensureRelay(relayUrl),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Connection timeout')), 10000) // Increased to 10 seconds
+          )
         ]);
-        
+
         this.relays.add(relayUrl);
         this.connectedRelays.add(relayUrl);
         console.log(`✅ Connected to relay: ${relayUrl}`);
@@ -138,7 +157,7 @@ class NostrService {
     });
 
     // Wait for all attempts to finish (success or fail)
-    await Promise.all(connectionPromises);
+    await Promise.allSettled(connectionPromises);
 
     console.log(`🌐 Connected to ${this.connectedRelays.size}/${this.defaultRelays.length} relays`);
     this.emit('relaysConnected', { count: this.connectedRelays.size });
@@ -163,9 +182,9 @@ class NostrService {
     }
   }
 
- // In nostrService.ts
+  // In nostrService.ts
 
-private async subscribeToEvents(): Promise<void> {
+  private async subscribeToEvents(): Promise<void> {
     const activeRelays = Array.from(this.connectedRelays);
     if (activeRelays.length === 0) return;
 
@@ -184,8 +203,8 @@ private async subscribeToEvents(): Promise<void> {
 
       // Subscribe to direct messages with error handling
       try {
-        this.pool!.subscribeMany(activeRelays, { 
-          kinds: [4], 
+        this.pool!.subscribeMany(activeRelays, {
+          kinds: [4],
           '#p': [this.publicKey!],
           limit: 3 // Further reduced from 5
         }, {
@@ -197,23 +216,23 @@ private async subscribeToEvents(): Promise<void> {
           },
           onclose: (reason: string) => {
             if (reason.includes('rate-limited')) {
-              console.warn('⚠️ Rate limited, backing off...');
-              setTimeout(() => this.subscribeToEvents(), 10000);
+              console.debug('⚠️ Rate limited, backing off...');
+              setTimeout(() => this.subscribeToEvents(), 30000);
             }
           }
         });
       } catch (error: any) {
         if (error.message.includes('rate-limited')) {
-          console.warn('⚠️ Rate limited on direct messages, backing off...');
-          setTimeout(() => this.subscribeToEvents(), 10000);
+          console.debug('⚠️ Rate limited on direct messages, backing off...');
+          setTimeout(() => this.subscribeToEvents(), 30000);
           return;
         }
       }
 
       // Subscribe to channel messages with error handling
       try {
-        this.pool!.subscribeMany(activeRelays, { 
-          kinds: [42], 
+        this.pool!.subscribeMany(activeRelays, {
+          kinds: [42],
           limit: 3 // Further reduced from 5
         }, {
           onevent: async (event) => {
@@ -224,15 +243,15 @@ private async subscribeToEvents(): Promise<void> {
           },
           onclose: (reason: string) => {
             if (reason.includes('rate-limited')) {
-              console.warn('⚠️ Rate limited, backing off...');
-              setTimeout(() => this.subscribeToEvents(), 10000);
+              console.debug('⚠️ Rate limited, backing off...');
+              setTimeout(() => this.subscribeToEvents(), 30000);
             }
           }
         });
       } catch (error: any) {
         if (error.message.includes('rate-limited')) {
-          console.warn('⚠️ Rate limited on channel messages, backing off...');
-          setTimeout(() => this.subscribeToEvents(), 10000);
+          console.debug('⚠️ Rate limited on channel messages, backing off...');
+          setTimeout(() => this.subscribeToEvents(), 30000);
           return;
         }
       }
@@ -338,10 +357,10 @@ private async subscribeToEvents(): Promise<void> {
 
       // Create event with validated data
       const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-      
+
       // Ensure tags are properly formatted
       const tags = [['p', recipientPublicKey]];
-      
+
       const event = nostrTools.finalizeEvent({
         kind: 4, // Direct message
         created_at: Math.floor(Date.now() / 1000),
@@ -395,21 +414,21 @@ private async subscribeToEvents(): Promise<void> {
       }
 
       const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-      
+
       // Validate content and channel ID
       if (!content || content.length === 0) {
         throw new Error('Channel message content cannot be empty');
       }
-      
+
       // Allow empty channel ID for broadcast scenarios
       if (channelId && typeof channelId !== 'string') {
         console.warn('Invalid channel ID format:', channelId, typeof channelId);
         throw new Error('Invalid channel ID format');
       }
-      
+
       // Ensure tags are properly formatted (only add 'e' tag if channelId exists)
       const tags = channelId ? [['e', channelId]] : [];
-      
+
       const event = nostrTools.finalizeEvent({
         kind: 42, // Channel message
         created_at: Math.floor(Date.now() / 1000),
@@ -445,6 +464,36 @@ private async subscribeToEvents(): Promise<void> {
     }
   }
 
+  async updateProfile(metadata: { name?: string; about?: string; picture?: string; nip05?: string; banner?: string;[key: string]: any }): Promise<boolean> {
+    try {
+      if (!this.privateKey || !this.publicKey) {
+        throw new Error('Nostr service not initialized');
+      }
+
+      const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+
+      const event = nostrTools.finalizeEvent({
+        kind: 0, // Metadata event
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [],
+        content: JSON.stringify(metadata)
+      }, privateKeyBytes);
+
+      const promises = this.defaultRelays.map(relayUrl =>
+        this.pool!.publish([relayUrl], event)
+      );
+
+      await Promise.allSettled(promises);
+      console.log('👤 Profile updated on Nostr');
+
+      this.emit('profileUpdated', metadata);
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to update profile on Nostr:', error);
+      return false;
+    }
+  }
+
   async broadcastMessage(content: string): Promise<boolean> {
     try {
       if (!this.privateKey || !this.publicKey) {
@@ -461,12 +510,12 @@ private async subscribeToEvents(): Promise<void> {
       this.lastPublishTime.set('broadcast', now);
 
       const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-      
+
       // Validate content
       if (!content || content.length === 0) {
         throw new Error('Broadcast content cannot be empty');
       }
-      
+
       const event = nostrTools.finalizeEvent({
         kind: 1, // Text note (broadcast)
         created_at: Math.floor(Date.now() / 1000),
@@ -485,23 +534,23 @@ private async subscribeToEvents(): Promise<void> {
           // Add timeout to prevent hanging
           const result = await Promise.race([
             this.pool!.publish([relayUrl], event),
-            new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Publish timeout')), 5000)
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Publish timeout')), 10000) // Increased to 10 seconds
             )
           ]);
           return { relay: relayUrl, success: true, result };
         } catch (error: any) {
-          if (error.message.includes('rate-limited') || error.message.includes('slow down')) {
-            console.warn(`⚠️ Rate limited by ${relayUrl}, backing off...`);
+          if (error.message && (error.message.includes('rate-limited') || error.message.includes('slow down'))) {
+            console.debug(`⚠️ Rate limited by ${relayUrl}, backing off...`);
             return { relay: relayUrl, success: false, error: 'rate-limited' };
           }
-          return { relay: relayUrl, success: false, error: error.message };
+          return { relay: relayUrl, success: false, error: error.message || 'Unknown error' };
         }
       });
 
       const results = await Promise.allSettled(publishPromises);
       const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-      
+
       if (successful > 0) {
         console.log(`📢 Broadcasted message to ${successful}/${this.defaultRelays.length} relays`);
         this.emit('messageBroadcasted', {
@@ -511,7 +560,7 @@ private async subscribeToEvents(): Promise<void> {
         });
         return true;
       } else {
-        console.warn('⚠️ All relays rejected broadcast (rate limited)');
+        console.debug('⚠️ All relays rejected broadcast (rate limited or failed)');
         return false;
       }
     } catch (error) {
@@ -520,46 +569,7 @@ private async subscribeToEvents(): Promise<void> {
     }
   }
 
-  async updateProfile(metadata: { name?: string; about?: string; picture?: string }): Promise<boolean> {
-    try {
-      if (!this.privateKey || !this.publicKey) {
-        throw new Error('Nostr service not initialized');
-      }
 
-      const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-      
-      // Validate metadata
-      if (!metadata || typeof metadata !== 'object') {
-        throw new Error('Invalid metadata format');
-      }
-      
-      const event = nostrTools.finalizeEvent({
-        kind: 0, // Metadata
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [],
-        content: JSON.stringify(metadata)
-      }, privateKeyBytes);
-
-      // Validate event before publishing
-      if (!event || !event.id || !event.sig) {
-        throw new Error('Failed to create valid Nostr event');
-      }
-
-      // Publish to relays
-      const promises = this.defaultRelays.map(relayUrl =>
-        this.pool!.publish([relayUrl], event)
-      );
-
-      await Promise.allSettled(promises);
-      console.log('👤 Updated profile metadata');
-
-      this.emit('profileUpdated', metadata);
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to update profile:', error);
-      return false;
-    }
-  }
 
   async searchUsers(query: string): Promise<NostrPeer[]> {
     try {
@@ -657,6 +667,9 @@ private async subscribeToEvents(): Promise<void> {
       this.connectedRelays.clear();
       this.failedRelays.clear();
       this.isInitialized = false;
+      this.serviceInfo.isConnected = false;
+      this.serviceInfo.isHealthy = false;
+      networkStateManager.updateServiceStatus('nostr', false, false);
       console.log('🔌 Disconnected from Nostr relays');
       this.emit('disconnected');
     } catch (error) {
@@ -722,6 +735,11 @@ private async subscribeToEvents(): Promise<void> {
       connected: this.connectedRelays.size,
       failed: this.failedRelays.size
     };
+  }
+
+  private async performHealthCheckInternal(): Promise<boolean> {
+    const health = await this.healthCheck();
+    return health.healthy;
   }
 }
 

@@ -44,7 +44,7 @@ class LocalEncryptionService {
       // Export public key for sharing
       const publicKey = await window.crypto.subtle.exportKey('spki', keyPair.publicKey);
       const publicKeyBase64 = this.arrayBufferToBase64(publicKey);
-      
+
       // Generate fingerprint
       const fingerprint = await this.generateFingerprint(publicKey);
 
@@ -339,6 +339,75 @@ class LocalEncryptionService {
   // Check if user has keys
   hasUserKeys(userId: string): boolean {
     return this.keyPairs.has(userId);
+  }
+
+  // --- GROUP ENCRYPTION (GEOHASH-BASED) ---
+
+  async deriveGroupKey(geohash: string): Promise<CryptoKey> {
+    const encoder = new TextEncoder();
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      encoder.encode(geohash),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+
+    return window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: encoder.encode('xitchat_group_salt'),
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async encryptGroupMessage(message: string, geohash: string): Promise<EncryptedData> {
+    try {
+      const groupKey = await this.deriveGroupKey(geohash);
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+      const encoder = new TextEncoder();
+
+      const encryptedData = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        groupKey,
+        encoder.encode(message)
+      );
+
+      return {
+        data: this.arrayBufferToBase64(encryptedData),
+        iv: this.arrayBufferToBase64(iv.buffer),
+        salt: 'geohash_derived',
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      console.error('Group encryption failed:', error);
+      throw new Error('Group encryption failed');
+    }
+  }
+
+  async decryptGroupMessage(encryptedData: EncryptedData, geohash: string): Promise<string> {
+    try {
+      const groupKey = await this.deriveGroupKey(geohash);
+      const iv = this.base64ToArrayBuffer(encryptedData.iv);
+      const data = this.base64ToArrayBuffer(encryptedData.data);
+
+      const decryptedData = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: new Uint8Array(iv) },
+        groupKey,
+        data
+      );
+
+      return new TextDecoder().decode(decryptedData);
+    } catch (error) {
+      console.error('Group decryption failed:', error);
+      throw new Error('Group decryption failed');
+    }
   }
 
   // Clear all keys (for security)
