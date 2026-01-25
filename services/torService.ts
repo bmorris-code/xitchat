@@ -199,7 +199,7 @@ class TorService {
   private async fetchRealTorNodes(): Promise<TorNode[]> {
     try {
       // Fetch real TOR consensus from directory authorities
-      const consensusUrl = 'https://consensus.torproject.org/consensus';
+      const consensusUrl = 'https://consensus.torproject.org/torstatus/v3/consensus';
       const response = await fetch(consensusUrl, {
         headers: {
           'User-Agent': 'XitChat/1.0'
