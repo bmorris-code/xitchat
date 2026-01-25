@@ -75,7 +75,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     };
 
     return (
-        <div className="p-4 bg-black border-t border-[#004400] relative z-40">
+        <div className="p-4 bg-black border-t border-[#004400] relative z-40 pb-safe">
             {replyingTo && (
                 <div className="absolute bottom-full left-0 right-0 bg-white/[0.05] border-t border-current p-2 flex justify-between items-center animate-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2 overflow-hidden">
