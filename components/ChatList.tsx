@@ -48,7 +48,7 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
   }, []);
 
   return (
-    <div className={`w-full md:w-80 border-r border-[#004400] flex flex-col bg-black pt-safe ${className}`}>
+    <div className={`w-full md:w-80 h-full overflow-hidden border-r border-[#004400] flex flex-col bg-black pt-safe ${className}`}>
       <div className="p-4 md:p-6 border-b border-[#004400]">
         <div className="flex items-center justify-between mb-1 gap-2">
           <h1 className="text-xl md:text-2xl font-black uppercase tracking-tighter glow-text">

@@ -65,7 +65,7 @@ class RealMarketplaceService {
 
   private startRealTimeSync() {
     this.isRealTimeEnabled = true;
-    
+
     // Sync with mesh network every 30 seconds
     this.syncInterval = window.setInterval(() => {
       this.syncWithMesh();
@@ -79,10 +79,10 @@ class RealMarketplaceService {
     try {
       // Broadcast our listings to mesh
       await this.broadcastToListings();
-      
+
       // Request listings from mesh peers
       await this.requestMeshListings();
-      
+
       this.stats.lastUpdate = Date.now();
       this.notifyListeners('syncCompleted', this.stats);
     } catch (error) {
@@ -142,10 +142,10 @@ class RealMarketplaceService {
     this.listings.set(id, newListing);
     this.updateStats();
     this.saveListings();
-    
+
     // Immediately broadcast new listing
     this.broadcastSingleListing(newListing);
-    
+
     this.notifyListeners('listingAdded', newListing);
     return id;
   }
@@ -172,10 +172,10 @@ class RealMarketplaceService {
     this.listings.delete(id);
     this.updateStats();
     this.saveListings();
-    
+
     // Broadcast removal
     this.broadcastListingRemoval(id);
-    
+
     this.notifyListeners('listingRemoved', { id, listing });
     return true;
   }
@@ -202,10 +202,10 @@ class RealMarketplaceService {
     this.listings.set(id, updatedListing);
     this.updateStats();
     this.saveListings();
-    
+
     // Broadcast update
     this.broadcastListingUpdate(updatedListing);
-    
+
     this.notifyListeners('listingUpdated', updatedListing);
     return true;
   }
@@ -228,7 +228,7 @@ class RealMarketplaceService {
   handleMeshMessage(message: any) {
     try {
       const data = JSON.parse(message);
-      
+
       switch (data.type) {
         case 'marketplace_listing':
           this.handleIncomingListing(data.data);
@@ -321,10 +321,10 @@ class RealMarketplaceService {
   getListings(filter?: 'ALL' | 'HAVE' | 'WANT' | 'SERVICE' | 'EVENT'): MarketplaceListing[] {
     const listings = Array.from(this.listings.values());
     const now = Date.now();
-    
+
     // Filter out expired listings
     const activeListings = listings.filter(l => !l.expiresAt || l.expiresAt > now);
-    
+
     // Sort by timestamp (newest first)
     activeListings.sort((a, b) => b.timestamp - a.timestamp);
 
@@ -346,8 +346,8 @@ class RealMarketplaceService {
   searchListings(query: string): MarketplaceListing[] {
     const listings = this.getListings();
     const lowercaseQuery = query.toLowerCase();
-    
-    return listings.filter(listing => 
+
+    return listings.filter(listing =>
       listing.title.toLowerCase().includes(lowercaseQuery) ||
       listing.description.toLowerCase().includes(lowercaseQuery) ||
       listing.senderHandle.toLowerCase().includes(lowercaseQuery)
@@ -360,7 +360,7 @@ class RealMarketplaceService {
       this.listeners[event] = [];
     }
     this.listeners[event].push(callback);
-    
+
     return () => {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     };

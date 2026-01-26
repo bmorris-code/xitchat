@@ -160,7 +160,7 @@ class HybridMeshService {
     try {
       const apiKey = import.meta.env.VITE_ABLY_API_KEY;
       if (!apiKey) {
-        console.warn('⚠️ VITE_ABLY_API_KEY not found, WebRTC layer skipped');
+        console.debug('ℹ️ VITE_ABLY_API_KEY not found, WebRTC layer skipped (add to .env.local to enable)');
         return false;
       }
       const success = await ablyWebRTC.initialize(apiKey);
@@ -194,6 +194,40 @@ class HybridMeshService {
     this.peers.set(peer.id, hybridPeer);
   }
 
+  // Public method to add external peers (from radar, etc.)
+  public addExternalPeer(peer: Partial<HybridMeshPeer>, connectionType: MeshConnectionType) {
+    const hybridPeer: HybridMeshPeer = {
+      id: peer.id || 'unknown',
+      name: peer.name || 'Unknown',
+      handle: peer.handle || '@unknown',
+      connectionType: connectionType,
+      isConnected: peer.isConnected !== undefined ? peer.isConnected : true,
+      lastSeen: peer.lastSeen || Date.now(),
+      signalStrength: peer.signalStrength,
+      capabilities: peer.capabilities || ['chat'],
+      serviceId: peer.serviceId || peer.id
+    };
+    this.peers.set(hybridPeer.id, hybridPeer);
+    this.notifyPeersUpdated();
+    console.log(`🔗 External peer added to hybrid mesh: ${hybridPeer.handle} via ${connectionType}`);
+  }
+
+  private handleChatMessage(content: string, from: string, connectionType: MeshConnectionType) {
+    // Emit message for chat system to handle
+    this.notifyListeners('messageReceived', {
+      id: Math.random().toString(36).substr(2, 9),
+      from: from,
+      to: 'me',
+      content: content,
+      timestamp: Date.now(),
+      connectionType: connectionType,
+      encrypted: false,
+      isBridged: false
+    });
+
+    console.log(`💬 Chat message received from ${from} via ${connectionType}: ${content.substring(0, 50)}...`);
+  }
+
   private handleMessage(connectionType: MeshConnectionType, message: any) {
     let content = message.content;
     let metadata: any = {};
@@ -208,7 +242,8 @@ class HybridMeshService {
           metadata = {
             tor: parsed.tor,
             pow: parsed.pow,
-            timestamp: parsed.timestamp
+            timestamp: parsed.timestamp,
+            messageId: parsed.messageId
           };
 
           // Re-parse the inner content if it's JSON
@@ -247,32 +282,28 @@ class HybridMeshService {
               return;
             }
             if (inner.type === 'trade_request') {
-              window.dispatchEvent(new CustomEvent('meshTradeRequest', { detail: inner.data }));
+              window.dispatchEvent(new CustomEvent('meshTradeRequest', { detail: { ...inner.data, fromNode: message.from } }));
+              return;
+            }
+            if (inner.type === 'trade_response') {
+              window.dispatchEvent(new CustomEvent('meshTradeResponse', { detail: inner.data }));
+              return;
+            }
+            if (inner.type === 'chat_message') {
+              // Handle chat messages from radar peers
+              this.handleChatMessage(inner.data, message.from, connectionType);
               return;
             }
           }
         }
       }
-    } catch (e) { }
 
-    const hybridMessage: HybridMeshMessage = {
-      id: message.id || Math.random().toString(36),
-      from: message.from,
-      to: message.to,
-      content,
-      timestamp: metadata.timestamp || (message.timestamp instanceof Date ? message.timestamp.getTime() : (message.timestamp || Date.now())),
-      connectionType,
-      encrypted: message.encrypted || false,
-      isBridged: message.isBridged || false,
-      tor: metadata.tor,
-      pow: metadata.pow
-    };
+      // Handle regular chat messages
+      this.handleChatMessage(content, message.from, connectionType);
 
-    if (this.isBridgeEnabled) {
-      this.handleBridging(hybridMessage);
+    } catch (error) {
+      console.error('Failed to parse hybrid mesh message:', error, content);
     }
-
-    this.notifyListeners('messageReceived', hybridMessage);
   }
 
   private handleBridging(message: HybridMeshMessage) {
@@ -312,35 +343,100 @@ class HybridMeshService {
         encryptedData,
         tor: torEnabled,
         pow: powSolution,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        messageId: Math.random().toString(36).substr(2, 9)
       });
+
+      console.log('📨 Sending message:', { targetId, content: content.substring(0, 50), networks: this.getActiveServices() });
 
       if (targetId) {
         const peer = this.peers.get(targetId);
         if (peer) {
+          console.log(`🎯 Targeted message to ${targetId} via ${peer.connectionType}`);
+          
+          // Try primary network first
+          let success = false;
           switch (peer.connectionType) {
-            case 'bluetooth': await workingBluetoothMesh.sendMessage(peer.serviceId!, payload); break;
-            case 'wifi': await wifiP2P.sendMessage(peer.serviceId!, payload); break;
-            case 'nostr': await nostrService.sendDirectMessage(peer.serviceId!, payload); break;
-            case 'broadcast': await broadcastMesh.sendMessage(peer.serviceId!, payload); break;
-            case 'webrtc': await ablyWebRTC.sendMessage(payload); break;
+            case 'bluetooth': 
+              success = await workingBluetoothMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              break;
+            case 'wifi': 
+              success = await wifiP2P.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              break;
+            case 'nostr': 
+              success = await nostrService.sendDirectMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              break;
+            case 'broadcast': 
+              success = await broadcastMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              break;
+            case 'webrtc': 
+              try {
+                await ablyWebRTC.sendMessage(payload);
+                success = true;
+              } catch (e) {
+                success = false;
+              }
+              break;
+          }
+
+          // If primary network fails, try fallback networks
+          if (!success) {
+            console.log(`⚠️ Primary network ${peer.connectionType} failed, trying fallback networks...`);
+            
+            // Try Nostr as universal fallback
+            if (this.activeServices.nostr && peer.connectionType !== 'nostr') {
+              console.log('🔄 Trying Nostr fallback...');
+              await nostrService.sendDirectMessage(peer.serviceId!, payload).catch(() => {});
+            }
+            
+            // Try Broadcast as another fallback
+            if (this.activeServices.broadcast && peer.connectionType !== 'broadcast') {
+              console.log('🔄 Trying Broadcast fallback...');
+              await broadcastMesh.sendMessage(peer.serviceId!, payload).catch(() => {});
+            }
           }
           return;
+        } else {
+          console.warn(`⚠️ Peer ${targetId} not found in hybrid mesh`);
         }
       }
 
-      // Broadcast to all active services
-      if (this.activeServices.broadcast) broadcastMesh.broadcastMessage(payload).catch(() => { });
-      if (this.activeServices.wifi) wifiP2P.sendMessage('broadcast', payload).catch(() => { });
-      if (this.activeServices.nostr) nostrService.broadcastMessage(payload).catch(() => { });
-      if (this.activeServices.bluetooth) {
-        Array.from(this.peers.values())
-          .filter(p => p.connectionType === 'bluetooth')
-          .forEach(p => workingBluetoothMesh.sendMessage(p.serviceId!, payload).catch(() => { }));
+      // Broadcast to all active services with enhanced reliability
+      const broadcastPromises = [];
+      
+      if (this.activeServices.broadcast) {
+        broadcastPromises.push(broadcastMesh.broadcastMessage(payload).catch(e => console.log('Broadcast failed:', e)));
       }
-      if (this.activeServices.webrtc) ablyWebRTC.sendMessage(payload);
+      if (this.activeServices.wifi) {
+        broadcastPromises.push(wifiP2P.sendMessage('broadcast', payload).catch(e => console.log('WiFi P2P failed:', e)));
+      }
+      if (this.activeServices.nostr) {
+        broadcastPromises.push(nostrService.broadcastMessage(payload).catch(e => console.log('Nostr broadcast failed:', e)));
+      }
+      if (this.activeServices.bluetooth) {
+        const bluetoothPeers = Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'bluetooth');
+        bluetoothPeers.forEach(p => {
+          broadcastPromises.push(workingBluetoothMesh.sendMessage(p.serviceId!, payload).catch(e => console.log('Bluetooth failed:', e)));
+        });
+      }
+      if (this.activeServices.webrtc) {
+        try {
+          await ablyWebRTC.sendMessage(payload);
+          broadcastPromises.push(Promise.resolve());
+        } catch (e) {
+          broadcastPromises.push(Promise.reject(e));
+          console.log('WebRTC failed:', e);
+        }
+      }
+
+      // Wait for all broadcasts with timeout
+      await Promise.allSettled(broadcastPromises);
+      console.log('📡 Message broadcasted to all active networks');
+
     } catch (error) {
-      console.error('Failed to send hybrid message:', error);
+      console.error('❌ Failed to send hybrid message:', error);
+      throw error;
     }
   }
 

@@ -23,11 +23,11 @@ interface NodeShopViewProps {
   onBack: () => void;
 }
 
-const NodeShopView: React.FC<NodeShopViewProps> = ({ 
-  balance, 
-  onBuyItem, 
-  currentTheme, 
-  onBack 
+const NodeShopView: React.FC<NodeShopViewProps> = ({
+  balance,
+  onBuyItem,
+  currentTheme,
+  onBack
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'theme' | 'avatar' | 'effect' | 'badge'>('all');
   const [items, setItems] = useState<ShopItem[]>([]);
@@ -68,7 +68,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
       isPurchased: true,
       isEquipped: currentTheme === 'matrix'
     },
-    
+
     // PREMIUM THEMES
     {
       id: 'theme_cyan',
@@ -104,7 +104,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
       isPurchased: false,
       isEquipped: false
     },
-    
+
     // EXCLUSIVE THEMES
     {
       id: 'theme_holographic',
@@ -337,7 +337,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
     setItems(updatedItems);
   }, [ownedItems, currentTheme]);
 
-  const filteredItems = items.filter(item => 
+  const filteredItems = items.filter(item =>
     selectedCategory === 'all' || item.category === selectedCategory
   );
 
@@ -363,7 +363,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
 
   const handlePurchase = () => {
     if (!selectedItem) return;
-    
+
     if (balance < selectedItem.price) {
       alert('INSUFFICIENT_FUNDS: Please top up your XC units at JoeBanker.');
       return;
@@ -371,16 +371,16 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
 
     // Process purchase
     onBuyItem(selectedItem.name, selectedItem.price, selectedItem.theme);
-    
+
     // Update owned items
     const newOwned = new Set(ownedItems);
     newOwned.add(selectedItem.id);
     setOwnedItems(newOwned);
     localStorage.setItem('nodeshop_purchases', JSON.stringify([...newOwned]));
-    
+
     // Update item status
-    setItems(prev => prev.map(item => 
-      item.id === selectedItem.id 
+    setItems(prev => prev.map(item =>
+      item.id === selectedItem.id
         ? { ...item, isPurchased: true }
         : item
     ));
@@ -429,12 +429,11 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
       {/* Categories */}
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
         {categories.map(cat => (
-          <button 
-            key={cat.id} 
+          <button
+            key={cat.id}
             onClick={() => setSelectedCategory(cat.id as any)}
-            className={`terminal-btn px-4 h-8 text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 ${
-              selectedCategory === cat.id ? 'active' : 'opacity-40 hover:opacity-100'
-            }`}
+            className={`terminal-btn px-4 h-8 text-[9px] uppercase tracking-widest transition-all flex items-center gap-2 ${selectedCategory === cat.id ? 'active' : 'opacity-40 hover:opacity-100'
+              }`}
           >
             <i className={`fa-solid ${cat.icon}`}></i>
             {cat.label}
@@ -445,11 +444,10 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
       {/* Shop Items */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredItems.map(item => (
-          <div 
-            key={item.id} 
-            className={`border border-current border-opacity-20 bg-[#050505] p-5 group hover:border-white/40 transition-all relative overflow-hidden ${
-              getRarityBg(item.rarity)
-            }`}
+          <div
+            key={item.id}
+            className={`border border-current border-opacity-20 bg-[#050505] p-5 group hover:border-white/40 transition-all relative overflow-hidden ${getRarityBg(item.rarity)
+              }`}
           >
             {/* Rarity Indicator */}
             <div className={`absolute top-2 right-2 px-2 py-1 border text-[8px] font-black uppercase tracking-widest ${getRarityColor(item.rarity)}`}>
@@ -490,7 +488,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
             {/* Actions */}
             <div className="flex gap-2">
               {item.isPurchased ? (
-                <button 
+                <button
                   onClick={() => handleEquipItem(item)}
                   disabled={item.isEquipped}
                   className="terminal-btn flex-1 py-2 text-[10px] uppercase font-bold disabled:opacity-20"
@@ -499,7 +497,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
                 </button>
               ) : (
                 <>
-                  <button 
+                  <button
                     onClick={() => {
                       setSelectedItem(item);
                       setShowPurchaseModal(true);
@@ -521,7 +519,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
         <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6 animate-in fade-in">
           <div className="max-w-md w-full border-2 border-current bg-[#050505] p-8 shadow-[0_0_50px_currentColor]">
             <h3 className="text-lg font-bold uppercase tracking-widest mb-6 glow-text text-center">confirm_purchase.exe</h3>
-            
+
             <div className="space-y-6">
               <div className="p-4 border border-current border-opacity-20">
                 <div className="flex items-center justify-between mb-2">
@@ -533,7 +531,7 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
                 <p className="text-sm opacity-60">{selectedItem.description}</p>
                 <p className="text-lg font-bold glow-text mt-2">{selectedItem.price} XC</p>
               </div>
-              
+
               <div className="p-3 bg-[#080808] border border-current border-opacity-20">
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] uppercase tracking-widest">your_balance:</span>
@@ -544,18 +542,18 @@ const NodeShopView: React.FC<NodeShopViewProps> = ({
                   <span className="font-bold text-white">{balance - selectedItem.price} XC</span>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
-                <button 
+                <button
                   onClick={() => {
                     setShowPurchaseModal(false);
                     setSelectedItem(null);
-                  }} 
+                  }}
                   className="terminal-btn py-3 uppercase text-[10px]"
                 >
                   cancel
                 </button>
-                <button 
+                <button
                   onClick={handlePurchase}
                   className="terminal-btn active py-3 uppercase text-[10px]"
                 >

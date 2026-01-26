@@ -7,6 +7,13 @@ import { hybridMesh, HybridMeshPeer } from './hybridMesh';
 
 export type AIProvider = 'groq' | 'gemini' | 'fallback';
 
+export interface BuzzItem {
+  title: string;
+  time: string;
+  snippet: string;
+  category: string;
+}
+
 class HybridAIService {
   private primaryProvider: AIProvider = 'groq';
   private isGroqHealthy = true;
@@ -40,7 +47,7 @@ class HybridAIService {
       if (this.isOnline && this.isGroqHealthy) {
         const { requestId, userMessage, fromNode } = event.detail;
         console.log(`🤖 Mesh AI Proxy: Processing request from ${fromNode}`);
-        
+
         try {
           const response = await this.getXitBotResponse(userMessage, true); // true = skip mesh check to avoid loops
           await hybridMesh.sendMessage(JSON.stringify({
@@ -66,7 +73,7 @@ class HybridAIService {
   private async initializeHealthCheck() {
     // Initial health check
     await this.checkProviderHealth();
-    
+
     // Periodic health checks
     setInterval(() => {
       this.checkProviderHealth();
@@ -83,7 +90,7 @@ class HybridAIService {
       // Check Groq health
       const groqHealthy = await checkGroqHealth();
       this.isOnline = groqHealthy; // If we can reach Groq, we are online
-      
+
       if (groqHealthy) {
         this.isGroqHealthy = true;
         this.primaryProvider = 'groq';
@@ -92,7 +99,7 @@ class HybridAIService {
       } else {
         this.failureCount++;
         console.debug(`Groq health check failed (${this.failureCount}/${this.MAX_FAILURES})`);
-        
+
         if (this.failureCount >= this.MAX_FAILURES) {
           this.isGroqHealthy = false;
           this.primaryProvider = 'gemini';
@@ -104,7 +111,7 @@ class HybridAIService {
       console.error('Health check failed:', error);
       this.isOnline = false;
       this.failureCount++;
-      
+
       if (this.failureCount >= this.MAX_FAILURES) {
         this.isGroqHealthy = false;
         this.primaryProvider = 'gemini';
@@ -130,7 +137,7 @@ class HybridAIService {
       } catch (error) {
         console.warn(`⚠️ Groq failed for ${operation}, trying Gemini:`, error);
         this.failureCount++;
-        
+
         if (this.failureCount >= this.MAX_FAILURES) {
           this.isGroqHealthy = false;
           this.primaryProvider = 'gemini';
@@ -191,7 +198,7 @@ class HybridAIService {
   async getXitBotResponse(userMessage: string, skipMesh: boolean = false): Promise<string> {
     console.log('🤖 Hybrid AI: Getting response for:', userMessage);
     console.log('🔧 Current provider:', this.primaryProvider, 'Groq healthy:', this.isGroqHealthy, 'Online:', this.isOnline);
-    
+
     return this.executeWithFallback(
       () => getXitBotResponseGroq(userMessage),
       () => getXitBotResponseGemini(userMessage),
@@ -222,7 +229,7 @@ class HybridAIService {
 
   private getFallbackResponse(userMessage: string): string {
     const lowerMessage = userMessage.toLowerCase();
-    
+
     if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
       return "Hey there! Ready to surf the digital waves? 🌊";
     }
@@ -235,7 +242,7 @@ class HybridAIService {
     if (lowerMessage.includes('xc') || lowerMessage.includes('token')) {
       return "XC tokens are rad! Earn them by chatting and playing games in the mesh!";
     }
-    
+
     const fallbackResponses = [
       "Whoa, that's some heavy data! Let me process... *beep boop*",
       "Totally tubular question! My circuits are buzzing with ideas!",
@@ -243,7 +250,7 @@ class HybridAIService {
       "Far out! That's some next-level thinking right there!",
       "Excellent question! Let me dial into the mainframe for you..."
     ];
-    
+
     return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
   }
 

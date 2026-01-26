@@ -85,6 +85,8 @@ class XCEconomyService {
     }
   }
 
+  private syncTimeout: any = null;
+
   private saveState() {
     const state = {
       balance: this.balance,
@@ -95,8 +97,15 @@ class XCEconomyService {
 
     localStorage.setItem('xc_economy', JSON.stringify(state));
 
-    // Sync to Nostr (cross-device)
-    nostrService.broadcastMessage(`xitchat-economy-sync:${JSON.stringify(state)}`);
+    // Sync to Nostr (cross-device) with debounce
+    if (this.syncTimeout) clearTimeout(this.syncTimeout);
+
+    this.syncTimeout = setTimeout(() => {
+      if (nostrService.getPublicKey()) {
+        nostrService.broadcastMessage(`xitchat-economy-sync:${JSON.stringify(state)}`)
+          .catch(err => console.debug('Failed to sync economy state to Nostr:', err));
+      }
+    }, 2000); // 2 second delay to prevent rate limiting
   }
 
   private initializeAchievements() {

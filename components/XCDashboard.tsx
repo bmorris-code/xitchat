@@ -77,34 +77,34 @@ const XCDashboard: React.FC<XCDashboardProps> = ({ balance, onBack }) => {
   };
 
   return (
-    <div className="flex-1 flex flex-col bg-black text-current font-mono no-scrollbar animate-in fade-in duration-500">
+    <div className="w-full max-w-full flex-1 flex flex-col bg-black text-current font-mono no-scrollbar animate-in fade-in duration-500 overflow-hidden">
       {/* Header */}
-      <div className="p-6 border-b border-current border-opacity-30 bg-[#050505] relative overflow-hidden">
+      <div className="p-4 md:p-6 border-b border-current border-opacity-30 bg-[#050505] relative overflow-hidden">
         {/* Animated background grid */}
         <div className="absolute inset-0 opacity-5 pointer-events-none bg-[linear-gradient(rgba(0,255,65,0.1)_1px,transparent_1px),linear-gradient(90deg,rgba(0,255,65,0.1)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
 
-        <div className="flex items-center justify-between relative z-10">
-          <div className="flex items-center gap-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between relative z-10 gap-4">
+          <div className="flex items-center gap-4 md:gap-6 w-full md:w-auto">
             <button
               onClick={onBack}
-              className="terminal-btn px-4 py-1 text-[10px] uppercase font-bold"
+              className="terminal-btn px-3 py-1 text-[10px] uppercase font-bold shrink-0"
             >
-              &lt; exit_economy
+              &lt; exit
             </button>
-            <div>
-              <h2 className="text-3xl font-black uppercase tracking-tighter glow-text text-white">xc_vault.sys</h2>
+            <div className="min-w-0">
+              <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tighter glow-text text-white truncate">xc_vault</h2>
               <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-[#00ff41] rounded-full animate-pulse shadow-[0_0_8px_#00ff41]"></div>
-                <p className="text-[10px] font-bold opacity-40 uppercase tracking-[0.3em] text-white/50">
-                  {isSyncing ? 'syncing_ledger_with_nostr...' : 'secure_ledger_online'}
+                <div className="w-2 h-2 bg-[#00ff41] rounded-full animate-pulse shadow-[0_0_8px_#00ff41] shrink-0"></div>
+                <p className="text-[9px] font-bold opacity-40 uppercase tracking-[0.3em] text-white/50 truncate">
+                  {isSyncing ? 'syncing...' : 'ledger_online'}
                 </p>
               </div>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] font-black opacity-40 uppercase tracking-[0.4em] mb-1">available_credits</p>
+          <div className="text-right w-full md:w-auto flex flex-row md:flex-col justify-between md:justify-end items-center md:items-end border-t border-white/10 pt-3 md:border-0 md:pt-0">
+            <p className="text-[10px] font-black opacity-40 uppercase tracking-[0.4em] mb-0 md:mb-1">credits</p>
             <div className="flex items-baseline justify-end gap-2">
-              <span className="text-4xl font-black text-white glow-text">{balance}</span>
+              <span className="text-3xl md:text-4xl font-black text-white glow-text">{balance}</span>
               <span className="text-sm font-bold text-[#00ff41]">XC</span>
             </div>
           </div>
@@ -112,16 +112,16 @@ const XCDashboard: React.FC<XCDashboardProps> = ({ balance, onBack }) => {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex px-6 bg-[#020202] border-b border-current border-opacity-10">
+      <div className="flex overflow-x-auto no-scrollbar px-4 md:px-6 bg-[#020202] border-b border-current border-opacity-10 shrink-0">
         {[
-          { id: 'overview', label: 'status_report', icon: 'fa-chart-simple' },
-          { id: 'transactions', label: 'ledger_history', icon: 'fa-list-ul' },
-          { id: 'achievements', label: 'milestones', icon: 'fa-award' }
+          { id: 'overview', label: 'status', icon: 'fa-chart-simple' },
+          { id: 'transactions', label: 'history', icon: 'fa-list-ul' },
+          { id: 'achievements', label: 'awards', icon: 'fa-award' }
         ].map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-6 py-4 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative flex items-center gap-3 ${activeTab === tab.id ? 'text-[#00ff41]' : 'opacity-30 hover:opacity-100 text-white'
+            className={`px-4 md:px-6 py-4 text-[10px] font-bold uppercase tracking-[0.2em] transition-all relative flex items-center gap-2 md:gap-3 whitespace-nowrap shrink-0 ${activeTab === tab.id ? 'text-[#00ff41]' : 'opacity-30 hover:opacity-100 text-white'
               }`}
           >
             <i className={`fa-solid ${tab.icon} text-xs`}></i>
@@ -133,7 +133,7 @@ const XCDashboard: React.FC<XCDashboardProps> = ({ balance, onBack }) => {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-8 no-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 no-scrollbar">
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -256,9 +256,9 @@ const XCDashboard: React.FC<XCDashboardProps> = ({ balance, onBack }) => {
               {achievements.map(achievement => (
                 <div
                   key={achievement.id}
-                  className={`border p-6 bg-[#050505] relative overflow-hidden transition-all ${achievement.completed
-                      ? 'border-[#00ff41] border-opacity-40 bg-[#00ff41]/5'
-                      : 'border-current border-opacity-10'
+                  className={`border p-4 md:p-6 bg-[#050505] relative overflow-hidden transition-all ${achievement.completed
+                    ? 'border-[#00ff41] border-opacity-40 bg-[#00ff41]/5'
+                    : 'border-current border-opacity-10'
                     }`}
                 >
                   {achievement.completed && (
@@ -267,15 +267,15 @@ const XCDashboard: React.FC<XCDashboardProps> = ({ balance, onBack }) => {
                     </div>
                   )}
 
-                  <div className="flex items-start gap-6 mb-6">
-                    <div className={`text-4xl ${achievement.completed ? 'opacity-100' : 'opacity-20 grayscale'}`}>
+                  <div className="flex items-start gap-4 md:gap-6 mb-4 md:mb-6">
+                    <div className={`text-3xl md:text-4xl shrink-0 ${achievement.completed ? 'opacity-100' : 'opacity-20 grayscale'}`}>
                       {achievement.icon}
                     </div>
-                    <div className="flex-1">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-white mb-1">{achievement.name}</h4>
-                      <p className="text-[10px] opacity-50 leading-relaxed">{achievement.description}</p>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-white mb-1 truncate pr-4">{achievement.name}</h4>
+                      <p className="text-[10px] opacity-50 leading-relaxed line-clamp-2 md:line-clamp-none">{achievement.description}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <p className="text-xs font-black text-amber-500">+{achievement.reward} XC</p>
                     </div>
                   </div>

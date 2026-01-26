@@ -190,20 +190,21 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
 
       {/* Game Board */}
       <div className="flex-1 flex items-center justify-center">
-        <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto">
+        <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto w-full">
           {board.map((cell, index) => (
             <button
               key={index}
               onClick={() => makeMove(index)}
               disabled={cell !== null || winner !== null || isDraw || isAIThinking}
               className={`
-                w-20 h-20 border-2 border-green-500/50 
-                flex items-center justify-center text-2xl font-bold
-                transition-all duration-200
+                aspect-square border-2 border-green-500/50 
+                flex items-center justify-center text-2xl md:text-xl font-bold
+                transition-all duration-200 active:scale-95
                 ${cell === null ? 'hover:bg-green-500/20 cursor-pointer' : 'cursor-not-allowed'}
                 ${cell === 'X' ? 'text-blue-400 bg-blue-500/20' : ''}
                 ${cell === 'O' ? 'text-red-400 bg-red-500/20' : ''}
                 ${winner && cell === winner ? 'animate-pulse' : ''}
+                min-h-[60px] md:min-h-[80px] min-w-[60px] md:min-w-[80px]
               `}
             >
               {cell}
@@ -213,18 +214,21 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
       </div>
 
       {/* Controls */}
-      <div className="mt-4 text-center">
+      <div className="mt-4 text-center space-y-2">
         <button
           onClick={resetGame}
-          className="terminal-btn active px-4 py-2 text-sm font-bold uppercase"
+          className="terminal-btn active px-6 py-3 text-sm font-bold uppercase min-h-[44px] min-w-[120px]"
         >
           New Game
         </button>
         {winner && gameMode === 'solo' && winner === 'X' && (
-          <div className="text-xs text-yellow-400 font-bold mt-2">
+          <div className="text-xs text-yellow-400 font-bold">
             🎉 Earned 5 XC!
           </div>
         )}
+        <div className="text-xs opacity-40 md:hidden">
+          Tap any cell to play
+        </div>
       </div>
     </div>
   );

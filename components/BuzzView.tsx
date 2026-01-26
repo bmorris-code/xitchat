@@ -288,28 +288,52 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
   }, [shoutouts, currentFilter, searchQuery]);
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
-      <div className="flex justify-between items-start mb-6 border-b border-current pb-4">
-        <div className="flex items-center gap-3">
-          {onBack && (
-            <button onClick={onBack} className="terminal-btn px-2 py-0 h-8 text-[10px] uppercase">back_to_hub</button>
-          )}
-          <div>
-            <h2 className="text-base font-bold uppercase tracking-tighter glow-text">the_buzz.exe</h2>
-            <p className="text-[10px] font-bold opacity-50 uppercase tracking-[0.2em] mt-2 text-white/40">local_mesh_broadcast</p>
+    <div className="flex-1 flex flex-col pt-0 p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
+      {/* Sticky Header Group: Title + Filters */}
+      <div className="sticky top-0 z-50 bg-black/95 backdrop-blur-md border-b border-current border-opacity-20 -mx-6 px-6 pt-6 pb-2 mb-4 shadow-lg">
+        {/* Title Row */}
+        <div className="flex justify-between items-start mb-4">
+          <div className="flex items-center gap-3">
+            {onBack && (
+              <button onClick={onBack} className="terminal-btn px-2 py-0 h-7 text-[10px] uppercase">back</button>
+            )}
+            <div>
+              <h2 className="text-base font-bold uppercase tracking-tighter glow-text">the_buzz.exe</h2>
+              <p className="text-[8px] font-bold opacity-50 uppercase tracking-[0.2em] text-white/40">local_mesh_broadcast</p>
+            </div>
           </div>
+          <button
+            onClick={() => setShowPostModal(true)}
+            className="terminal-btn active px-2 py-1 flex items-center gap-1 text-[10px] shadow-[0_0_10px_currentColor]"
+          >
+            <i className="fa-solid fa-tower-broadcast"></i>
+            <span className="uppercase tracking-widest font-bold">post</span>
+          </button>
         </div>
-        <button
-          onClick={() => setShowPostModal(true)}
-          className="terminal-btn active px-1 py-0.5 flex items-center gap-1 text-xs shadow-[0_0_15px_currentColor] animate-pulse"
-        >
-          <i className="fa-solid fa-tower-broadcast"></i>
-          <span className="uppercase tracking-widest font-bold">broadcast</span>
-        </button>
+
+        {/* Filter Row */}
+        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+          {['ALL', 'NEWS', 'GOSSIP', 'UPDATE', 'AD'].map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setCurrentFilter(cat as FilterCategory)}
+              className={`terminal-btn uppercase tracking-widest text-[8px] min-h-0 h-6 font-bold whitespace-nowrap px-3 transition-all flex-shrink-0 ${currentFilter === cat
+                ? 'active scale-105 shadow-[0_0_15px_currentColor]'
+                : 'opacity-40 hover:opacity-100 hover:bg-white/5'
+                }`}
+            >
+              <i className={`fa-${cat === 'ALL' ? 'globe' : cat === 'NEWS' ? 'newspaper' : cat === 'GOSSIP' ? 'comments' : cat === 'UPDATE' ? 'refresh' : 'bullhorn'} mr-2`}></i>
+              {cat}
+              {currentFilter === cat && (
+                <span className="ml-2 w-1.5 h-1.5 bg-current rounded-full animate-pulse"></span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="mb-6 relative group">
+      {/* Search Bar (Scrolls with content) */}
+      <div className="mb-6 relative group shrink-0">
         <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none opacity-40 group-focus-within:opacity-100 transition-opacity">
           <i className="fa-solid fa-magnifying-glass text-xs"></i>
         </div>
@@ -327,36 +351,6 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
           >
             <i className="fa-solid fa-xmark text-xs"></i>
           </button>
-        )}
-      </div>
-
-      {/* Category Filters - More Prominent */}
-      <div className="sticky top-0 bg-black border-b border-current border-opacity-20 pb-4 mb-6 z-10">
-        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-          {['ALL', 'NEWS', 'GOSSIP', 'UPDATE', 'AD'].map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setCurrentFilter(cat as FilterCategory)}
-              className={`terminal-btn uppercase tracking-widest text-[8px] min-h-0 h-8 font-bold whitespace-nowrap px-3 transition-all flex-shrink-0 ${currentFilter === cat
-                  ? 'active scale-105 shadow-[0_0_20px_currentColor]'
-                  : 'opacity-40 hover:opacity-100 hover:bg-white/5'
-                }`}
-            >
-              <i className={`fa-${cat === 'ALL' ? 'globe' : cat === 'NEWS' ? 'newspaper' : cat === 'GOSSIP' ? 'comments' : cat === 'UPDATE' ? 'refresh' : 'bullhorn'} mr-2`}></i>
-              {cat}
-              {currentFilter === cat && (
-                <span className="ml-2 w-2 h-2 bg-current rounded-full animate-pulse"></span>
-              )}
-            </button>
-          ))}
-        </div>
-        {currentFilter !== 'ALL' && (
-          <div className="mt-3 text-center">
-            <p className="text-[10px] opacity-60 uppercase tracking-widest">
-              viewing: <span className="text-current font-bold">{currentFilter}</span>
-              <span className="ml-2">({filteredShoutouts.length} posts)</span>
-            </p>
-          </div>
         )}
       </div>
 

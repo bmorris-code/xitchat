@@ -323,12 +323,12 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
               ) : (
                 <div className="space-y-2">
                   {meshNodes.map(node => (
-                    <div key={node.id} className="border border-[#00ff41]/30 p-3 bg-[#050505] flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2 h-2 bg-[#00ff41] rounded-full"></div>
-                        <p className="font-bold text-[#00ff41]">{node.handle}</p>
+                    <div key={node.id} className="border border-[#00ff41]/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-2 h-2 bg-[#00ff41] rounded-full flex-shrink-0"></div>
+                        <p className="font-bold text-[#00ff41] text-sm md:text-xs truncate">{node.handle}</p>
                       </div>
-                      <button onClick={() => onUserSelect({ id: node.id, name: node.name, handle: node.handle, avatar: `https://picsum.photos/seed/${node.handle}/200`, mood: 'Bluetooth Node', moodEmoji: '📡', reputation: 750, distance: 0, status: 'Away' })} className="text-[8px] bg-[#00ff41] text-black px-2 py-1 rounded font-bold uppercase">chat</button>
+                      <button onClick={() => onUserSelect({ id: node.id, name: node.name, handle: node.handle, avatar: `https://picsum.photos/seed/${node.handle}/200`, mood: 'Bluetooth Node', moodEmoji: '📡', reputation: 750, distance: 0, status: 'Away' })} className="text-[8px] bg-[#00ff41] text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
                     </div>
                   ))}
                 </div>
@@ -339,16 +339,16 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
             <div>
               <h3 className="text-sm font-bold text-cyan-400 mb-3 uppercase tracking-wider">WIFI_P2P_PEERS</h3>
               {wifiPeers.length === 0 ? (
-                <div className="text-[10px] opacity-40 p-4 border border-[#004400] bg-black/20 lowercase">no active wifi p2p peers found.</div>
+                <div className="text-[10px] opacity-40 p-4 border border-cyan-400/20 bg-cyan-400/5 lowercase">no active wifi p2p peers found.</div>
               ) : (
                 <div className="space-y-2">
                   {wifiPeers.map(peer => (
-                    <div key={peer.id} className="border border-cyan-400/30 p-3 bg-[#050505] flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 ${peer.isConnected ? 'bg-cyan-400' : 'bg-cyan-600/50'} rounded-full`}></div>
-                        <p className="font-bold text-cyan-400">{peer.handle}</p>
+                    <div key={peer.id} className="border border-cyan-400/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-2 h-2 ${peer.isConnected ? 'bg-cyan-400' : 'bg-cyan-600/50'} rounded-full flex-shrink-0`}></div>
+                        <p className="font-bold text-cyan-400 text-sm md:text-xs truncate">{peer.handle}</p>
                       </div>
-                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'WiFi Peer', moodEmoji: '📶', reputation: 850, distance: 0, status: peer.isConnected ? 'Online' : 'Away' })} className="text-[8px] bg-cyan-400 text-black px-2 py-1 rounded font-bold uppercase">chat</button>
+                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'WiFi P2P Node', moodEmoji: '📶', reputation: 800, distance: 0, status: peer.isConnected ? 'Online' : 'Away' })} className="text-[8px] bg-cyan-400 text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
                     </div>
                   ))}
                 </div>
@@ -363,12 +363,32 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
               ) : (
                 <div className="space-y-2">
                   {realPeers.map(peer => (
-                    <div key={peer.id} className="border border-red-500/30 p-3 bg-[#050505] flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 ${peer.isConnected ? 'bg-red-500' : 'bg-red-600/50'} rounded-full`}></div>
-                        <p className="font-bold text-red-500">{peer.handle}</p>
+                    <div key={peer.id} className="border border-red-500/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-2 h-2 ${peer.isConnected ? 'bg-red-500' : 'bg-red-600/50'} rounded-full flex-shrink-0`}></div>
+                        <p className="font-bold text-red-500 text-sm md:text-xs truncate">{peer.handle}</p>
                       </div>
-                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'Real P2P Peer', moodEmoji: '🔴', reputation: 950, distance: 0, status: peer.isConnected ? 'Online' : 'Away' })} className="text-[8px] bg-red-500 text-white px-2 py-1 rounded font-bold uppercase">chat</button>
+                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'Real P2P Peer', moodEmoji: '🔴', reputation: 950, distance: 0, status: peer.isConnected ? 'Online' : 'Away' })} className="text-[8px] bg-red-500 text-white px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Radar */}
+            <div>
+              <h3 className="text-sm font-bold text-green-400 mb-3 uppercase tracking-wider">RADAR_PEERS</h3>
+              {radarPeers.length === 0 ? (
+                <div className="text-[10px] opacity-40 p-4 border border-green-400/20 bg-green-400/5 lowercase">no active radar peers found.</div>
+              ) : (
+                <div className="space-y-2">
+                  {radarPeers.map(peer => (
+                    <div key={peer.id} className="border border-green-400/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-2 h-2 ${peer.isOnline ? 'bg-green-400' : 'bg-green-600/50'} rounded-full flex-shrink-0`}></div>
+                        <p className="font-bold text-green-400 text-sm md:text-xs truncate">{peer.handle}</p>
+                      </div>
+                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'Radar Peer', moodEmoji: '📡', reputation: 850, distance: peer.distance || 0, status: peer.isOnline ? 'Online' : 'Away' })} className="text-[8px] bg-green-400 text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
                     </div>
                   ))}
                 </div>

@@ -262,7 +262,7 @@ const App: React.FC = () => {
 
         // Subscribe to mesh messages
         hybridMesh.subscribe('messageReceived', (message) => {
-          console.log('Mesh message received:', message);
+          console.log('📨 Mesh message received:', message);
 
           // Support both 'from' (HybridMeshMessage) and 'senderId' (App Message) property names
           const senderId = message.from || message.senderId;
@@ -281,16 +281,48 @@ const App: React.FC = () => {
               connectionType: handshakeType
             });
 
-            // Add message to chats if it's a chat message
-            const targetChat = chats.find(c => c.participant.id === senderId);
+            // Find or create chat for this peer
+            let targetChat = chats.find(c => c.participant.id === senderId);
+            
+            // If no chat exists, create one for radar peers
+            if (!targetChat) {
+              const radarPeer = radarPeers.find(p => p.id === senderId);
+              if (radarPeer) {
+                const newChat: Chat = {
+                  id: Math.random().toString(36).substr(2, 9),
+                  type: 'private',
+                  participant: {
+                    id: radarPeer.id,
+                    name: radarPeer.name,
+                    handle: radarPeer.handle,
+                    avatar: radarPeer.avatar || `https://picsum.photos/seed/${radarPeer.id}/200`,
+                    status: radarPeer.isOnline ? 'Online' : 'Away',
+                    mood: 'Connected via radar',
+                    moodEmoji: '📡',
+                    reputation: 800,
+                    distance: radarPeer.distance || 0
+                  },
+                  messages: [],
+                  lastMessage: '',
+                  unreadCount: 0
+                };
+                
+                setChats(prev => [...prev, newChat]);
+                targetChat = newChat;
+                
+                console.log(`🆕 Created chat for radar peer: ${radarPeer.handle}`);
+              }
+            }
+
+            // Add message to chat if we have one
             if (targetChat) {
               const newMessage: Message = {
-                id: message.id,
+                id: message.id || Math.random().toString(36).substr(2, 9),
                 senderId: senderId,
                 senderHandle: message.senderHandle || targetChat.participant.handle,
                 text: message.content,
-                timestamp: message.timestamp,
-                encryptedData: message.encryptedData // Extract encrypted data from mesh message
+                timestamp: message.timestamp || Date.now(),
+                encryptedData: message.encryptedData
               };
 
               setChats(prev => prev.map(c =>
@@ -298,13 +330,15 @@ const App: React.FC = () => {
                   ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
                   : c
               ));
+              
+              console.log(`💬 Added message to chat ${targetChat.participant.handle}: ${message.content.substring(0, 30)}...`);
             }
 
-            // Trigger transmission toast
+            // Trigger transmission toast for new connections
             const event = new CustomEvent('newTransmission', {
               detail: {
-                message: `HANDSHAKE: ${handshakeNode.handle} connected via ${handshakeType}`,
-                type: 'system'
+                message: `📡 MESSAGE: ${handshakeNode.handle} via ${message.connectionType}`,
+                type: 'message'
               }
             });
             window.dispatchEvent(event);
@@ -919,8 +953,6 @@ const App: React.FC = () => {
           { id: 'tradepost', icon: 'fa-shop', label: 'Node Shop', color: 'text-cyan-400', desc: 'Official digital skins and node gear.' },
           { id: 'games', icon: 'fa-gamepad', label: 'Play Lounge', color: 'text-purple-400', desc: 'Retro arcade and gaming.' },
           { id: 'gallery', icon: 'fa-images', label: 'Pics Gallery', color: 'text-orange-400', desc: 'Shared node transmissions.' },
-          { id: 'native', icon: 'fa-mobile', label: 'Native Features', color: 'text-blue-400', desc: 'Capacitor device hardware integration.' },
-          { id: 'nostr', icon: 'fa-key', label: 'Nostr Network', color: 'text-purple-500', desc: nostrConnected ? 'Global decentralized messaging' : 'Connect to Nostr network' },
         ];
         return (
           <div className="flex-1 p-6 overflow-y-auto bg-black text-current animate-in fade-in zoom-in-95 duration-300">
@@ -1218,7 +1250,7 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col md:flex-row h-full w-full bg-black text-current overflow-hidden selection:bg-current selection:text-black pt-safe">
       <Sidebar currentView={view} setView={setView} userAvatar={myAvatar} />
-      <div className="flex-1 flex overflow-hidden relative pt-[72px] md:pt-0">
+      <div className="flex-1 flex overflow-hidden relative md:pt-0">
 
         {/* Transmission Toasts */}
         <TransmissionToast

@@ -76,8 +76,8 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
 
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2 no-scrollbar">
         {['ALL', 'HAVE', 'WANT', 'SERVICE', 'EVENT'].map(cat => (
-          <button 
-            key={cat} 
+          <button
+            key={cat}
             onClick={() => setFilter(cat as any)}
             className={`terminal-btn px-4 h-8 text-[9px] uppercase tracking-widest transition-all ${filter === cat ? 'active' : 'opacity-40 hover:opacity-100'}`}
           >
@@ -94,14 +94,13 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
                 verified_gathering
               </div>
             )}
-            
+
             <div className="flex justify-between items-start">
               <div>
-                <span className={`text-[8px] font-bold px-2 py-0.5 border ${
-                  item.category === 'HAVE' ? 'border-green-500 text-green-500' : 
-                  item.category === 'WANT' ? 'border-amber-500 text-amber-500' : 
-                  item.category === 'EVENT' ? 'border-white text-white' : 'border-cyan-500 text-cyan-500'
-                }`}>
+                <span className={`text-[8px] font-bold px-2 py-0.5 border ${item.category === 'HAVE' ? 'border-green-500 text-green-500' :
+                    item.category === 'WANT' ? 'border-amber-500 text-amber-500' :
+                      item.category === 'EVENT' ? 'border-white text-white' : 'border-cyan-500 text-cyan-500'
+                  }`}>
                   {item.category}
                 </span>
                 <h3 className="text-lg font-bold uppercase mt-2 text-white group-hover:glow-text transition-all">{item.title}</h3>
@@ -114,7 +113,7 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
             </div>
             <p className="text-xs opacity-60 leading-relaxed text-white/70 italic">&gt; {item.description}</p>
             <div className="flex gap-4 mt-2">
-              <button 
+              <button
                 onClick={() => onContact(item.senderHandle)}
                 className="terminal-btn active flex-1 py-1 text-[10px] uppercase font-bold shadow-lg"
               >

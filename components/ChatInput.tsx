@@ -104,9 +104,9 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
             {/* Media Sharing Bar */}
             <div className="flex items-center gap-3 mb-3 opacity-60 hover:opacity-100 transition-opacity">
-                <button onClick={() => setShowEmojiMenu(!showEmojiMenu)} className={`p-2 rounded hover:bg-white/10 transition-all ${showEmojiMenu ? 'bg-white/10 text-white' : ''}`} title="Emoji"><i className="fa-regular fa-face-smile"></i></button>
+                <button onClick={() => setShowEmojiMenu(!showEmojiMenu)} className={`p-2 rounded hover:bg-white/10 transition-all ${showEmojiMenu ? 'bg-white/10 text-white' : ''}`} title="Emoji"><i className="fa-solid fa-face-smile"></i></button>
                 <button onClick={() => setShowGallery(true)} className="p-2 rounded hover:bg-white/10 transition-all" title="Gallery"><i className="fa-solid fa-images"></i></button>
-                <button onClick={() => imageInputRef.current?.click()} className="p-2 rounded hover:bg-white/10 transition-all" title="Photo from Camera"><i className="fa-regular fa-image"></i></button>
+                <button onClick={() => imageInputRef.current?.click()} className="p-2 rounded hover:bg-white/10 transition-all" title="Photo from Camera"><i className="fa-solid fa-image"></i></button>
                 <button onClick={() => videoInputRef.current?.click()} className="p-2 rounded hover:bg-white/10 transition-all" title="Video from Camera"><i className="fa-solid fa-video"></i></button>
                 <button
                     onClick={() => {

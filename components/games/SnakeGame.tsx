@@ -186,6 +186,21 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ onWinXC, onBack }) => {
     }
   };
 
+  // D-Pad controls for mobile
+  const handleDPad = (newDirection: Position) => {
+    if (!isPlaying) return;
+    
+    // Prevent reversing direction
+    if ((newDirection.x === 1 && direction.x === -1) || 
+        (newDirection.x === -1 && direction.x === 1) ||
+        (newDirection.y === 1 && direction.y === -1) || 
+        (newDirection.y === -1 && direction.y === 1)) {
+      return;
+    }
+    
+    setDirection(newDirection);
+  };
+
   const renderCell = (x: number, y: number, isSnake: boolean, isFood: boolean, isHead: boolean) => {
     let cellClass = 'absolute border border-green-500/30 ';
     if (isHead) {
@@ -242,7 +257,7 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ onWinXC, onBack }) => {
         </div>
       </div>
 
-              {/* Game Board */}
+      {/* Game Board */}
       <div className="flex-1 flex items-center justify-center">
         <div 
           className="relative border-2 border-green-500/50 bg-black"
@@ -283,13 +298,69 @@ const SnakeGame: React.FC<SnakeGameProps> = ({ onWinXC, onBack }) => {
           )}
         </div>
       </div>
+
+      {/* Mobile D-Pad Controls */}
+      <div className="md:hidden mt-6 flex flex-col items-center gap-2">
+        <div className="text-xs opacity-60 mb-2">D-PAD CONTROLS</div>
+        
+        {/* D-Pad Layout */}
+        <div className="relative w-32 h-32">
+          {/* Up Button */}
+          <button
+            onClick={() => handleDPad({ x: 0, y: -1 })}
+            disabled={!isPlaying}
+            className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-10 border border-green-500/50 bg-green-500/20 text-green-400 flex items-center justify-center terminal-btn active disabled:opacity-30"
+            style={{ minHeight: '44px', minWidth: '44px' }}
+          >
+            <i className="fa-solid fa-chevron-up text-lg"></i>
+          </button>
+          
+          {/* Left Button */}
+          <button
+            onClick={() => handleDPad({ x: -1, y: 0 })}
+            disabled={!isPlaying}
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 border border-green-500/50 bg-green-500/20 text-green-400 flex items-center justify-center terminal-btn active disabled:opacity-30"
+            style={{ minHeight: '44px', minWidth: '44px' }}
+          >
+            <i className="fa-solid fa-chevron-left text-lg"></i>
+          </button>
+          
+          {/* Right Button */}
+          <button
+            onClick={() => handleDPad({ x: 1, y: 0 })}
+            disabled={!isPlaying}
+            className="absolute right-0 top-1/2 -translate-y-1/2 w-10 h-10 border border-green-500/50 bg-green-500/20 text-green-400 flex items-center justify-center terminal-btn active disabled:opacity-30"
+            style={{ minHeight: '44px', minWidth: '44px' }}
+          >
+            <i className="fa-solid fa-chevron-right text-lg"></i>
+          </button>
+          
+          {/* Down Button */}
+          <button
+            onClick={() => handleDPad({ x: 0, y: 1 })}
+            disabled={!isPlaying}
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-10 border border-green-500/50 bg-green-500/20 text-green-400 flex items-center justify-center terminal-btn active disabled:opacity-30"
+            style={{ minHeight: '44px', minWidth: '44px' }}
+          >
+            <i className="fa-solid fa-chevron-down text-lg"></i>
+          </button>
+          
+          {/* Center Circle (Decorative) */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 border border-green-500/30 bg-black flex items-center justify-center">
+            <div className="w-2 h-2 bg-green-500/50 rounded-full"></div>
+          </div>
+        </div>
+      </div>
           {/* Controls */}
       <div className="mt-4 text-center">
         <div className="text-xs opacity-60 mb-2">
           {isPlaying ? 'Use arrow keys to move' : gameOver ? 'Press SPACE to restart' : 'Press SPACE to start'}
         </div>
-        <div className="text-xs opacity-40">
-          Mobile: Swipe to change direction
+        <div className="text-xs opacity-40 md:hidden">
+          Mobile: Use D-Pad or swipe to control
+        </div>
+        <div className="text-xs opacity-40 hidden md:block">
+          Desktop: Use arrow keys
         </div>
         {score > 0 && score % 50 === 0 && (
           <div className="text-xs text-yellow-400 font-bold mt-2">

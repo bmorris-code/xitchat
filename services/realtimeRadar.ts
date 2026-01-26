@@ -101,6 +101,12 @@ class RealtimeRadarService {
     try {
       console.log('📡 Initializing Real-time Radar (Nostr-Enabled)...');
 
+      // 0. Listen for Nostr initialization to broadcast location immediately
+      nostrService.subscribe('initialized', () => {
+        console.log('📡 Nostr initialized, broadcasting location to radar...');
+        this.updateMyLocation();
+      });
+
       // 1. Setup Nostr for cross-device location updates
       this.setupNostrRadar();
 
@@ -141,29 +147,70 @@ class RealtimeRadarService {
   }
 
   private handleNostrPeerUpdate(data: any) {
-    if (data.id === this.myId) return;
-
-    // RELAXED FILTER: Show all peers regardless of distance for now
-    // This fixes the "invisible user" issue when devices have different locations
-    if (this.myCurrentLocation && data.location) {
-      const peer: RadarPeer = {
-        id: data.id,
-        name: data.name,
-        handle: data.handle,
+    try {
+      // Create or update radar peer
+      const radarPeer: RadarPeer = {
+        id: data.id || data.publicKey || 'unknown',
+        name: data.name || data.handle || 'Anonymous',
+        handle: data.handle || data.name || 'anon',
+        avatar: data.avatar || data.picture,
         location: data.location,
-        capabilities: data.capabilities || ['chat'],
-        lastSeen: Date.now(),
-        isOnline: true,
-        connectionType: 'nostr',
-        distance: this.calculateDistance(
-          this.myCurrentLocation.lat, this.myCurrentLocation.lng,
-          data.location.lat, data.location.lng
-        )
+        capabilities: data.capabilities || [],
+        lastSeen: data.lastSeen || Date.now(),
+        isOnline: data.isOnline !== false,
+        signalStrength: data.signalStrength || 100,
+        connectionType: data.connectionType || 'nostr',
+        distance: data.distance
       };
 
-      this.peers.set(data.id, peer);
+      // Update or add peer
+      this.peers.set(radarPeer.id, radarPeer);
+
+      // Calculate distance if location is available
+      if (radarPeer.location && this.myCurrentLocation) {
+        const distance = this.calculateDistance(
+          this.myCurrentLocation.lat,
+          this.myCurrentLocation.lng,
+          radarPeer.location.lat,
+          radarPeer.location.lng
+        );
+        radarPeer.distance = distance;
+      }
+
+      console.log(`📍 Radar peer updated: ${radarPeer.handle} (${radarPeer.connectionType}) - ${radarPeer.distance || 0}km`);
+
+      // Emit peer update events
+      this.notifyListeners('peerJoined', radarPeer);
       this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
-      this.notifyListeners('peerUpdated', peer);
+
+      // Auto-add peer to hybrid mesh for chat compatibility
+      this.addPeerToHybridMesh(radarPeer);
+
+    } catch (error) {
+      console.error('Failed to handle Nostr peer update:', error);
+    }
+  }
+
+  private addPeerToHybridMesh(radarPeer: RadarPeer) {
+    try {
+      // Convert radar peer to hybrid mesh peer format
+      const meshPeer = {
+        id: radarPeer.id,
+        name: radarPeer.name,
+        handle: radarPeer.handle,
+        isConnected: radarPeer.isOnline,
+        lastSeen: radarPeer.lastSeen,
+        signalStrength: radarPeer.signalStrength,
+        capabilities: radarPeer.capabilities,
+        serviceId: radarPeer.id
+      };
+
+      // Add to hybrid mesh using public method
+      hybridMesh.addExternalPeer(meshPeer, radarPeer.connectionType as any);
+      
+      console.log(`🔗 Added radar peer to hybrid mesh: ${radarPeer.handle} via ${radarPeer.connectionType}`);
+    } catch (error) {
+      console.error('Failed to add radar peer to hybrid mesh:', error);
     }
   }
 

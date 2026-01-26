@@ -131,7 +131,7 @@ const MessageList: React.FC<MessageListProps> = ({
                         <div className="hidden group-hover:flex items-center gap-4 opacity-40 transition-opacity">
                             <button onClick={() => onReply(msg)} title="Reply" className="hover:text-white hover:opacity-100 transition-all active:scale-90"><i className="fa-solid fa-reply text-[10px]"></i></button>
                             <button onClick={() => onForward(msg)} title="Forward" className="hover:text-white hover:opacity-100 transition-all active:scale-90"><i className="fa-solid fa-share text-[10px]"></i></button>
-                            <button onClick={() => setReactingToMessageId(reactingToMessageId === msg.id ? null : msg.id)} className={`hover:text-white hover:opacity-100 transition-all active:scale-90 ${reactingToMessageId === msg.id ? 'opacity-100 text-white' : ''}`} title="Moji"><i className="fa-regular fa-face-smile text-[10px]"></i></button>
+                            <button onClick={() => setReactingToMessageId(reactingToMessageId === msg.id ? null : msg.id)} className={`hover:text-white hover:opacity-100 transition-all active:scale-90 ${reactingToMessageId === msg.id ? 'opacity-100 text-white' : ''}`} title="Moji"><i className="fa-solid fa-face-smile text-[10px]"></i></button>
                             {msg.senderId === 'me' && onDelete && (
                                 <button onClick={() => { if (confirm('Delete this message?')) onDelete(msg.id); }} title="Delete" className="hover:text-red-400 hover:opacity-100 transition-all active:scale-90"><i className="fa-solid fa-trash text-[10px]"></i></button>
                             )}
