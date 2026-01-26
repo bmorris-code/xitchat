@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTransactionService } from '../services/transactions';
 import { joeBanker, TransferRequest, PaymentRequest, SavingsAccount, CreditOffer, BankingAnalytics } from '../services/banking';
 import { bluetoothMesh, MeshNode } from '../services/bluetoothMesh';
+import { hybridMesh } from '../services/hybridMesh';
 
 interface JoeBankerViewProps {
   onBack?: () => void;
@@ -33,6 +34,61 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
 
   useEffect(() => {
     initializeBanking();
+    
+    // Load real nearby nodes from mesh network
+    const loadNearbyNodes = () => {
+      try {
+        // Get nodes from hybrid mesh (includes all network types)
+        const meshPeers = hybridMesh.getPeers();
+        const bluetoothNodes = bluetoothMesh.getPeers();
+        
+        // Convert to MeshNode format
+        const realNodes: MeshNode[] = [
+          ...meshPeers.map(peer => ({
+            id: peer.id,
+            name: peer.name,
+            handle: peer.handle,
+            distance: Math.random() * 100, // Real distance would come from radar
+            lastSeen: new Date(peer.lastSeen),
+            capabilities: peer.capabilities,
+            isRelay: peer.capabilities.includes('relay'),
+            signalStrength: peer.signalStrength || 75
+          })),
+          ...bluetoothNodes.map(node => ({
+            id: node.id,
+            name: node.name || 'Unknown Device',
+            handle: node.handle || `@${node.id.substring(0, 8)}`,
+            distance: node.distance || Math.random() * 50,
+            lastSeen: node.lastSeen,
+            capabilities: node.capabilities || ['chat'],
+            isRelay: node.isRelay || false,
+            signalStrength: node.signalStrength || 70
+          }))
+        ];
+        
+        setNearbyNodes(realNodes);
+        console.log('Real mesh nodes loaded:', realNodes);
+      } catch (error) {
+        console.error('Failed to load real mesh nodes:', error);
+        setNearbyNodes([]);
+      }
+    };
+    
+    // Load initial nodes
+    loadNearbyNodes();
+    
+    // Subscribe to mesh updates for real-time data
+    const unsubscribeMesh = hybridMesh.subscribe('peersUpdated', loadNearbyNodes);
+    const unsubscribeBluetooth = bluetoothMesh.subscribe('peersUpdated', loadNearbyNodes);
+    
+    // Refresh nodes every 30 seconds
+    const interval = setInterval(loadNearbyNodes, 30000);
+    
+    return () => {
+      unsubscribeMesh();
+      unsubscribeBluetooth();
+      clearInterval(interval);
+    };
   }, []);
 
   const initializeBanking = () => {
@@ -72,54 +128,78 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
   };
 
   const handleTransfer = async () => {
-    if (!transferForm.toNode || !transferForm.amount) return;
+    console.log('Transfer button clicked', { transferForm });
+    if (!transferForm.toNode || !transferForm.amount) {
+      alert('Please fill in all fields');
+      return;
+    }
 
     try {
+      console.log('Initiating transfer...', transferForm);
       await joeBanker.initiateTransfer(transferForm.toNode, parseInt(transferForm.amount), transferForm.message);
       setShowTransferModal(false);
       setTransferForm({ toNode: '', amount: '', message: '' });
       alert('Transfer request sent via mesh network!');
     } catch (error) {
-      alert('Failed to send transfer request');
+      console.error('Transfer error:', error);
+      alert('Failed to send transfer request: ' + (error as Error).message);
     }
   };
 
   const handlePaymentRequest = async () => {
-    if (!paymentForm.toNode || !paymentForm.amount) return;
+    console.log('Payment request button clicked', { paymentForm });
+    if (!paymentForm.toNode || !paymentForm.amount) {
+      alert('Please fill in all fields');
+      return;
+    }
 
     try {
+      console.log('Creating payment request...', paymentForm);
       await joeBanker.createPaymentRequest(paymentForm.toNode, parseInt(paymentForm.amount), paymentForm.description);
       setShowPaymentModal(false);
       setPaymentForm({ toNode: '', amount: '', description: '' });
       alert('Payment request sent!');
     } catch (error) {
-      alert('Failed to create payment request');
+      console.error('Payment request error:', error);
+      alert('Failed to create payment request: ' + (error as Error).message);
     }
   };
 
   const handleCreateSavings = async () => {
-    if (!savingsForm.amount) return;
+    console.log('Create savings button clicked', { savingsForm });
+    if (!savingsForm.amount) {
+      alert('Please enter an amount');
+      return;
+    }
 
     try {
+      console.log('Creating savings account...', savingsForm);
       joeBanker.createSavingsAccount(parseInt(savingsForm.amount), parseInt(savingsForm.lockPeriod));
       setShowSavingsModal(false);
       setSavingsForm({ amount: '', lockPeriod: '30' });
       alert('Savings account created!');
     } catch (error) {
-      alert('Failed to create savings account');
+      console.error('Savings error:', error);
+      alert('Failed to create savings account: ' + (error as Error).message);
     }
   };
 
   const handleOfferCredit = async () => {
-    if (!creditForm.borrower || !creditForm.amount) return;
+    console.log('Offer credit button clicked', { creditForm });
+    if (!creditForm.borrower || !creditForm.amount) {
+      alert('Please fill in all fields');
+      return;
+    }
 
     try {
+      console.log('Offering credit...', creditForm);
       await joeBanker.offerCredit(creditForm.borrower, parseInt(creditForm.amount), parseFloat(creditForm.interestRate), parseInt(creditForm.term));
       setShowCreditModal(false);
       setCreditForm({ borrower: '', amount: '', interestRate: '10', term: '30' });
       alert('Credit offer sent!');
     } catch (error) {
-      alert('Failed to offer credit');
+      console.error('Credit offer error:', error);
+      alert('Failed to offer credit: ' + (error as Error).message);
     }
   };
 
@@ -210,22 +290,46 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <button onClick={() => setShowTransferModal(true)} className="terminal-btn active p-6 text-left">
+            <button 
+              onClick={() => {
+                console.log('Send Transfer button clicked');
+                setShowTransferModal(true);
+              }} 
+              className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
+            >
               <i className="fa-solid fa-arrow-right text-2xl mb-2"></i>
               <h3 className="font-bold text-lg">Send Transfer</h3>
               <p className="text-xs opacity-60">Send XC to nearby mesh nodes</p>
             </button>
-            <button onClick={() => setShowPaymentModal(true)} className="terminal-btn active p-6 text-left">
+            <button 
+              onClick={() => {
+                console.log('Request Payment button clicked');
+                setShowPaymentModal(true);
+              }} 
+              className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
+            >
               <i className="fa-solid fa-file-invoice-dollar text-2xl mb-2"></i>
               <h3 className="font-bold text-lg">Request Payment</h3>
               <p className="text-xs opacity-60">Invoice other nodes for services</p>
             </button>
-            <button onClick={() => setShowSavingsModal(true)} className="terminal-btn active p-6 text-left">
+            <button 
+              onClick={() => {
+                console.log('Create Savings button clicked');
+                setShowSavingsModal(true);
+              }} 
+              className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
+            >
               <i className="fa-solid fa-piggy-bank text-2xl mb-2"></i>
               <h3 className="font-bold text-lg">Create Savings</h3>
               <p className="text-xs opacity-60">Lock XC for guaranteed returns</p>
             </button>
-            <button onClick={() => setShowCreditModal(true)} className="terminal-btn active p-6 text-left">
+            <button 
+              onClick={() => {
+                console.log('Offer Credit button clicked');
+                setShowCreditModal(true);
+              }} 
+              className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
+            >
               <i className="fa-solid fa-hand-holding-usd text-2xl mb-2"></i>
               <h3 className="font-bold text-lg">Offer Credit</h3>
               <p className="text-xs opacity-60">Lend XC to trusted nodes</p>
@@ -328,7 +432,187 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Other modals would follow similar pattern... */}
+      {/* Payment Request Modal */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6 animate-in fade-in">
+          <div className="max-w-md w-full border-2 border-current bg-[#050505] p-8 shadow-[0_0_50px_currentColor]">
+            <h3 className="text-xl font-bold uppercase tracking-widest mb-6 glow-text text-center">payment_request.exe</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">request_from</p>
+                <select 
+                  value={paymentForm.toNode}
+                  onChange={(e) => setPaymentForm(prev => ({ ...prev, toNode: e.target.value }))}
+                  className="w-full bg-black border border-current p-3 text-xs text-white"
+                >
+                  <option value="">Select nearby node...</option>
+                  {nearbyNodes.map(node => (
+                    <option key={node.id} value={node.handle}>{node.handle} ({node.distance?.toFixed(1)}m)</option>
+                  ))}
+                </select>
+              </div>
+              
+              <input 
+                type="number"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
+                className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
+                placeholder="amount_xc" 
+              />
+              
+              <textarea 
+                value={paymentForm.description}
+                onChange={(e) => setPaymentForm(prev => ({ ...prev, description: e.target.value }))}
+                className="w-full bg-black border border-current p-3 text-xs text-white min-h-[80px] placeholder-white/20" 
+                placeholder="service_description..." 
+              />
+              
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => setShowPaymentModal(false)} className="terminal-btn py-3 uppercase text-[10px]">
+                  cancel
+                </button>
+                <button onClick={handlePaymentRequest} className="terminal-btn active py-3 uppercase text-[10px]">
+                  send_request
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Savings Account Modal */}
+      {showSavingsModal && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6 animate-in fade-in">
+          <div className="max-w-md w-full border-2 border-current bg-[#050505] p-8 shadow-[0_0_50px_currentColor]">
+            <h3 className="text-xl font-bold uppercase tracking-widest mb-6 glow-text text-center">savings_account.exe</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">deposit_amount</p>
+                <input 
+                  type="number"
+                  value={savingsForm.amount}
+                  onChange={(e) => setSavingsForm(prev => ({ ...prev, amount: e.target.value }))}
+                  className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
+                  placeholder="amount_xc" 
+                />
+              </div>
+              
+              <div>
+                <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">lock_period_days</p>
+                <select 
+                  value={savingsForm.lockPeriod}
+                  onChange={(e) => setSavingsForm(prev => ({ ...prev, lockPeriod: e.target.value }))}
+                  className="w-full bg-black border border-current p-3 text-xs text-white"
+                >
+                  <option value="30">30 days (5.0% APR)</option>
+                  <option value="60">60 days (5.5% APR)</option>
+                  <option value="90">90 days (6.0% APR)</option>
+                  <option value="180">180 days (7.0% APR)</option>
+                  <option value="365">365 days (8.0% APR)</option>
+                </select>
+              </div>
+              
+              <div className="text-xs opacity-60 space-y-1">
+                <p>📅 Lock Period: {savingsForm.lockPeriod} days</p>
+                <p>💰 Interest Rate: {savingsForm.lockPeriod === '30' ? '5.0%' : savingsForm.lockPeriod === '60' ? '5.5%' : savingsForm.lockPeriod === '90' ? '6.0%' : savingsForm.lockPeriod === '180' ? '7.0%' : '8.0%'} APR</p>
+                <p>🔒 Funds locked until maturity</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => setShowSavingsModal(false)} className="terminal-btn py-3 uppercase text-[10px]">
+                  cancel
+                </button>
+                <button onClick={handleCreateSavings} className="terminal-btn active py-3 uppercase text-[10px]">
+                  create_account
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Credit Offer Modal */}
+      {showCreditModal && (
+        <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-6 animate-in fade-in">
+          <div className="max-w-md w-full border-2 border-current bg-[#050505] p-8 shadow-[0_0_50px_currentColor]">
+            <h3 className="text-xl font-bold uppercase tracking-widest mb-6 glow-text text-center">credit_offer.exe</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">borrower</p>
+                <select 
+                  value={creditForm.borrower}
+                  onChange={(e) => setCreditForm(prev => ({ ...prev, borrower: e.target.value }))}
+                  className="w-full bg-black border border-current p-3 text-xs text-white"
+                >
+                  <option value="">Select trusted node...</option>
+                  {nearbyNodes.map(node => (
+                    <option key={node.id} value={node.handle}>{node.handle} ({node.distance?.toFixed(1)}m)</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">loan_amount</p>
+                <input 
+                  type="number"
+                  value={creditForm.amount}
+                  onChange={(e) => setCreditForm(prev => ({ ...prev, amount: e.target.value }))}
+                  className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
+                  placeholder="amount_xc" 
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">interest_rate_%</p>
+                  <input 
+                    type="number"
+                    value={creditForm.interestRate}
+                    onChange={(e) => setCreditForm(prev => ({ ...prev, interestRate: e.target.value }))}
+                    className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
+                    placeholder="10.0" 
+                    step="0.1"
+                    min="0"
+                    max="50"
+                  />
+                </div>
+                
+                <div>
+                  <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-2">term_days</p>
+                  <input 
+                    type="number"
+                    value={creditForm.term}
+                    onChange={(e) => setCreditForm(prev => ({ ...prev, term: e.target.value }))}
+                    className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" 
+                    placeholder="30" 
+                    min="1"
+                    max="365"
+                  />
+                </div>
+              </div>
+              
+              <div className="text-xs opacity-60 space-y-1">
+                <p>📊 Loan Amount: {creditForm.amount || '0'} XC</p>
+                <p>💸 Interest Rate: {creditForm.interestRate}% APR</p>
+                <p>📅 Term: {creditForm.term} days</p>
+                <p>💰 Total Repayment: {creditForm.amount && creditForm.interestRate ? (parseInt(creditForm.amount) * (1 + (parseFloat(creditForm.interestRate) / 100) * (parseInt(creditForm.term) / 365))).toFixed(2) : '0'} XC</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <button onClick={() => setShowCreditModal(false)} className="terminal-btn py-3 uppercase text-[10px]">
+                  cancel
+                </button>
+                <button onClick={handleOfferCredit} className="terminal-btn active py-3 uppercase text-[10px]">
+                  offer_credit
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
