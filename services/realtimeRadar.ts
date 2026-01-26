@@ -68,13 +68,12 @@ class RealtimeRadarService {
   }
 
   private generateRandomLocation() {
-    // Default to Johannesburg area if no location found
-    const lat = -26.2041 + (Math.random() - 0.5) * 0.05;
-    const lng = 28.0473 + (Math.random() - 0.5) * 0.05;
+    // "Digital Lobby" - Fixed location for users without GPS/HTTPS
+    // This ensures everyone sees each other by default if geolocation fails
     return {
-      lat,
-      lng,
-      geohash: this.encodeGeohash(lat, lng, 5)
+      lat: -26.2041,
+      lng: 28.0473,
+      geohash: this.encodeGeohash(-26.2041, 28.0473, 5)
     };
   }
 
@@ -144,31 +143,27 @@ class RealtimeRadarService {
   private handleNostrPeerUpdate(data: any) {
     if (data.id === this.myId) return;
 
-    // Only process if they are in a nearby geohash (first 4 chars match ~39km)
+    // RELAXED FILTER: Show all peers regardless of distance for now
+    // This fixes the "invisible user" issue when devices have different locations
     if (this.myCurrentLocation && data.location) {
-      const myPrefix = this.myCurrentLocation.geohash.substring(0, 4);
-      const peerPrefix = data.location.geohash.substring(0, 4);
+      const peer: RadarPeer = {
+        id: data.id,
+        name: data.name,
+        handle: data.handle,
+        location: data.location,
+        capabilities: data.capabilities || ['chat'],
+        lastSeen: Date.now(),
+        isOnline: true,
+        connectionType: 'nostr',
+        distance: this.calculateDistance(
+          this.myCurrentLocation.lat, this.myCurrentLocation.lng,
+          data.location.lat, data.location.lng
+        )
+      };
 
-      if (myPrefix === peerPrefix) {
-        const peer: RadarPeer = {
-          id: data.id,
-          name: data.name,
-          handle: data.handle,
-          location: data.location,
-          capabilities: data.capabilities || ['chat'],
-          lastSeen: Date.now(),
-          isOnline: true,
-          connectionType: 'nostr',
-          distance: this.calculateDistance(
-            this.myCurrentLocation.lat, this.myCurrentLocation.lng,
-            data.location.lat, data.location.lng
-          )
-        };
-
-        this.peers.set(data.id, peer);
-        this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
-        this.notifyListeners('peerUpdated', peer);
-      }
+      this.peers.set(data.id, peer);
+      this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
+      this.notifyListeners('peerUpdated', peer);
     }
   }
 
