@@ -1,14 +1,24 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { hybridMesh } from '../../services/hybridMesh';
 
 interface TicTacToeGameProps {
   onWinXC?: (amount: number) => void;
   onBack?: () => void;
+  roomId?: string;
+  isMultiplayer?: boolean;
 }
 
 type Player = 'X' | 'O' | null;
 type Board = Player[];
+type GameState = {
+  board: Board;
+  currentPlayer: Player;
+  winner: Player;
+  isDraw: boolean;
+  score: { X: number; O: number };
+};
 
-const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
+const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack, roomId, isMultiplayer = false }) => {
   const [board, setBoard] = useState<Board>(Array(9).fill(null));
   const [currentPlayer, setCurrentPlayer] = useState<Player>('X');
   const [winner, setWinner] = useState<Player>(null);
@@ -16,6 +26,78 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
   const [score, setScore] = useState({ X: 0, O: 0 });
   const [gameMode, setGameMode] = useState<'solo' | 'multiplayer'>('solo');
   const [isAIThinking, setIsAIThinking] = useState(false);
+  const [isMultiplayerActive, setIsMultiplayerActive] = useState(false);
+  const [gameId, setGameId] = useState('');
+  const [myPlayer, setMyPlayer] = useState<Player>('X');
+  const [opponentConnected, setOpponentConnected] = useState(false);
+
+  // Real-time multiplayer sync
+  const syncGameState = useCallback(() => {
+    if (!isMultiplayer || !roomId || !isMultiplayerActive) return;
+    
+    const gameState: GameState = {
+      board,
+      currentPlayer,
+      winner,
+      isDraw,
+      score
+    };
+    
+    hybridMesh.sendMessage(JSON.stringify({
+      type: 'tictactoe_game_update',
+      gameId,
+      state: gameState,
+      myPlayer,
+      timestamp: Date.now()
+    }), roomId);
+  }, [board, currentPlayer, winner, isDraw, score, myPlayer, isMultiplayer, roomId, isMultiplayerActive, gameId]);
+
+  // Listen for multiplayer updates
+  useEffect(() => {
+    if (!isMultiplayer || !roomId) return;
+    
+    const handleGameMessage = (message: any) => {
+      try {
+        const data = JSON.parse(message.content);
+        if (data.type === 'tictactoe_game_update' && data.gameId === gameId) {
+          setBoard(data.state.board);
+          setCurrentPlayer(data.state.currentPlayer);
+          setWinner(data.state.winner);
+          setIsDraw(data.state.isDraw);
+          setScore(data.state.score);
+          setOpponentConnected(true);
+        } else if (data.type === 'tictactoe_invite' && !isMultiplayerActive) {
+          // Auto-join game invites
+          setGameId(data.gameId);
+          setMyPlayer('O');
+          setIsMultiplayerActive(true);
+          setOpponentConnected(true);
+        }
+      } catch (error) {
+        console.error('Failed to parse game message:', error);
+      }
+    };
+    
+    const unsubscribe = hybridMesh.subscribe('messageReceived', handleGameMessage);
+    return unsubscribe;
+  }, [isMultiplayer, roomId, gameId, isMultiplayerActive]);
+
+  // Initialize multiplayer game
+  const startMultiplayerGame = useCallback(() => {
+    if (!roomId) return;
+    
+    const newGameId = `tictactoe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setGameId(newGameId);
+    setMyPlayer('X');
+    setIsMultiplayerActive(true);
+    setOpponentConnected(false);
+    
+    hybridMesh.sendMessage(JSON.stringify({
+      type: 'tictactoe_invite',
+      gameId: newGameId,
+      timestamp: Date.now()
+    }), roomId);
+  }, [roomId]);
 
   const checkDraw = useCallback((board: Board): boolean => {
     return board.every(cell => cell !== null);
@@ -83,8 +165,11 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
   }, [minimax]);
 
   const makeMove = useCallback((index: number) => {
-    if (board[index] !== null || winner || isDraw) return;
-
+    if (board[index] !== null || winner !== null || isDraw) return;
+    
+    // Check if it's my turn in multiplayer
+    if (isMultiplayerActive && currentPlayer !== myPlayer) return;
+    
     const newBoard = [...board];
     newBoard[index] = currentPlayer;
     setBoard(newBoard);
@@ -92,10 +177,11 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
     const gameWinner = checkWinner(newBoard);
     if (gameWinner) {
       setWinner(gameWinner);
-      setScore(prev => ({ ...prev, [gameWinner]: prev[gameWinner] + 1 }));
+      const newScore = { ...score, [gameWinner]: score[gameWinner] + 1 };
+      setScore(newScore);
       
       // Award XC for winning
-      if (onWinXC && gameMode === 'solo' && gameWinner === 'X') {
+      if (gameWinner === 'X' && gameMode === 'solo' && onWinXC) {
         onWinXC(5);
       }
     } else if (checkDraw(newBoard)) {
@@ -113,7 +199,10 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
         }, 500);
       }
     }
-  }, [board, currentPlayer, winner, isDraw, gameMode, checkWinner, checkDraw, getAIMove, onWinXC]);
+    
+    // Sync multiplayer game state
+    syncGameState();
+  }, [board, currentPlayer, winner, isDraw, score, gameMode, myPlayer, isMultiplayerActive, checkWinner, checkDraw, getAIMove, onWinXC, syncGameState]);
 
   const resetGame = () => {
     setBoard(Array(9).fill(null));
@@ -182,10 +271,38 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
       </div>
 
       {/* Game Status */}
-      <div className="text-center mb-4">
+      <div className="text-center mb-4 space-y-2">
         <div className="text-lg font-bold">
           {getStatusMessage()}
         </div>
+        
+        {/* Multiplayer Status */}
+        {isMultiplayerActive && (
+          <div className="text-xs space-y-1">
+            <div className="text-green-400">
+              🌐 Multiplayer Mode Active
+            </div>
+            <div className="opacity-60">
+              You are: <span className={myPlayer === 'X' ? 'text-blue-400' : 'text-red-400'}>{myPlayer}</span>
+            </div>
+            <div className={opponentConnected ? 'text-green-400' : 'text-yellow-400'}>
+              {opponentConnected ? '👤 Opponent Connected' : '⏳ Waiting for opponent...'}
+            </div>
+          </div>
+        )}
+        
+        {/* Multiplayer Toggle */}
+        {isMultiplayer && roomId && (
+          <div className="mt-2">
+            <button
+              onClick={startMultiplayerGame}
+              disabled={isMultiplayerActive}
+              className="terminal-btn active px-4 py-2 text-xs border border-green-500/50 bg-green-500/20 text-green-400 disabled:opacity-30"
+            >
+              {isMultiplayerActive ? 'GAME IN PROGRESS' : 'START MULTIPLAYER'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Game Board */}
@@ -195,16 +312,19 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
             <button
               key={index}
               onClick={() => makeMove(index)}
-              disabled={cell !== null || winner !== null || isDraw || isAIThinking}
+              disabled={cell !== null || winner !== null || isDraw || isAIThinking || (isMultiplayerActive && currentPlayer !== myPlayer)}
               className={`
                 aspect-square border-2 border-green-500/50 
                 flex items-center justify-center text-2xl md:text-xl font-bold
                 transition-all duration-200 active:scale-95
-                ${cell === null ? 'hover:bg-green-500/20 cursor-pointer' : 'cursor-not-allowed'}
+                ${cell === null && !isMultiplayerActive ? 'hover:bg-green-500/20 cursor-pointer' : ''}
+                ${cell === null && isMultiplayerActive && currentPlayer === myPlayer ? 'hover:bg-green-500/20 cursor-pointer' : ''}
+                ${cell === null && isMultiplayerActive && currentPlayer !== myPlayer ? 'cursor-not-allowed opacity-60' : ''}
                 ${cell === 'X' ? 'text-blue-400 bg-blue-500/20' : ''}
                 ${cell === 'O' ? 'text-red-400 bg-red-500/20' : ''}
                 ${winner && cell === winner ? 'animate-pulse' : ''}
-                min-h-[60px] md:min-h-[80px] min-w-[60px] md:min-w-[80px]
+                min-h-[80px] md:min-h-[80px] min-w-[80px] md:min-w-[80px]
+                text-3xl md:text-2xl
               `}
             >
               {cell}
@@ -221,13 +341,37 @@ const TicTacToeGame: React.FC<TicTacToeGameProps> = ({ onWinXC, onBack }) => {
         >
           New Game
         </button>
+        
+        {/* Win Messages */}
         {winner && gameMode === 'solo' && winner === 'X' && (
           <div className="text-xs text-yellow-400 font-bold">
             🎉 Earned 5 XC!
           </div>
         )}
-        <div className="text-xs opacity-40 md:hidden">
-          Tap any cell to play
+        
+        {winner && isMultiplayerActive && winner === myPlayer && (
+          <div className="text-xs text-green-400 font-bold">
+            🎉 You won! +5 XC
+          </div>
+        )}
+        
+        {winner && isMultiplayerActive && winner !== myPlayer && (
+          <div className="text-xs text-red-400 font-bold">
+            😔 Opponent won
+          </div>
+        )}
+        
+        {/* Mobile Instructions */}
+        <div className="text-xs opacity-40 md:hidden space-y-1">
+          <div>📱 Tap any cell to play</div>
+          {isMultiplayerActive && (
+            <div>⏳ Wait for your turn (You are {myPlayer})</div>
+          )}
+        </div>
+        
+        {/* Desktop Instructions */}
+        <div className="text-xs opacity-40 hidden md:block">
+          💻 Click any cell to play
         </div>
       </div>
     </div>
