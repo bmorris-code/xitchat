@@ -7,6 +7,7 @@ import { meshDataSync } from './services/meshDataSync';
 import { hybridMesh } from './services/hybridMesh';
 import { enhancedDiscovery } from './services/enhancedDiscovery';
 import { realtimeRadar, RadarPeer } from './services/realtimeRadar';
+import { presenceBeacon } from './services/presenceBeacon';
 import { xcEconomy } from './services/xcEconomy';
 import { realTorService } from './services/realTorService';
 import { realPowService } from './services/realPowService';
@@ -207,7 +208,7 @@ const App: React.FC = () => {
     initializeRadar();
 
     return () => {
-      realtimeRadar.disconnect();
+      realtimeRadar.destroy();
     };
   }, []);
 
@@ -497,6 +498,73 @@ const App: React.FC = () => {
   const [isSOSActive, setIsSOSActive] = useState(false);
   const [showWallet, setShowWallet] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+
+  // Initialize Presence Beacon with room membership
+  useEffect(() => {
+    const initializePresenceBeacon = async () => {
+      try {
+        console.log('🗼 Initializing Presence Beacon with room membership...');
+        
+        // Initialize presence beacon with user info
+        const userInfo = {
+          name: myHandle || 'Anonymous',
+          handle: myHandle?.replace('@', '') || 'anon'
+        };
+        
+        await presenceBeacon.initialize(userInfo);
+        await presenceBeacon.start();
+        
+        // Join default rooms
+        presenceBeacon.joinRoom('global');
+        presenceBeacon.joinRoom('local');
+        
+        console.log('✅ Presence Beacon initialized with room membership');
+      } catch (error) {
+        console.error('❌ Failed to initialize Presence Beacon:', error);
+      }
+    };
+
+    initializePresenceBeacon();
+
+    return () => {
+      presenceBeacon.stop();
+    };
+  }, [myHandle]);
+
+  // Handle room membership based on current view
+  useEffect(() => {
+    if (!presenceBeacon.isConnected()) return;
+
+    // Join room based on current view
+    switch (view) {
+      case 'rooms':
+        presenceBeacon.joinRoom('rooms');
+        break;
+      case 'chats':
+        presenceBeacon.joinRoom('chats');
+        break;
+      case 'map':
+        presenceBeacon.joinRoom('radar');
+        break;
+      case 'buzz':
+        presenceBeacon.joinRoom('buzz');
+        break;
+      case 'games':
+        presenceBeacon.joinRoom('games');
+        break;
+      case 'tradepost':
+      case 'joebanker':
+        presenceBeacon.joinRoom('marketplace');
+        break;
+      default:
+        // Leave specific rooms when navigating away
+        ['rooms', 'chats', 'radar', 'buzz', 'games', 'marketplace'].forEach(room => {
+          if (view !== room && view !== 'chats' && view !== 'map') {
+            presenceBeacon.leaveRoom(room);
+          }
+        });
+    }
+  }, [view]);
 
   // Real-time Geolocation Watcher (Android-friendly)
   useEffect(() => {
@@ -1248,7 +1316,11 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-full w-full bg-black text-current overflow-hidden selection:bg-current selection:text-black pt-safe">
+    <div className="flex flex-col md:flex-row h-full w-full bg-black text-current overflow-hidden selection:bg-current selection:text-black pt-safe"
+      style={{
+        minHeight: '100dvh',
+        WebkitOverflowScrolling: 'touch',
+      }}>
       <Sidebar currentView={view} setView={setView} userAvatar={myAvatar} />
       <div className="flex-1 flex overflow-hidden relative md:pt-0">
 

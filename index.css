@@ -48,6 +48,26 @@ body,
         padding-left: env(safe-area-inset-left);
         padding-right: env(safe-area-inset-right);
     }
+
+    /* iOS Navbar fixes */
+    .ios-navbar-fix {
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 9999 !important;
+        padding-bottom: env(safe-area-inset-bottom) !important;
+        background: rgba(0, 0, 0, 0.95) !important;
+        -webkit-backdrop-filter: blur(20px) !important;
+        backdrop-filter: blur(20px) !important;
+    }
+
+    /* Ensure mobile navbar is always visible */
+    @media (max-width: 768px) {
+        .order-last {
+            order: 999 !important;
+        }
+    }
 }
 
 /* Safe area padding for notched phones */

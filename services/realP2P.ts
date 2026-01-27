@@ -112,7 +112,7 @@ class TrueMeshP2PService {
       }
       const bluetooth = (navigator as any).bluetooth;
       if (!bluetooth.requestDevice) {
-        console.log('⚠️ Bluetooth Web API not available');
+        console.debug('⚠️ Bluetooth Web API not available');
         return;
       }
       const device = await bluetooth.requestDevice({

@@ -9,6 +9,34 @@ import './utils/globalJsonSetup';
 // Import iOS fixes for Safari/PWA compatibility
 import './ios-fixes';
 
+// Reduce console noise in development
+if (process.env.NODE_ENV === 'development') {
+  // Filter out Ably transport warnings
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    const message = args.join(' ');
+    if (message.includes('Ably:') && message.includes('Transport.onIdleTimerExpire')) {
+      return; // Filter out Ably idle warnings
+    }
+    originalWarn.apply(console, args);
+  };
+
+  // Handle unhandled promise rejections (especially Nostr rate limits)
+  window.addEventListener('unhandledrejection', (event) => {
+    const message = event.reason?.message || event.reason || '';
+    
+    // Handle Nostr rate limit errors gracefully
+    if (message.includes('rate-limited') || message.includes('slow down')) {
+      console.debug('🕊️ Nostr rate limit detected, handling gracefully');
+      event.preventDefault(); // Prevent the error from showing in console
+      return;
+    }
+    
+    // Log other unhandled rejections
+    console.error('Unhandled promise rejection:', event.reason);
+  });
+}
+
 // Import the PWA register function (Required for offline mode)
 import { registerSW } from 'virtual:pwa-register';
 
@@ -83,7 +111,14 @@ const MinimalApp = () => {
 
 try {
   console.log('Creating React root...');
-  const root = ReactDOM.createRoot(rootElement);
+  
+  // Check if root already exists to avoid multiple createRoot() calls
+  let root = (rootElement as any)._reactRoot;
+  if (!root) {
+    root = ReactDOM.createRoot(rootElement);
+    (rootElement as any)._reactRoot = root;
+  }
+  
   console.log('Rendering app...');
   root.render(
     <React.StrictMode>

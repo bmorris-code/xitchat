@@ -1,5 +1,6 @@
 // Nostr Protocol Service for XitChat
 // Implements decentralized global communication using Nostr relays
+// Supports presence events for global radar discovery
 
 import * as nostrTools from 'nostr-tools';
 import * as secp256k1 from '@noble/secp256k1';
@@ -37,6 +38,18 @@ export interface NostrChannel {
   created_at: number;
 }
 
+export interface NostrPresenceEvent {
+  pubkey: string;
+  device: 'mobile' | 'desktop' | 'server';
+  role: 'edge' | 'anchor';
+  caps: string[];
+  rooms: string[];
+  ttl: number;
+  timestamp: number;
+  geohash?: string;
+  signalStrength?: number;
+}
+
 class NostrService {
   private pool: any = null;
   private privateKey: string | null = null;
@@ -69,6 +82,15 @@ class NostrService {
     'wss://relay.primal.net',
     'wss://relay.snort.social'
   ];
+
+  // Presence event constants
+  private readonly PRESENCE_KIND = 30315; // Custom kind for presence events
+  private readonly PRESENCE_TTL = 60000; // 1 minute TTL for presence events
+  private presenceSubscription: any = null;
+  private lastPresencePublish = 0;
+  private readonly PRESENCE_PUBLISH_INTERVAL = 60000; // Publish presence every 60 seconds (reduced from 30)
+  private isRateLimited = false;
+  private rateLimitBackoff = 0;
 
   async initialize(privateKey?: string): Promise<boolean> {
     try {
@@ -111,6 +133,9 @@ class NostrService {
 
       // Subscribe to relevant events
       await this.subscribeToEvents();
+
+      // Subscribe to presence events for global radar
+      await this.subscribeToPresenceEvents();
 
       // Register with network state manager
       this.serviceInfo.healthCheck = () => this.performHealthCheckInternal();
@@ -569,7 +594,176 @@ class NostrService {
     }
   }
 
+  private async subscribeToPresenceEvents(): Promise<void> {
+    const activeRelays = Array.from(this.connectedRelays);
+    if (activeRelays.length === 0) return;
 
+    try {
+      console.log('🗼 Subscribing to Nostr presence events for global radar...');
+
+      // Subscribe to presence events with D-tag filter for specificity
+      this.presenceSubscription = this.pool!.subscribeMany(activeRelays, {
+        kinds: [this.PRESENCE_KIND],
+        '#d': ['xitchat-presence'], // Only subscribe to events with our D-tag
+        limit: 10 // Get recent presence events
+      }, {
+        onevent: async (event) => {
+          await this.handlePresenceEvent(event);
+        },
+        oneose: () => {
+          console.log('✅ Presence events subscription ready');
+        },
+        onclose: (reason: string) => {
+          console.debug('Presence subscription closed:', reason);
+          // Auto-resubscribe after delay
+          setTimeout(() => this.subscribeToPresenceEvents(), 30000);
+        }
+      });
+
+      console.log('🗼 Subscribed to Nostr presence events');
+    } catch (error) {
+      console.warn('⚠️ Failed to subscribe to presence events:', error);
+    }
+  }
+
+  private async handlePresenceEvent(event: any): Promise<void> {
+    try {
+      // Skip own presence events
+      if (event.pubkey === this.publicKey) return;
+
+      // Validate content before parsing - must be JSON for presence events
+      if (!event.content || typeof event.content !== 'string') {
+        return; // Skip invalid content
+      }
+
+      // Check if content looks like JSON (starts with {)
+      if (!event.content.trim().startsWith('{')) {
+        return; // Skip non-JSON content (likely regular messages)
+      }
+
+      // Parse presence data with error handling
+      let presenceData: NostrPresenceEvent;
+      try {
+        presenceData = JSON.parse(event.content);
+      } catch (parseError) {
+        console.debug('⚠️ Received non-JSON content in presence subscription, skipping:', event.content.substring(0, 50));
+        return; // Skip if not valid JSON
+      }
+
+      // Validate presence data structure
+      if (!presenceData || typeof presenceData !== 'object') {
+        return; // Skip invalid object
+      }
+
+      // Validate required fields for presence events
+      if (!presenceData.pubkey || !presenceData.device || !presenceData.role || !presenceData.caps) {
+        console.debug('⚠️ Invalid presence event structure, missing required fields');
+        return; // Skip malformed presence events
+      }
+
+      // TTL check - ignore expired events
+      const now = Date.now();
+      if (now - presenceData.timestamp > presenceData.ttl) {
+        return; // Expired presence event
+      }
+
+      console.log(`🗼 Received presence from ${presenceData.pubkey.substring(0, 8)}...`);
+      
+      // Emit presence event for radar integration
+      this.emit('presenceEvent', {
+        pubkey: presenceData.pubkey,
+        device: presenceData.device,
+        role: presenceData.role,
+        caps: presenceData.caps,
+        rooms: presenceData.rooms,
+        ttl: presenceData.ttl,
+        timestamp: presenceData.timestamp,
+        geohash: presenceData.geohash,
+        signalStrength: presenceData.signalStrength,
+        lastSeen: new Date(event.created_at * 1000)
+      });
+    } catch (error) {
+      console.error('❌ Failed to handle presence event:', error);
+    }
+  }
+
+  async publishPresenceEvent(presenceData: NostrPresenceEvent): Promise<boolean> {
+    try {
+      if (!this.privateKey || !this.publicKey) {
+        throw new Error('Nostr service not initialized');
+      }
+
+      // Check if we're currently rate limited
+      if (this.isRateLimited) {
+        console.debug('⏳ Currently rate limited, skipping presence publish');
+        return false;
+      }
+
+      // Rate limiting check
+      const now = Date.now();
+      if (now - this.lastPresencePublish < this.PRESENCE_PUBLISH_INTERVAL) {
+        console.debug('⏳ Rate limiting presence publish');
+        return false;
+      }
+      this.lastPresencePublish = now;
+
+      const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+
+      // Create presence event
+      const event = nostrTools.finalizeEvent({
+        kind: this.PRESENCE_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [['d', 'xitchat-presence']], // D-tag for identification
+        content: JSON.stringify(presenceData)
+      }, privateKeyBytes);
+
+      // Validate event
+      if (!event || !event.id || !event.sig) {
+        throw new Error('Failed to create valid presence event');
+      }
+
+      // Publish to connected relays with rate limit handling
+      const successfulRelays: string[] = [];
+      const promises = Array.from(this.connectedRelays).map(async (relayUrl) => {
+        try {
+          await this.pool!.publish([relayUrl], event);
+          successfulRelays.push(relayUrl);
+        } catch (error: any) {
+          if (error.message && error.message.includes('rate-limited')) {
+            console.debug(`⚠️ Rate limited by ${relayUrl}, enabling backoff`);
+            this.handleRateLimit();
+          } else {
+            console.debug(`Failed to publish presence to ${relayUrl}:`, error);
+          }
+        }
+      });
+
+      await Promise.allSettled(promises);
+
+      if (successfulRelays.length > 0) {
+        console.log(`🗼 Published presence to ${successfulRelays.length} relays`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('❌ Failed to publish presence event:', error);
+      return false;
+    }
+  }
+
+  private handleRateLimit(): void {
+    this.isRateLimited = true;
+    this.rateLimitBackoff = Math.min(this.rateLimitBackoff + 30000, 300000); // Max 5 minutes backoff
+    
+    console.debug(`⏳ Rate limited, backing off for ${this.rateLimitBackoff / 1000}s`);
+    
+    setTimeout(() => {
+      this.isRateLimited = false;
+      this.rateLimitBackoff = 0;
+      console.debug('✅ Rate limit backoff ended, resuming normal operations');
+    }, this.rateLimitBackoff);
+  }
 
   async searchUsers(query: string): Promise<NostrPeer[]> {
     try {
@@ -660,6 +854,12 @@ class NostrService {
 
   async disconnect(): Promise<void> {
     try {
+      // Close presence subscription
+      if (this.presenceSubscription) {
+        this.presenceSubscription.close();
+        this.presenceSubscription = null;
+      }
+
       if (this.pool) {
         this.pool.close(this.defaultRelays);
       }

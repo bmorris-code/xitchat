@@ -1,5 +1,6 @@
-// WiFi P2P Mesh Service for XitChat
-// Real P2P discovery using Nostr for signaling and WebRTC for data
+// WiFi P2P Service with Nostr Signaling - Clean Version
+// Fixed version with proper Nostr initialization checks
+
 import { nostrService } from './nostrService';
 import { networkStateManager, NetworkService } from './networkStateManager';
 
@@ -7,10 +8,10 @@ export interface WiFiPeer {
   id: string;
   name: string;
   handle: string;
-  connection?: RTCPeerConnection;
-  dataChannel?: RTCDataChannel;
   isConnected: boolean;
   lastSeen: Date;
+  connection?: RTCPeerConnection;
+  dataChannel?: RTCDataChannel;
 }
 
 export interface WiFiMessage {
@@ -19,69 +20,55 @@ export interface WiFiMessage {
   to: string;
   content: string;
   timestamp: Date;
-  type: 'chat' | 'presence' | 'discovery' | 'peer-announce' | 'webrtc-offer' | 'webrtc-answer' | 'ice-candidate';
+  type: 'peer-announce' | 'chat' | 'webrtc-offer' | 'webrtc-answer' | 'ice-candidate';
 }
 
 class WiFiP2PService {
   private peers: Map<string, WiFiPeer> = new Map();
-  private localPeer: RTCPeerConnection | null = null;
-  private broadcastChannel: BroadcastChannel | null = null;
-  private myPeerId: string = '';
+  private myPeerId: string;
   private myName: string = 'Anonymous';
   private myHandle: string = '@anon';
+  private broadcastChannel: BroadcastChannel;
+  private nostrSignalingPrefix = 'xitchat-wifi:';
   private isDiscovering = false;
-  private discoveryInterval: number | null = null;
-  private announceInterval: number | null = null;
+  private announceInterval: any = null;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
-  private nostrSignalingPrefix = 'xitchat-p2p-signal-';
   private serviceInfo: NetworkService = {
     name: 'wifiP2P',
     isConnected: false,
     isHealthy: false,
     lastCheck: 0,
     reconnectAttempts: 0,
-    maxReconnectAttempts: 5,
-    reconnectDelay: 2000
+    maxReconnectAttempts: 3,
+    reconnectDelay: 3000
   };
-  on: any;
-  connectToPeer: any;
 
   constructor() {
     this.myPeerId = this.generatePeerId();
-
-    // Initialize Broadcast Channel for local network discovery (same-device)
-    try {
-      this.broadcastChannel = new BroadcastChannel('xitchat-wifi-p2p');
-      this.setupBroadcastChannel();
-    } catch (error) {
-      console.log('Broadcast Channel not available - same-device discovery limited');
-    }
-  }
-
-  private generatePeerId(): string {
-    // We use a shorter ID for display but keep it unique
-    return 'wifi_' + Math.random().toString(36).substr(2, 9);
-  }
-
-  private setupBroadcastChannel(): void {
-    if (!this.broadcastChannel) return;
-
+    this.broadcastChannel = new BroadcastChannel('xitchat-wifi');
+    
     this.broadcastChannel.onmessage = (event) => {
       try {
         const message: WiFiMessage = JSON.parse(event.data);
         this.handleIncomingMessage(message, 'local');
       } catch (error) {
-        console.error('Failed to parse broadcast message:', error);
+        console.error('Failed to parse WiFi message:', error);
       }
     };
+
+    this.setupNostrSignaling();
+  }
+
+  private generatePeerId(): string {
+    return 'wifi-' + Math.random().toString(36).substr(2, 9);
   }
 
   private setupNostrSignaling(): void {
-    // Listen for WebRTC signals via Nostr (this enables cross-device!)
-    nostrService.subscribe('messageReceived', (message) => {
-      if (message.content && message.content.startsWith(this.nostrSignalingPrefix)) {
+    // Listen for Nostr signaling messages
+    nostrService.subscribe('messageBroadcasted', (event: any) => {
+      if (event.content && event.content.startsWith(this.nostrSignalingPrefix)) {
         try {
-          const signalData = JSON.parse(message.content.replace(this.nostrSignalingPrefix, ''));
+          const signalData = JSON.parse(event.content.replace(this.nostrSignalingPrefix, ''));
           this.handleIncomingMessage(signalData, 'nostr');
         } catch (error) {
           console.error('Failed to parse Nostr signal:', error);
@@ -291,11 +278,15 @@ class WiFiP2PService {
       this.broadcastChannel.postMessage(payload);
     }
 
-    // 2. Send via Nostr (cross-device signaling)
+    // 2. Send via Nostr (cross-device signaling) - only if initialized
     try {
-      await nostrService.broadcastMessage(`${this.nostrSignalingPrefix}${payload}`);
+      if (nostrService.isConnected()) {
+        await nostrService.broadcastMessage(`${this.nostrSignalingPrefix}${payload}`);
+      } else {
+        console.debug('Nostr not initialized, skipping Nostr signaling');
+      }
     } catch (error) {
-      console.warn('Nostr signaling failed', error);
+      console.debug('Nostr signaling failed:', error);
     }
   }
 
@@ -305,8 +296,6 @@ class WiFiP2PService {
         console.warn('WebRTC not supported');
         return false;
       }
-
-      this.setupNostrSignaling();
 
       // Register with network state manager
       this.serviceInfo.healthCheck = () => this.performHealthCheck();

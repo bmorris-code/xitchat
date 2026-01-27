@@ -61,7 +61,7 @@ class BluetoothMeshService {
     try {
       // Check if Bluetooth Web API is available
       if (!('bluetooth' in navigator)) {
-        console.warn('Bluetooth Web API not available - using enhanced simulation mode');
+        console.debug('Bluetooth Web API not available - using enhanced simulation mode');
         
         // Register with network state manager even in simulation mode
         this.serviceInfo.healthCheck = () => this.performHealthCheck();

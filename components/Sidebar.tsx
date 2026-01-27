@@ -35,7 +35,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar }) =
       pb-safe pr-safe pl-safe md:pb-0
       z-50
       shadow-[0_-1px_20px_rgba(0,0,0,0.8)] md:shadow-none
-    ">
+      min-h-[72px]
+      backdrop-blur-md
+      sticky bottom-0 md:sticky md:top-0
+      ios-navbar-fix
+    "
+    style={{
+      WebkitBackdropFilter: 'blur(12px)',
+    }}>
       {/* Desktop Logo */}
       <div className="hidden md:block py-8 text-2xl glow-text animate-pulse">
         <i className="fa-solid fa-ghost"></i>

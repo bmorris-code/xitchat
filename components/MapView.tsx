@@ -445,8 +445,8 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
             <div className="space-y-3">
               <button
                 onClick={() => {
-                  if (getPeerType(selectedPeer) === 'wifi') wifiP2P.connectToPeer(selectedPeer.id);
-                  else if (getPeerType(selectedPeer) === 'real') trueMeshP2PService.connectToPeer(selectedPeer.id);
+                  if (getPeerType(selectedPeer) === 'real') trueMeshP2PService.connectToPeer(selectedPeer.id);
+                  // WiFi P2P auto-connects when peers are discovered
                   setSelectedPeer(null);
                 }}
                 className={`w-full font-bold py-3 px-4 rounded transition-colors uppercase text-[10px] tracking-widest ${getPeerType(selectedPeer) === 'bluetooth' ? 'bg-green-500 text-black' :

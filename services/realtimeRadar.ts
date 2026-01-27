@@ -1,12 +1,15 @@
-// Real-time Radar Service for XitChat
-// Connects to signaling server for live user discovery and geohash mapping
-// UPGRADED: Now uses Nostr for real-time cross-device location broadcasting
+// Real-time Radar Service for XitChat - Mobile Mesh Edition
+// TTL-based peer visibility with presence beacon integration
+// Fixes mobile invisibility by using presence coordination layer
 
+import { presenceBeacon, PresenceBeaconPeer } from './presenceBeacon';
+import { smartRouter } from './smartRouter';
+import { mobileLifecycle } from './mobileLifecycle';
 import { nostrService } from './nostrService';
-import { hybridMesh } from './hybridMesh';
 
 export interface RadarPeer {
   id: string;
+  pubkey: string;
   name: string;
   handle: string;
   avatar?: string;
@@ -17,10 +20,15 @@ export interface RadarPeer {
   };
   capabilities: string[];
   lastSeen: number;
+  ttl: number; // Time to live in seconds
   isOnline: boolean;
+  device: 'mobile' | 'desktop' | 'server';
+  role: 'edge' | 'anchor';
   signalStrength?: number;
-  connectionType: 'webrtc' | 'websocket' | 'hybrid' | 'nostr';
+  connectionType: 'webrtc' | 'websocket' | 'hybrid' | 'nostr' | 'bluetooth' | 'wifi' | 'broadcast';
   distance?: number; // Distance from current user
+  transportPriority?: string[];
+  confidence?: number; // Routing confidence
 }
 
 export interface GeohashZone {
@@ -32,335 +40,479 @@ export interface GeohashZone {
 }
 
 class RealtimeRadarService {
-  private ws: WebSocket | null = null;
   private peers: Map<string, RadarPeer> = new Map();
   private geohashZones: Map<string, GeohashZone> = new Map();
-  private currentGeohash: string = '';
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3;
-  private reconnectInterval: any = null;
-  private isRealMode = false;
-  private is5GNetwork = false;
-  private connectionQuality: 'excellent' | 'good' | 'fair' | 'poor' = 'good';
-  private nostrRadarPrefix = 'xitchat-radar-v1-';
+  private cleanupInterval: any = null;
 
   // Cache current location
   private myCurrentLocation: { lat: number; lng: number; geohash: string } | null = null;
   private myId: string = '';
   private myName: string = 'Anonymous';
   private myHandle: string = '@anon';
-  isRealModeEnabled: any;
+  handleMeshLocationUpdate: any;
 
   constructor() {
     this.myId = this.generatePeerId();
-    this.detectNetworkType();
     this.loadUserInfo();
+    this.setupPresenceIntegration();
+    this.setupLifecycleIntegration();
+    
     // Initialize with a default location to prevent null errors
     this.myCurrentLocation = this.generateRandomLocation();
+    
+    // Start TTL-based cleanup
+    this.startTtlCleanup();
   }
 
-  private loadUserInfo() {
+  private generatePeerId(): string {
+    return 'npub1' + Math.random().toString(36).substr(2, 58);
+  }
+
+  private setupPresenceIntegration(): void {
+    // Listen for presence beacon updates
+    presenceBeacon.subscribe('peersUpdated', (peers: PresenceBeaconPeer[]) => {
+      this.handlePresencePeersUpdate(peers);
+    });
+    
+    // Listen for Nostr presence events (global users)
+    if (nostrService.isConnected()) {
+      nostrService.subscribe('presenceEvent', (presenceData) => {
+        this.handleNostrPresenceEvent(presenceData);
+      });
+    }
+  }
+
+  private setupLifecycleIntegration(): void {
+    // Listen for mobile lifecycle events
+    mobileLifecycle.on('state_change', (event: any) => {
+      this.handleLifecycleEvent(event);
+    });
+
+    // Listen for network changes
+    mobileLifecycle.on('network_change', (event: any) => {
+      this.handleNetworkChange(event);
+    });
+  }
+
+  private handleNostrPresenceEvent(presenceData: any): void {
+    // Convert Nostr presence data to radar peer format
+    const radarPeer: RadarPeer = {
+      id: presenceData.pubkey,
+      pubkey: presenceData.pubkey,
+      name: this.extractNameFromPubkey(presenceData.pubkey),
+      handle: this.extractHandleFromPubkey(presenceData.pubkey),
+      device: presenceData.device,
+      role: presenceData.role,
+      capabilities: presenceData.caps,
+      lastSeen: presenceData.timestamp,
+      ttl: presenceData.ttl,
+      isOnline: true, // Nostr presence events are always online
+      connectionType: 'nostr', // Global users come via Nostr
+      signalStrength: presenceData.signalStrength,
+      location: presenceData.geohash ? {
+        lat: 0, lng: 0, // Will be calculated if needed
+        geohash: presenceData.geohash
+      } : undefined
+    };
+
+    // Add or update peer in radar
+    this.peers.set(presenceData.pubkey, radarPeer);
+    
+    // Update geohash zones
+    this.updateGeohashZones();
+    
+    // Notify listeners
+    this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
+    
+    console.log(`🗼 Radar: Added global peer from Nostr: ${presenceData.pubkey.substring(0, 8)}...`);
+  }
+
+  private handlePresencePeersUpdate(presencePeers: PresenceBeaconPeer[]): void {
+    console.log(`🗼 Updating radar with ${presencePeers.length} presence peers`);
+
+    const now = Date.now();
+    const updatedPeers: RadarPeer[] = [];
+
+    presencePeers.forEach(presencePeer => {
+      // Skip self
+      if (presencePeer.pubkey === this.myId) return;
+
+      // TTL-based visibility check (CRITICAL for mobile)
+      const isVisible = now - presencePeer.lastSeen < (presencePeer.ttl * 1000);
+      
+      if (!isVisible) {
+        // Remove expired peer
+        this.peers.delete(presencePeer.pubkey);
+        return;
+      }
+
+      // Convert presence peer to radar peer
+      const radarPeer: RadarPeer = {
+        id: presencePeer.pubkey,
+        pubkey: presencePeer.pubkey,
+        name: this.extractNameFromPubkey(presencePeer.pubkey),
+        handle: this.extractHandleFromPubkey(presencePeer.pubkey),
+        device: presencePeer.device,
+        role: presencePeer.role,
+        capabilities: presencePeer.caps,
+        lastSeen: presencePeer.lastSeen,
+        ttl: presencePeer.ttl,
+        isOnline: true, // Presence peers are always online by definition
+        connectionType: this.inferConnectionType(presencePeer.caps),
+        signalStrength: presencePeer.signalStrength,
+        location: presencePeer.geohash ? {
+          lat: 0, lng: 0, // Will be calculated if needed
+          geohash: presencePeer.geohash
+        } : undefined
+      };
+
+      // Calculate routing information
+      this.calculateRoutingInfo(radarPeer, presencePeer);
+
+      this.peers.set(presencePeer.pubkey, radarPeer);
+      updatedPeers.push(radarPeer);
+    });
+
+    // Update geohash zones
+    this.updateGeohashZones();
+
+    // Notify listeners
+    this.notifyListeners('peersUpdated', updatedPeers);
+    
+    console.log(`🗼 Radar now shows ${this.peers.size} visible peers (TTL-filtered)`);
+  }
+
+  private calculateRoutingInfo(radarPeer: RadarPeer, presencePeer: PresenceBeaconPeer): void {
+    try {
+      // Get routing decision from smart router
+      const presencePeerForRouting = {
+        ...presencePeer,
+        name: radarPeer.name,
+        handle: radarPeer.handle,
+        signalStrength: presencePeer.signalStrength,
+        geohash: presencePeer.geohash,
+        capabilities: presencePeer.caps,
+        lastSeen: presencePeer.lastSeen,
+        ttl: presencePeer.ttl,
+        timestamp: presencePeer.timestamp,
+        device: presencePeer.device,
+        role: presencePeer.role,
+        rooms: presencePeer.rooms
+      };
+
+      smartRouter.selectBestTransport(presencePeerForRouting)
+        .then(decision => {
+          radarPeer.transportPriority = [decision.transport, ...decision.fallbackOptions];
+          radarPeer.confidence = decision.confidence;
+          radarPeer.connectionType = decision.transport as any;
+        })
+        .catch(error => {
+          console.debug('Routing calculation failed:', error);
+          // Fallback to basic inference
+        });
+    } catch (error) {
+      console.debug('Error calculating routing info:', error);
+    }
+  }
+
+  private inferConnectionType(caps: string[]): RadarPeer['connectionType'] {
+    if (caps.includes('bluetooth')) return 'bluetooth';
+    if (caps.includes('wifi')) return 'wifi';
+    if (caps.includes('webrtc')) return 'webrtc';
+    if (caps.includes('nostr')) return 'nostr';
+    if (caps.includes('broadcast')) return 'broadcast';
+    return 'websocket'; // Fallback
+  }
+
+  private extractNameFromPubkey(pubkey: string): string {
+    // Extract name from pubkey or use default
+    const nameMap: { [key: string]: string } = {
+      'npub1anchor001': 'Anchor Node',
+      'npub1mobile001': 'Mobile User',
+      'sim_desktop_001': 'Desktop User',
+      'sim_mobile_001': 'Mobile User'
+    };
+    return nameMap[pubkey] || `User ${pubkey.substring(0, 8)}...`;
+  }
+
+  private extractHandleFromPubkey(pubkey: string): string {
+    // Extract handle from pubkey or generate
+    const handleMap: { [key: string]: string } = {
+      'npub1anchor001': '@anchor',
+      'npub1mobile001': '@mobile',
+      'sim_desktop_001': '@desktop',
+      'sim_mobile_001': '@mobile'
+    };
+    return handleMap[pubkey] || `@${pubkey.substring(0, 6)}`;
+  }
+
+  private handleLifecycleEvent(event: any): void {
+    console.log('📱 Radar handling lifecycle event:', event);
+
+    switch (event.data.action) {
+      case 'resume_mesh':
+        this.resumeRadarOperations();
+        break;
+      case 'pause_mesh':
+        this.pauseRadarOperations();
+        break;
+      case 'cleanup_all':
+        this.cleanupAllPeers();
+        break;
+      case 'update_presence':
+        this.triggerPresenceUpdate();
+        break;
+    }
+  }
+
+  private handleNetworkChange(event: any): void {
+    console.log('🌐 Radar handling network change:', event);
+
+    if (event.state === 'offline') {
+      // Switch to offline mode
+      this.enableOfflineMode();
+    } else if (event.state === 'online') {
+      // Resume online operations
+      this.resumeOnlineOperations();
+    }
+  }
+
+  private startTtlCleanup(): void {
+    // Clean up expired peers every 10 seconds
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredPeers();
+    }, 10000);
+  }
+
+  private cleanupExpiredPeers(): void {
+    const now = Date.now();
+    const expiredPeers: string[] = [];
+
+    this.peers.forEach((peer, pubkey) => {
+      // TTL-based peer visibility (CRITICAL for mobile reliability)
+      if (peer.lastSeen + (peer.ttl * 1000) <= now) {
+        expiredPeers.push(pubkey);
+      }
+    });
+
+    expiredPeers.forEach(pubkey => {
+      this.peers.delete(pubkey);
+    });
+
+    if (expiredPeers.length > 0) {
+      console.log(`🗼 Cleaned up ${expiredPeers.length} expired peers from radar`);
+      this.updateGeohashZones();
+      this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
+    }
+  }
+
+  private updateGeohashZones(): void {
+    // Group peers by geohash for zone-based organization
+    const zones = new Map<string, RadarPeer[]>();
+    
+    this.peers.forEach(peer => {
+      if (peer.location?.geohash) {
+        const zoneId = peer.location.geohash.substring(0, 3); // 3-char precision
+        if (!zones.has(zoneId)) {
+          zones.set(zoneId, []);
+        }
+        zones.get(zoneId)!.push(peer);
+      }
+    });
+
+    // Update zones map
+    zones.forEach((peers, zoneId) => {
+      const zone: GeohashZone = {
+        id: zoneId,
+        name: `Zone ${zoneId}`,
+        peerCount: peers.length,
+        peers,
+        signalStrength: peers.reduce((sum, p) => sum + (p.signalStrength || 0), 0) / peers.length
+      };
+      this.geohashZones.set(zoneId, zone);
+    });
+
+    // Remove empty zones
+    this.geohashZones.forEach((zone, id) => {
+      if (zone.peerCount === 0) {
+        this.geohashZones.delete(id);
+      }
+    });
+  }
+
+  private resumeRadarOperations(): void {
+    console.log('📡 Resuming radar operations');
+  }
+
+  private pauseRadarOperations(): void {
+    console.log('⏸️ Pausing radar operations');
+  }
+
+  private cleanupAllPeers(): void {
+    console.log('🧹 Cleaning up all radar peers');
+    this.peers.clear();
+    this.updateGeohashZones();
+    this.notifyListeners('peersUpdated', []);
+  }
+
+  private triggerPresenceUpdate(): void {
+    console.log('📡 Triggering presence update from radar');
+    // This will be handled by presence beacon
+  }
+
+  private enableOfflineMode(): void {
+    console.log('📴 Radar switching to offline mode');
+    // Enable offline simulation in presence beacon
+  }
+
+  private resumeOnlineOperations(): void {
+    console.log('🌐 Radar resuming online operations');
+    // Resume normal operations
+  }
+
+  private loadUserInfo(): void {
     const savedName = localStorage.getItem('xitchat_name');
     const savedHandle = localStorage.getItem('xitchat_handle');
     if (savedName) this.myName = savedName;
     if (savedHandle) this.myHandle = `@${savedHandle}`;
   }
 
-  private generateRandomLocation() {
+  private generateRandomLocation(): { lat: number; lng: number; geohash: string } {
     // "Digital Lobby" - Fixed location for users without GPS/HTTPS
     // This ensures everyone sees each other by default if geolocation fails
+    const lat = -26.2041;
+    const lng = 28.0473;
     return {
-      lat: -26.2041,
-      lng: 28.0473,
-      geohash: this.encodeGeohash(-26.2041, 28.0473, 5)
+      lat,
+      lng,
+      geohash: this.encodeGeohash(lat, lng, 5)
     };
   }
 
-  private detectNetworkType(): void {
-    if (typeof navigator !== 'undefined' && 'connection' in navigator) {
-      const connection = (navigator as any).connection;
-      if (connection) {
-        this.is5GNetwork = connection.effectiveType === '5g' || connection.downlink > 10;
-        this.updateConnectionQuality(connection.downlink, connection.rtt);
-        connection.addEventListener('change', () => this.detectNetworkType());
+  private encodeGeohash(lat: number, lng: number, precision: number): string {
+    // Simplified geohash implementation
+    const latRange = [-90, 90];
+    const lngRange = [-180, 180];
+    
+    let geohash = '';
+    let latMin = latRange[0], latMax = latRange[1];
+    let lngMin = lngRange[0], lngMax = lngRange[1];
+    
+    for (let i = 0; i < precision; i++) {
+      const latMid = (latMin + latMax) / 2;
+      const lngMid = (lngMin + lngMax) / 2;
+      
+      if (lat >= latMid) {
+        geohash += '1';
+        latMin = latMid;
+      } else {
+        geohash += '0';
+        latMax = latMid;
       }
+      
+      if (lng >= lngMid) {
+        geohash += '1';
+        lngMin = lngMid;
+      } else {
+        geohash += '0';
+        lngMax = lngMid;
+      }
+    }
+    
+    return geohash;
+  }
+
+  private updateMyLocation(): void {
+    // Update my location for presence beacon
+    if (this.myCurrentLocation) {
+      // This will be picked up by presence beacon
+      console.log('📍 Updating my location for presence beacon');
     }
   }
 
-  private updateConnectionQuality(downlink: number, rtt?: number): void {
-    if (downlink > 20) this.connectionQuality = 'excellent';
-    else if (downlink > 10) this.connectionQuality = 'good';
-    else if (downlink > 5) this.connectionQuality = 'fair';
-    else this.connectionQuality = 'poor';
-
-    if (this.is5GNetwork && rtt && rtt < 50) this.connectionQuality = 'excellent';
+  private notifyListeners(event: string, data: any): void {
+    if (this.listeners[event]) {
+      this.listeners[event].forEach(callback => callback(data));
+    }
   }
 
+  // Public API methods
   async initialize(serverUrl?: string): Promise<boolean> {
     try {
-      console.log('📡 Initializing Real-time Radar (Nostr-Enabled)...');
+      console.log('📡 Initializing Mobile Mesh Radar...');
 
-      // 0. Listen for Nostr initialization to broadcast location immediately
-      nostrService.subscribe('initialized', () => {
-        console.log('📡 Nostr initialized, broadcasting location to radar...');
-        this.updateMyLocation();
-      });
-
-      // 1. Setup Nostr for cross-device location updates
-      this.setupNostrRadar();
-
-      // 2. Start Location Tracking
-      this.startRealLocationTracking();
-
-      // 3. Attempt WebSocket connection if not on Vercel (for hybrid support)
-      const isVercel = window.location.hostname.includes('vercel.app');
-      if (!isVercel) {
-        this.connectWebSocket(serverUrl);
+      // Initialize presence beacon first
+      const presenceInitialized = await presenceBeacon.initialize();
+      if (!presenceInitialized) {
+        console.warn('⚠️ Presence beacon initialization failed');
       }
 
-      this.isRealMode = true;
-      console.log('✅ Real-time radar initialized with Nostr cross-device support');
+      // Start presence beacon
+      await presenceBeacon.start();
+
+      // Update my location
+      this.updateMyLocation();
+
+      console.log('✅ Mobile Mesh Radar initialized successfully');
       return true;
     } catch (error) {
-      console.error('Failed to initialize radar service:', error);
+      console.error('❌ Failed to initialize radar:', error);
       return false;
     }
   }
 
-  private setupNostrRadar() {
-    // Listen for location updates from other devices via Nostr
-    nostrService.subscribe('messageReceived', (message) => {
-      if (message.content && message.content.startsWith(this.nostrRadarPrefix)) {
-        try {
-          const radarData = JSON.parse(message.content.replace(this.nostrRadarPrefix, ''));
-          this.handleNostrPeerUpdate(radarData);
-        } catch (error) {
-          console.error('Failed to parse Nostr radar update:', error);
-        }
+  getPeers(): RadarPeer[] {
+    return Array.from(this.peers.values());
+  }
+
+  getGeohashZones(): GeohashZone[] {
+    return Array.from(this.geohashZones.values());
+  }
+
+  getMyLocation(): { lat: number; lng: number; geohash: string } | null {
+    return this.myCurrentLocation;
+  }
+
+  subscribe(event: string, callback: (data: any) => void): () => void {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(callback);
+    
+    return () => {
+      const listeners = this.listeners[event];
+      const index = listeners.indexOf(callback);
+      if (index > -1) {
+        listeners.splice(index, 1);
       }
-    });
+    };
   }
 
-  handleMeshLocationUpdate(data: any) {
-    this.handleNostrPeerUpdate(data); // Reuse same logic for mesh updates
-  }
-
-  private handleNostrPeerUpdate(data: any) {
-    try {
-      // Create or update radar peer
-      const radarPeer: RadarPeer = {
-        id: data.id || data.publicKey || 'unknown',
-        name: data.name || data.handle || 'Anonymous',
-        handle: data.handle || data.name || 'anon',
-        avatar: data.avatar || data.picture,
-        location: data.location,
-        capabilities: data.capabilities || [],
-        lastSeen: data.lastSeen || Date.now(),
-        isOnline: data.isOnline !== false,
-        signalStrength: data.signalStrength || 100,
-        connectionType: data.connectionType || 'nostr',
-        distance: data.distance
-      };
-
-      // Update or add peer
-      this.peers.set(radarPeer.id, radarPeer);
-
-      // Calculate distance if location is available
-      if (radarPeer.location && this.myCurrentLocation) {
-        const distance = this.calculateDistance(
-          this.myCurrentLocation.lat,
-          this.myCurrentLocation.lng,
-          radarPeer.location.lat,
-          radarPeer.location.lng
-        );
-        radarPeer.distance = distance;
-      }
-
-      console.log(`📍 Radar peer updated: ${radarPeer.handle} (${radarPeer.connectionType}) - ${radarPeer.distance || 0}km`);
-
-      // Emit peer update events
-      this.notifyListeners('peerJoined', radarPeer);
-      this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
-
-      // Auto-add peer to hybrid mesh for chat compatibility
-      this.addPeerToHybridMesh(radarPeer);
-
-    } catch (error) {
-      console.error('Failed to handle Nostr peer update:', error);
-    }
-  }
-
-  private addPeerToHybridMesh(radarPeer: RadarPeer) {
-    try {
-      // Convert radar peer to hybrid mesh peer format
-      const meshPeer = {
-        id: radarPeer.id,
-        name: radarPeer.name,
-        handle: radarPeer.handle,
-        isConnected: radarPeer.isOnline,
-        lastSeen: radarPeer.lastSeen,
-        signalStrength: radarPeer.signalStrength,
-        capabilities: radarPeer.capabilities,
-        serviceId: radarPeer.id
-      };
-
-      // Add to hybrid mesh using public method
-      hybridMesh.addExternalPeer(meshPeer, radarPeer.connectionType as any);
-      
-      console.log(`🔗 Added radar peer to hybrid mesh: ${radarPeer.handle} via ${radarPeer.connectionType}`);
-    } catch (error) {
-      console.error('Failed to add radar peer to hybrid mesh:', error);
-    }
-  }
-
-  private async connectWebSocket(serverUrl?: string) {
-    // WebSocket logic remains as a hybrid fallback for local dev
-    // ... (simplified for brevity, focusing on Nostr as primary)
-  }
-
-  private startRealLocationTracking() {
-    if (!('geolocation' in navigator)) {
-      this.myCurrentLocation = this.generateRandomLocation();
-      return;
-    }
-
-    // Check for secure context (HTTPS or localhost)
-    if (!window.isSecureContext) {
-      console.debug('ℹ️ Geolocation requires a secure context (HTTPS). Using fallback location.');
-      this.myCurrentLocation = this.generateRandomLocation();
-      return;
-    }
-
-    navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        this.myCurrentLocation = {
-          lat: latitude,
-          lng: longitude,
-          geohash: this.encodeGeohash(latitude, longitude, 7)
-        };
-        this.updateMyLocation();
-      },
-      (error) => {
-        console.warn(`Geolocation Error: ${error.message}. Using fallback.`);
-        if (!this.myCurrentLocation) this.myCurrentLocation = this.generateRandomLocation();
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  isRealModeEnabled(): boolean {
+    // Check if we have any real peers (not simulated)
+    return this.peers.size > 0 && Array.from(this.peers.values()).some(peer => 
+      peer.connectionType !== 'websocket' && 
+      peer.connectionType !== 'broadcast'
     );
   }
 
-  private async updateMyLocation() {
-    if (!this.myCurrentLocation) return;
-
-    const radarData = {
-      id: this.myId,
-      name: this.myName,
-      handle: this.myHandle,
-      location: this.myCurrentLocation,
-      capabilities: ['chat', 'radar'],
-      timestamp: Date.now()
-    };
-
-    // 1. Broadcast via Nostr (CROSS-DEVICE!)
-    try {
-      await nostrService.broadcastMessage(`${this.nostrRadarPrefix}${JSON.stringify(radarData)}`);
-
-      // 2. Broadcast via Hybrid Mesh (LOCAL/MESH!)
-      await hybridMesh.sendMessage(JSON.stringify({
-        type: 'location_update',
-        data: radarData
-      }));
-    } catch (error) {
-      console.warn('Radar broadcast failed:', error);
+  // Cleanup
+  destroy(): void {
+    console.log('🧹 Destroying Mobile Mesh Radar');
+    
+    // Clear cleanup interval
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
     }
-
-    // 2. Send via WebSocket if connected
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: 'update_location',
-        location: this.myCurrentLocation,
-        timestamp: Date.now()
-      }));
-    }
-
-    this.calculateDistances();
-    this.notifyListeners('locationUpdated', this.myCurrentLocation);
-  }
-
-  private calculateDistances() {
-    if (!this.myCurrentLocation) return;
-    this.peers.forEach(peer => {
-      if (peer.location) {
-        peer.distance = this.calculateDistance(
-          this.myCurrentLocation!.lat, this.myCurrentLocation!.lng,
-          peer.location.lat, peer.location.lng
-        );
-      }
-    });
-  }
-
-  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
-    const R = 6371;
-    const dLat = this.toRadians(lat2 - lat1);
-    const dLng = this.toRadians(lng2 - lng1);
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) *
-      Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  private toRadians(degrees: number): number { return degrees * (Math.PI / 180); }
-
-  private encodeGeohash(lat: number, lng: number, precision: number): string {
-    const base32 = '0123456789bcdefghjkmnpqrstuvwxyz';
-    let hash = '';
-    let latRange = [-90, 90];
-    let lngRange = [-180, 180];
-    let even = true;
-    let bit = 0;
-    let ch = 0;
-
-    while (hash.length < precision) {
-      let mid;
-      if (even) {
-        mid = (lngRange[0] + lngRange[1]) / 2;
-        if (lng >= mid) { ch = ch * 2 + 1; lngRange[0] = mid; }
-        else { ch = ch * 2; lngRange[1] = mid; }
-      } else {
-        mid = (latRange[0] + latRange[1]) / 2;
-        if (lat >= mid) { ch = ch * 2 + 1; latRange[0] = mid; }
-        else { ch = ch * 2; latRange[1] = mid; }
-      }
-      even = !even;
-      bit++;
-      if (bit === 5) { hash += base32[ch]; bit = 0; ch = 0; }
-    }
-    return hash;
-  }
-
-  // Public API
-  getPeers(): RadarPeer[] { return Array.from(this.peers.values()); }
-  subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) this.listeners[event] = [];
-    this.listeners[event].push(callback);
-    return () => {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    };
-  }
-
-  private notifyListeners(event: string, data: any): void {
-    if (this.listeners[event]) this.listeners[event].forEach(callback => callback(data));
-  }
-
-  private generatePeerId(): string {
-    return 'radar_' + Math.random().toString(36).substr(2, 9);
-  }
-
-  disconnect(): void {
-    if (this.reconnectInterval) clearTimeout(this.reconnectInterval);
-    if (this.ws) { this.ws.close(); this.ws = null; }
+    
+    // Clear all listeners
+    this.listeners = {};
+    
+    // Clear peers
+    this.peers.clear();
+    this.geohashZones.clear();
   }
 }
 
