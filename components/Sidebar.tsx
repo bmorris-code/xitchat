@@ -27,15 +27,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar }) =
 
   return (
     <div className="
-      w-full md:w-20 
-      h-[72px] md:h-full 
-      bg-black border-t md:border-t-0 md:border-r border-[#004400] 
-      flex flex-row md:flex-col items-center 
-      order-last md:order-first 
-      pb-safe pr-safe pl-safe md:pb-0
-      z-50
-      shadow-[0_-1px_20px_rgba(0,0,0,0.8)] md:shadow-none
-    ">
+  fixed bottom-0 left-0 md:static
+  w-full md:w-20
+  h-[72px] md:h-full
+  bg-black
+  border-t md:border-t-0 md:border-r border-[#004400]
+  flex flex-row md:flex-col items-center
+  z-50
+  px-2
+  pb-[env(safe-area-inset-bottom)]
+  shadow-[0_-1px_20px_rgba(0,0,0,0.8)]
+  md:shadow-none
+">
+
       {/* Desktop Logo */}
       <div className="hidden md:block py-8 text-2xl glow-text animate-pulse">
         <i className="fa-solid fa-ghost"></i>
