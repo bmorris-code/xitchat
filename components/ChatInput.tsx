@@ -75,7 +75,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     };
 
     return (
-        <div className="p-4 bg-black border-t border-[#004400] relative z-40 pb-safe">
+        <div className="bg-black border-t border-[#004400] relative z-40 pb-safe">
             {replyingTo && (
                 <div className="absolute bottom-full left-0 right-0 bg-white/[0.05] border-t border-current p-2 flex justify-between items-center animate-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2 overflow-hidden">
@@ -103,7 +103,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             )}
 
             {/* Media Sharing Bar */}
-            <div className="flex items-center gap-3 mb-3 opacity-60 hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-2 px-3 pt-2 pb-2 opacity-60 hover:opacity-100 transition-opacity">
                 <button onClick={() => setShowEmojiMenu(!showEmojiMenu)} className={`p-2 rounded hover:bg-white/10 transition-all ${showEmojiMenu ? 'bg-white/10 text-white' : ''}`} title="Emoji"><i className="fa-solid fa-face-smile"></i></button>
                 <button onClick={() => setShowGallery(true)} className="p-2 rounded hover:bg-white/10 transition-all" title="Gallery"><i className="fa-solid fa-images"></i></button>
                 <button onClick={() => imageInputRef.current?.click()} className="p-2 rounded hover:bg-white/10 transition-all" title="Photo from Camera"><i className="fa-solid fa-image"></i></button>
@@ -149,7 +149,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 </button>
             </div>
 
-            <form onSubmit={handleSend} className="relative flex items-center">
+            <form onSubmit={handleSend} className="relative flex items-center px-3 pb-3">
                 <div className="text-[#00ff41] font-bold text-lg mr-2 glow-text">&gt;</div>
                 <input
                     type="text"

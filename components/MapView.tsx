@@ -203,32 +203,33 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
             <div className="absolute w-[1200px] h-[1200px] border border-current opacity-[0.05] rounded-full animate-[spin_10s_linear_infinite] bg-gradient-to-tr from-current to-transparent origin-center"></div>
           </div>
 
-          {/* Dynamic Nodes */}
+          {/* YOU - Light Blue Center Node */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+            <div className="w-8 h-8 bg-[#00BFFF] border-2 border-white shadow-[0_0_20px_rgba(0,191,255,0.6)]"></div>
+            <div className="absolute top-full mt-3 left-1/2 -translate-x-1/2 bg-black border border-[#00BFFF] px-3 py-1 text-[10px] font-black text-[#00BFFF] whitespace-nowrap uppercase tracking-wider">
+              YOU (ACTIVE NODE)
+            </div>
+          </div>
+
+          {/* Dynamic User Nodes - Red Squares in Circular Pattern */}
           {getVisibleNodes().map((node, idx) => {
-            let nodeLeft = 20 + (idx * 25) % 60 + '%';
-            let nodeTop = 15 + (idx * 15) % 70 + '%';
             const type = getPeerType(node);
             const isConnected = node.isConnected || (node as any).isOnline || false;
-
-            // Calculate dynamic position based on real-time location if available
-
-            if (node.location) {
-              // Map lat/lng to radar grid (simplified mapping)
-              if (userLocation) {
-                const latDiff = node.location.lat - userLocation.lat;
-                const lngDiff = node.location.lng - userLocation.lng;
-                nodeLeft = (50 + lngDiff * 1000) + '%';
-                nodeTop = (50 - latDiff * 1000) + '%';
-              }
-            }
-
-            const isClose = type === 'bluetooth' ? (node as any).signalStrength > 80 : isConnected;
+            
+            // Calculate circular position
+            const angle = (idx / Math.max(getVisibleNodes().length - 1, 1)) * 2 * Math.PI;
+            const radius = 120; // Distance from center
+            const centerX = 50; // Center percentage
+            const centerY = 50; // Center percentage
+            
+            const nodeLeft = centerX + (Math.cos(angle) * radius / 5); // Convert to percentage
+            const nodeTop = centerY + (Math.sin(angle) * radius / 5);
 
             return (
               <div
                 key={`${type}-${node.id}`}
                 className="absolute transform -translate-x-1/2 -translate-y-1/2 z-10 transition-all duration-1000"
-                style={{ left: nodeLeft, top: nodeTop }}
+                style={{ left: `${nodeLeft}%`, top: `${nodeTop}%` }}
               >
                 <button
                   onClick={() => setSelectedPeer(node)}
@@ -248,49 +249,23 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                   onMouseLeave={() => setHoveredUser(null)}
                   className="group relative flex flex-col items-center"
                 >
-                  {isClose && (
-                    <div className={`absolute w-12 h-12 ${type === 'real' ? 'bg-red-400' : type === 'radar' ? 'bg-green-400' : type === 'bluetooth' ? 'bg-current' : 'bg-cyan-400'
-                      } opacity-10 rounded-full animate-ping -translate-y-1`}></div>
-                  )}
-
-                  {/* Radar Pulse Effect for Mesh Nodes */}
-                  {type === 'radar' && isConnected && (
-                    <div className="absolute w-24 h-24 border border-green-500/20 rounded-full animate-[ping_3s_linear_infinite] -translate-y-1"></div>
-                  )}
-
+                  {/* Red Square Node */}
                   <div className="relative">
-                    <div className={`w-5 h-5 md:w-4 md:h-4 border-2 border-black rounded-sm shadow-[0_0_10px_${type === 'real' ? '#ff0000' : type === 'radar' ? '#00ff00' : type === 'bluetooth' ? 'currentColor' : '#00ffff'
-                      }] ${isClose ? 'animate-bounce' : 'animate-pulse'} ${!isConnected ? 'bg-red-500' :
-                        type === 'real' ? 'bg-red-400' : type === 'radar' ? 'bg-green-400' : type === 'bluetooth' ? 'bg-current' : 'bg-cyan-400'
-                      }`}></div>
+                    <div className={`w-6 h-6 border-2 border-white shadow-[0_0_15px_rgba(255,0,0,0.6)] ${isConnected ? 'bg-red-500' : 'bg-red-800'} animate-pulse`}></div>
                     {isConnected && (
                       <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                     )}
                   </div>
 
-                  <div className={`mt-1 bg-black border ${type === 'real' ? 'border-red-400/50' : type === 'radar' ? 'border-green-400/50' : type === 'bluetooth' ? 'border-current' : 'border-cyan-400/50'
-                    } px-2 py-0.5 opacity-80 md:opacity-60 group-hover:opacity-100 transition-opacity whitespace-nowrap`}>
-                    <p className={`text-[9px] font-bold ${type === 'real' ? 'text-red-400' : type === 'radar' ? 'text-green-400' : type === 'bluetooth' ? 'text-current' : 'text-cyan-400'
-                      } flex items-center gap-1`}>
-                      {type === 'real' ? '🔴' : '📡'} &lt;{node.handle}&gt;
+                  <div className="mt-2 bg-black border border-red-500 px-2 py-1 opacity-80 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    <p className="text-[10px] font-black text-red-400 flex items-center gap-1">
+                      &lt;{node.handle}&gt;
                     </p>
                   </div>
                 </button>
               </div>
             );
           })}
-
-          {/* YOU */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 z-20">
-            <div className="absolute inset-0 border-2 border-cyan-400 rotate-45 animate-pulse shadow-[0_0_20px_rgba(0,255,255,0.2)]"></div>
-            <div className="absolute inset-2 border border-cyan-400 -rotate-45"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-2 h-2 bg-cyan-400 shadow-[0_0_10px_#00ffff]"></div>
-            </div>
-            <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 bg-cyan-900 border border-cyan-400 px-2 py-0.5 text-[8px] font-black text-white whitespace-nowrap uppercase tracking-widest">
-              You (Active Node)
-            </div>
-          </div>
 
           {/* Hover Tooltip */}
           {hoveredUser && (

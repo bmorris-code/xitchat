@@ -249,7 +249,7 @@ const XCDashboard: React.FC<XCDashboardProps> = ({ balance, onBack }) => {
           <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-sm font-black uppercase tracking-[0.3em] text-white">milestone_matrix</h3>
-              <span className="text-[9px] opacity-30 uppercase tracking-widest">unlock_rewards_via_mesh_activity</span>
+              {/* <span className="text-[9px]  opacity-30 uppercase tracking-widest">unlock_rewards_via_mesh_activity</span> */}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

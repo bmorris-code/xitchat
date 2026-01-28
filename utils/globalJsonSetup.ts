@@ -23,7 +23,7 @@ const originalStringify = JSON.stringify;
       }
       return value;
     }, space);
-  } else if (typeof replacer === 'function') {
+  } else {
     // Function replacer - chain it with our BigInt handler
     return originalStringify.call(this, obj, (key, value) => {
       // Handle BigInt first
@@ -36,19 +36,6 @@ const originalStringify = JSON.stringify;
       }
       // Then apply custom replacer
       return (replacer as (key: string, value: any) => any)(key, value);
-    }, space);
-  } else {
-    // replacer is null or other type - just apply our BigInt handling
-    return originalStringify.call(this, obj, (key, value) => {
-      // Handle BigInt
-      if (typeof value === 'bigint') {
-        return value.toString() + 'n';
-      }
-      // Handle Date objects
-      if (value instanceof Date) {
-        return value.getTime();
-      }
-      return value;
     }, space);
   }
 };

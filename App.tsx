@@ -1316,7 +1316,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-full w-full bg-black text-current overflow-hidden selection:bg-current selection:text-black pt-safe ios-top-nav-fix"
+    <div className="flex flex-col md:flex-row h-full w-full bg-black text-current overflow-hidden selection:bg-current selection:text-black pt-safe"
       style={{
         minHeight: '100dvh',
         WebkitOverflowScrolling: 'touch',
