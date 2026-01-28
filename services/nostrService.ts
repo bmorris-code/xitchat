@@ -65,12 +65,14 @@ class NostrService {
   private readonly RATE_LIMIT_DELAY = 60000; // 60 seconds between subscriptions (increased from 30)
   private readonly PUBLISH_RATE_LIMIT = 30000; // 30 seconds between publishes (increased from 15)
   private isInitialized = false;
-  
+  private isRateLimited = false;
+  private rateLimitBackoff = 0;
+
   // Exponential backoff properties
   private retryDelay = 1000;
   private maxRetries = 5;
   private lastErrorTime = new Map<string, number>();
-  
+
   private serviceInfo: NetworkService = {
     name: 'nostr',
     isConnected: false,
@@ -95,8 +97,6 @@ class NostrService {
   private presenceSubscription: any = null;
   private lastPresencePublish = 0;
   private readonly PRESENCE_PUBLISH_INTERVAL = 60000; // Publish presence every 60 seconds (reduced from 30)
-  private isRateLimited = false;
-  private rateLimitBackoff = 0;
 
   // Show user-friendly notification
   private showUserNotification(message: string): void {
@@ -109,6 +109,25 @@ class NostrService {
     
     // Also log to console for debugging
     console.log(`🔔 User Notification: ${message}`);
+  }
+
+  // Add global error boundary for rate limiting
+  private setupGlobalErrorHandling(): void {
+    if (typeof window === 'undefined') return;
+
+    // Catch all WebSocket/network errors
+    const originalConsoleError = console.error;
+    console.error = (...args: any[]) => {
+      const message = args.join(' ');
+      
+      if (message.includes('rate-limited') || message.includes('slow down matey')) {
+        console.warn('⚠️ Nostr network issue (handled):', message);
+        // Don't spam console with rate limit errors
+        return;
+      }
+      
+      originalConsoleError.apply(console, args);
+    };
   }
 
   // Exponential backoff for rate limiting
@@ -211,26 +230,33 @@ class NostrService {
     try {
       console.log('🔑 Initializing Nostr service...');
 
+      // Setup global error handling first
+      this.setupGlobalErrorHandling();
+
       // Add comprehensive global error handling
       if (typeof window !== 'undefined') {
         window.addEventListener('unhandledrejection', (event) => {
           const reason = event.reason;
           
           if (reason?.message?.includes('rate-limited')) {
-            console.warn('⚠️ Nostr rate limit (handled):', reason.message);
+            console.warn('⚠️ Nostr network issue (handled):', reason.message);
             this.showUserNotification('Network busy, retrying automatically...');
             event.preventDefault();
-          } else if (reason?.message?.includes('connection timed out')) {
+          } else if (reason?.message?.includes('connection timed out') || reason?.message?.includes('timeout')) {
             console.warn('⚠️ Nostr connection timeout (handled):', reason.message);
             this.showUserNotification('Connection slow, using offline mode...');
             event.preventDefault();
-          } else if (reason?.message?.includes('Decryption failed')) {
-            console.warn('⚠️ Message decryption failed (handled):', reason.message);
+          } else if (reason?.message?.includes('Decryption failed') || reason?.message?.includes('decryption') || reason instanceof Error && reason.name === 'OperationError') {
+            console.warn('⚠️ Message decryption failed (handled):', reason.message || reason);
             this.showUserNotification('Unable to decrypt some messages');
             event.preventDefault();
-          } else if (reason?.message?.includes('Peer.*not found')) {
+          } else if (reason?.message && /Peer .* not found/.test(reason.message)) {
             console.warn('⚠️ Peer not found (handled):', reason.message);
             this.showUserNotification('Searching for peer...');
+            event.preventDefault();
+          } else if (reason?.message?.includes('not found') || reason?.message?.includes('not reachable')) {
+            console.warn('⚠️ Peer connection issue (handled):', reason.message);
+            this.showUserNotification('Peer connection issue, retrying...');
             event.preventDefault();
           }
         });
@@ -493,10 +519,12 @@ class NostrService {
         type: 'direct'
       };
 
-      console.log(`📨 Received direct message from ${event.pubkey}`);
+      console.log(`📨 Received direct message from ${event.pubkey.substring(0, 8)}...`);
       this.emit('messageReceived', message);
-    } catch (error) {
-      console.error('❌ Failed to handle direct message:', error);
+    } catch (error: any) {
+      // Catch any remaining errors
+      console.error('❌ Unexpected error handling direct message:', error?.message || error);
+      // Don't re-throw - prevent unhandled rejection
     }
   }
 
