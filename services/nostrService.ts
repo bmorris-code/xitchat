@@ -65,6 +65,12 @@ class NostrService {
   private readonly RATE_LIMIT_DELAY = 60000; // 60 seconds between subscriptions (increased from 30)
   private readonly PUBLISH_RATE_LIMIT = 30000; // 30 seconds between publishes (increased from 15)
   private isInitialized = false;
+  
+  // Exponential backoff properties
+  private retryDelay = 1000;
+  private maxRetries = 5;
+  private lastErrorTime = new Map<string, number>();
+  
   private serviceInfo: NetworkService = {
     name: 'nostr',
     isConnected: false,
@@ -92,17 +98,140 @@ class NostrService {
   private isRateLimited = false;
   private rateLimitBackoff = 0;
 
+  // Show user-friendly notification
+  private showUserNotification(message: string): void {
+    // Emit notification event for UI to handle
+    this.emit('notification', {
+      type: 'info',
+      message: message,
+      timestamp: new Date()
+    });
+    
+    // Also log to console for debugging
+    console.log(`🔔 User Notification: ${message}`);
+  }
+
+  // Exponential backoff for rate limiting
+  private async sendWithBackoff(operation: () => Promise<any>, operationType: string, retries = 0): Promise<any> {
+    try {
+      const result = await operation();
+      this.retryDelay = 1000; // Reset on success
+      return result;
+    } catch (error: any) {
+      if (error.message?.includes('rate-limited') && retries < this.maxRetries) {
+        const delay = this.retryDelay * Math.pow(2, retries);
+        console.log(`⏳ Rate limited, retrying ${operationType} in ${delay}ms (attempt ${retries + 1}/${this.maxRetries})`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.sendWithBackoff(operation, operationType, retries + 1);
+      }
+      throw error;
+    }
+  }
+
+  // Improved decryption with timeout and validation
+  private async decryptMessageWithTimeout(senderPubkey: string, encryptedContent: string): Promise<string> {
+    if (!this.privateKey) {
+      throw new Error('Private key not initialized');
+    }
+
+    if (!encryptedContent || typeof encryptedContent !== 'string') {
+      throw new Error('Invalid encrypted data format');
+    }
+
+    // Attempt decryption with timeout
+    return await Promise.race([
+      nostrTools.nip04.decrypt(this.privateKey, senderPubkey, encryptedContent),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Decryption timeout')), 5000)
+      )
+    ]);
+  }
+
+  // Peer discovery with retry mechanism
+  private async findPeerWithRetry(peerId: string, maxAttempts = 3): Promise<NostrPeer | null> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const peer = this.peers.get(peerId);
+      
+      if (peer) {
+        return peer;
+      }
+      
+      // Wait before retry with exponential backoff
+      const delay = 2000 * Math.pow(2, i);
+      console.log(`🔍 Peer ${peerId} not found, retrying in ${delay}ms (attempt ${i + 1}/${maxAttempts})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Try refreshing peer list
+      await this.refreshPeerList();
+    }
+    
+    return null;
+  }
+
+  // Refresh peer list
+  private async refreshPeerList(): Promise<void> {
+    try {
+      // Query recent peers from relays
+      const activeRelays = Array.from(this.connectedRelays);
+      if (activeRelays.length === 0) return;
+
+      const recentEvents = await this.pool!.querySync(activeRelays, {
+        kinds: [0], // Metadata events
+        limit: 10
+      });
+
+      // Update peer list with fresh data
+      recentEvents.forEach(event => {
+        if (!this.peers.has(event.pubkey)) {
+          try {
+            const metadata = JSON.parse(event.content);
+            const peer: NostrPeer = {
+              id: event.pubkey,
+              publicKey: event.pubkey,
+              name: metadata.name,
+              picture: metadata.picture,
+              about: metadata.about,
+              nip05: metadata.nip05,
+              lastSeen: new Date(event.created_at * 1000),
+              isConnected: true
+            };
+            this.peers.set(event.pubkey, peer);
+          } catch (error) {
+            // Skip invalid metadata
+          }
+        }
+      });
+    } catch (error) {
+      console.warn('⚠️ Failed to refresh peer list:', error);
+    }
+  }
+
   async initialize(privateKey?: string): Promise<boolean> {
     try {
       console.log('🔑 Initializing Nostr service...');
 
-      // Add global error handling for nostr-tools
+      // Add comprehensive global error handling
       if (typeof window !== 'undefined') {
         window.addEventListener('unhandledrejection', (event) => {
-          if (event.reason?.message?.includes('rate-limited') || 
-              event.reason?.message?.includes('connection timed out')) {
-            console.warn('⚠️ Nostr network issue (handled):', event.reason.message);
-            event.preventDefault(); // Prevent unhandled rejection
+          const reason = event.reason;
+          
+          if (reason?.message?.includes('rate-limited')) {
+            console.warn('⚠️ Nostr rate limit (handled):', reason.message);
+            this.showUserNotification('Network busy, retrying automatically...');
+            event.preventDefault();
+          } else if (reason?.message?.includes('connection timed out')) {
+            console.warn('⚠️ Nostr connection timeout (handled):', reason.message);
+            this.showUserNotification('Connection slow, using offline mode...');
+            event.preventDefault();
+          } else if (reason?.message?.includes('Decryption failed')) {
+            console.warn('⚠️ Message decryption failed (handled):', reason.message);
+            this.showUserNotification('Unable to decrypt some messages');
+            event.preventDefault();
+          } else if (reason?.message?.includes('Peer.*not found')) {
+            console.warn('⚠️ Peer not found (handled):', reason.message);
+            this.showUserNotification('Searching for peer...');
+            event.preventDefault();
           }
         });
       }
@@ -327,12 +456,24 @@ class NostrService {
         return;
       }
 
-      // Decrypt direct message with error handling
+      // Decrypt direct message with improved error handling and timeout
       let decryptedContent: string;
       try {
-        decryptedContent = await nostrTools.nip04.decrypt(this.privateKey!, event.pubkey, event.content);
-      } catch (decryptError) {
-        console.warn('⚠️ Decryption failed - this can happen with incompatible keys:', decryptError);
+        decryptedContent = await this.decryptMessageWithTimeout(event.pubkey, event.content);
+      } catch (decryptError: any) {
+        const errorMsg = decryptError.message || 'Unknown decryption error';
+        
+        if (errorMsg.includes('timeout')) {
+          console.warn('⚠️ Decryption timeout - message may be corrupted:', event.pubkey);
+        } else if (errorMsg.includes('Private key not initialized')) {
+          console.warn('⚠️ Cannot decrypt - keys not ready:', event.pubkey);
+        } else {
+          console.warn('⚠️ Decryption failed - incompatible keys or corrupted message:', errorMsg);
+        }
+        
+        // Emit notification for UI to show user-friendly message
+        this.showUserNotification('Unable to decrypt some messages');
+        
         // Don't crash the app, just skip this message
         return;
       }
@@ -401,6 +542,14 @@ class NostrService {
         throw new Error('Nostr service not initialized');
       }
 
+      // Find peer with retry mechanism
+      const peer = await this.findPeerWithRetry(recipientPublicKey);
+      if (!peer) {
+        console.warn(`⚠️ Peer ${recipientPublicKey} not reachable after retries`);
+        this.showUserNotification('Peer not found, searching...');
+        return false;
+      }
+
       if (this.connectedRelays.size === 0) {
         console.warn('⚠️ No relays connected, attempting to reconnect...');
         await this.connectToRelays();
@@ -437,34 +586,39 @@ class NostrService {
         throw new Error('Failed to create valid Nostr event');
       }
 
-      // Publish to connected relays only
-      const successfulRelays: string[] = [];
-      const promises = Array.from(this.connectedRelays).map(async (relayUrl) => {
-        try {
-          await this.pool!.publish([relayUrl], event);
-          successfulRelays.push(relayUrl);
-          console.log(`✅ Published to ${relayUrl}`);
-        } catch (error) {
-          console.error(`❌ Failed to publish to ${relayUrl}:`, error);
-          this.failedRelays.add(relayUrl);
-        }
-      });
-
-      await Promise.allSettled(promises);
-
-      if (successfulRelays.length > 0) {
-        console.log(`📤 Sent direct message to ${recipientPublicKey} via ${successfulRelays.length} relays`);
-        this.emit('messageSent', {
-          id: event.id,
-          to: recipientPublicKey,
-          content: content,
-          timestamp: new Date()
+      // Publish to connected relays with exponential backoff
+      const publishOperation = async () => {
+        const successfulRelays: string[] = [];
+        const promises = Array.from(this.connectedRelays).map(async (relayUrl) => {
+          try {
+            await this.pool!.publish([relayUrl], event);
+            successfulRelays.push(relayUrl);
+            console.log(`✅ Published to ${relayUrl}`);
+          } catch (error) {
+            console.error(`❌ Failed to publish to ${relayUrl}:`, error);
+            this.failedRelays.add(relayUrl);
+          }
         });
-        return true;
-      } else {
-        console.error('❌ Failed to publish to any relay');
-        return false;
-      }
+
+        await Promise.allSettled(promises);
+        
+        if (successfulRelays.length === 0) {
+          throw new Error('Failed to publish to any relay');
+        }
+        
+        return successfulRelays;
+      };
+
+      const successfulRelays = await this.sendWithBackoff(publishOperation, 'message send');
+
+      console.log(`📤 Sent direct message to ${recipientPublicKey} via ${successfulRelays.length} relays`);
+      this.emit('messageSent', {
+        id: event.id,
+        to: recipientPublicKey,
+        content: content,
+        timestamp: new Date()
+      });
+      return true;
     } catch (error) {
       console.error('❌ Failed to send direct message:', error);
       return false;
