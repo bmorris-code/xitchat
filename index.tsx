@@ -69,10 +69,10 @@ window.addEventListener('error', (event) => {
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason ? (event.reason.message || event.reason.toString()) : '';
 
-  if (reason.includes('rate-limited') || reason.includes('slow down') || reason.includes('noting too much')) {
+  if (reason.includes('rate-limited') || reason.includes('slow down') || reason.includes('noting too much') || reason.includes('publish timed out')) {
     // Silence these specific errors as they are expected during high load
     event.preventDefault();
-    console.debug('ℹ️ Suppressed rate-limit error:', reason);
+    console.debug('ℹ️ Suppressed rate-limit/timeout error:', reason);
     return;
   }
 

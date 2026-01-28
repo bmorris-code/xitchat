@@ -560,7 +560,7 @@ class NostrService {
           const result = await Promise.race([
             this.pool!.publish([relayUrl], event),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Publish timeout')), 10000) // Increased to 10 seconds
+              setTimeout(() => reject(new Error('Publish timeout')), 15000) // Increased to 15 seconds
             )
           ]);
           return { relay: relayUrl, success: true, result };
