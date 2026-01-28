@@ -62,8 +62,8 @@ class NostrService {
   private subscriptionRetryCount = new Map<string, number>();
   private lastSubscriptionTime = new Map<string, number>();
   private lastPublishTime = new Map<string, number>();
-  private readonly RATE_LIMIT_DELAY = 30000; // 30 seconds between subscriptions
-  private readonly PUBLISH_RATE_LIMIT = 15000; // 15 seconds between publishes
+  private readonly RATE_LIMIT_DELAY = 60000; // 60 seconds between subscriptions (increased from 30)
+  private readonly PUBLISH_RATE_LIMIT = 30000; // 30 seconds between publishes (increased from 15)
   private isInitialized = false;
   private serviceInfo: NetworkService = {
     name: 'nostr',
@@ -95,6 +95,17 @@ class NostrService {
   async initialize(privateKey?: string): Promise<boolean> {
     try {
       console.log('🔑 Initializing Nostr service...');
+
+      // Add global error handling for nostr-tools
+      if (typeof window !== 'undefined') {
+        window.addEventListener('unhandledrejection', (event) => {
+          if (event.reason?.message?.includes('rate-limited') || 
+              event.reason?.message?.includes('connection timed out')) {
+            console.warn('⚠️ Nostr network issue (handled):', event.reason.message);
+            event.preventDefault(); // Prevent unhandled rejection
+          }
+        });
+      }
 
       // Initialize keys
       if (privateKey) {
@@ -160,32 +171,41 @@ class NostrService {
   private async connectToRelays(): Promise<void> {
     console.log('🌐 Connecting to Nostr relays...');
 
-    // Process all connections in parallel
-    const connectionPromises = this.defaultRelays.map(async (relayUrl) => {
+    // Process connections sequentially to avoid rate limiting
+    for (const relayUrl of this.defaultRelays) {
       try {
-        // Add a 10-second timeout so a bad relay doesn't hang the process
+        console.log(`📡 Connecting to ${relayUrl}...`);
+        
+        // Add a 15-second timeout with better error handling
         const relay = await Promise.race([
           this.pool!.ensureRelay(relayUrl),
           new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Connection timeout')), 10000) // Increased to 10 seconds
+            setTimeout(() => reject(new Error(`Connection timeout to ${relayUrl}`)), 15000)
           )
         ]);
 
         this.relays.add(relayUrl);
         this.connectedRelays.add(relayUrl);
-        console.log(`✅ Connected to relay: ${relayUrl}`);
+        console.log(`✅ Connected to ${relayUrl}`);
+        
+        // Add delay between connections to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
       } catch (error) {
-        // Reduce verbosity for relay connection failures (expected in some network conditions)
-        console.debug(`Nostr relay connection failed: ${relayUrl} - ${error instanceof Error ? error.message : 'Unknown error'}`);
+        console.warn(`⚠️ Failed to connect to ${relayUrl}:`, error);
         this.failedRelays.add(relayUrl);
+        
+        // Continue with next relay instead of failing completely
+        continue;
       }
-    });
-
-    // Wait for all attempts to finish (success or fail)
-    await Promise.allSettled(connectionPromises);
+    }
 
     console.log(`🌐 Connected to ${this.connectedRelays.size}/${this.defaultRelays.length} relays`);
-    this.emit('relaysConnected', { count: this.connectedRelays.size });
+    
+    // If no relays connected, don't fail completely - work in offline mode
+    if (this.connectedRelays.size === 0) {
+      console.warn('⚠️ No relays connected, working in offline mode');
+    }
   }
 
   private async loadUserProfile(): Promise<void> {
@@ -301,8 +321,27 @@ class NostrService {
 
   private async handleDirectMessage(event: any): Promise<void> {
     try {
-      // Decrypt direct message
-      const decryptedContent = await nostrTools.nip04.decrypt(this.privateKey!, event.pubkey, event.content);
+      // Validate event structure first
+      if (!event || !event.content || !event.pubkey) {
+        console.warn('⚠️ Invalid direct message event structure');
+        return;
+      }
+
+      // Decrypt direct message with error handling
+      let decryptedContent: string;
+      try {
+        decryptedContent = await nostrTools.nip04.decrypt(this.privateKey!, event.pubkey, event.content);
+      } catch (decryptError) {
+        console.warn('⚠️ Decryption failed - this can happen with incompatible keys:', decryptError);
+        // Don't crash the app, just skip this message
+        return;
+      }
+
+      // Validate decrypted content
+      if (!decryptedContent || typeof decryptedContent !== 'string') {
+        console.warn('⚠️ Invalid decrypted content');
+        return;
+      }
 
       const message = {
         id: event.id,
