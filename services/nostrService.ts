@@ -174,12 +174,28 @@ class NostrService {
       
       return result;
     } catch (error: any) {
-      // Re-throw with more context, but catch OperationError specifically
-      if (error.name === 'OperationError') {
-        const opError = new Error('Decryption failed: OperationError');
-        opError.name = 'OperationError';
-        throw opError;
+      // Handle all crypto-related errors comprehensively
+      const errorMsg = error?.message || error?.toString() || 'Unknown decryption error';
+      
+      // Check for various crypto error patterns
+      if (
+        error?.name === 'OperationError' ||
+        error?.name === 'DOMException' ||
+        errorMsg.includes('OperationError') ||
+        errorMsg.includes('decryption failed') ||
+        errorMsg.includes('bad mac') ||
+        errorMsg.includes('invalid') ||
+        errorMsg.includes('crypto') ||
+        errorMsg.includes('key') ||
+        errorMsg.includes('algorithm')
+      ) {
+        // Create a standardized error for all crypto failures
+        const cryptoError = new Error('Message decryption failed');
+        cryptoError.name = 'OperationError';
+        throw cryptoError;
       }
+      
+      // Re-throw timeout and other errors as-is
       throw error;
     }
   }
@@ -259,11 +275,11 @@ class NostrService {
             console.warn('⚠️ Nostr network issue (handled):', reason.message);
             this.showUserNotification('Network busy, retrying automatically...');
             event.preventDefault();
-          } else if (reason?.message?.includes('connection timed out') || reason?.message?.includes('timeout')) {
+          } else if (reason?.message?.includes('connection timed out') || reason?.message?.includes('timeout') || reason?.message?.includes('publish timed out')) {
             console.warn('⚠️ Nostr connection timeout (handled):', reason.message);
             this.showUserNotification('Connection slow, using offline mode...');
             event.preventDefault();
-          } else if (reason?.message?.includes('Decryption failed') || reason?.message?.includes('decryption') || (reason instanceof Error && reason.name === 'OperationError')) {
+          } else if (reason?.message?.includes('Decryption failed') || reason?.message?.includes('decryption') || reason?.message?.includes('Message decryption failed') || (reason instanceof Error && reason.name === 'OperationError')) {
             console.warn('⚠️ Message decryption failed (handled):', reason.message || reason);
             this.showUserNotification('Unable to decrypt some messages');
             event.preventDefault();
