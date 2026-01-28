@@ -65,14 +65,12 @@ class NostrService {
   private readonly RATE_LIMIT_DELAY = 60000; // 60 seconds between subscriptions (increased from 30)
   private readonly PUBLISH_RATE_LIMIT = 30000; // 30 seconds between publishes (increased from 15)
   private isInitialized = false;
-  private isRateLimited = false;
-  private rateLimitBackoff = 0;
-
+  
   // Exponential backoff properties
   private retryDelay = 1000;
   private maxRetries = 5;
   private lastErrorTime = new Map<string, number>();
-
+  
   private serviceInfo: NetworkService = {
     name: 'nostr',
     isConnected: false,
@@ -97,6 +95,8 @@ class NostrService {
   private presenceSubscription: any = null;
   private lastPresencePublish = 0;
   private readonly PRESENCE_PUBLISH_INTERVAL = 60000; // Publish presence every 60 seconds (reduced from 30)
+  private isRateLimited = false;
+  private rateLimitBackoff = 0;
 
   // Show user-friendly notification
   private showUserNotification(message: string): void {
@@ -111,18 +111,23 @@ class NostrService {
     console.log(`🔔 User Notification: ${message}`);
   }
 
-  // Add global error boundary for rate limiting
+  // Setup global error handling to suppress spam
   private setupGlobalErrorHandling(): void {
     if (typeof window === 'undefined') return;
 
-    // Catch all WebSocket/network errors
+    // Catch all WebSocket/network errors to reduce console spam
     const originalConsoleError = console.error;
     console.error = (...args: any[]) => {
       const message = args.join(' ');
       
       if (message.includes('rate-limited') || message.includes('slow down matey')) {
-        console.warn('⚠️ Nostr network issue (handled):', message);
+        console.debug('⚠️ Nostr network issue (handled):', message);
         // Don't spam console with rate limit errors
+        return;
+      }
+      
+      if (message.includes('WebSocket') && message.includes('failed')) {
+        console.debug('⚠️ WebSocket issue (handled):', message);
         return;
       }
       
@@ -158,13 +163,25 @@ class NostrService {
       throw new Error('Invalid encrypted data format');
     }
 
-    // Attempt decryption with timeout
-    return await Promise.race([
-      nostrTools.nip04.decrypt(this.privateKey, senderPubkey, encryptedContent),
-      new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Decryption timeout')), 5000)
-      )
-    ]);
+    try {
+      // Attempt decryption with timeout
+      const result = await Promise.race([
+        nostrTools.nip04.decrypt(this.privateKey, senderPubkey, encryptedContent),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Decryption timeout')), 5000)
+        )
+      ]);
+      
+      return result;
+    } catch (error: any) {
+      // Re-throw with more context, but catch OperationError specifically
+      if (error.name === 'OperationError') {
+        const opError = new Error('Decryption failed: OperationError');
+        opError.name = 'OperationError';
+        throw opError;
+      }
+      throw error;
+    }
   }
 
   // Peer discovery with retry mechanism
@@ -178,7 +195,7 @@ class NostrService {
       
       // Wait before retry with exponential backoff
       const delay = 2000 * Math.pow(2, i);
-      console.log(`🔍 Peer ${peerId} not found, retrying in ${delay}ms (attempt ${i + 1}/${maxAttempts})`);
+      console.log(`🔍 Peer ${peerId.substring(0, 8)}... not found, retrying in ${delay}ms (attempt ${i + 1}/${maxAttempts})`);
       await new Promise(resolve => setTimeout(resolve, delay));
       
       // Try refreshing peer list
@@ -238,7 +255,7 @@ class NostrService {
         window.addEventListener('unhandledrejection', (event) => {
           const reason = event.reason;
           
-          if (reason?.message?.includes('rate-limited')) {
+          if (reason?.message?.includes('rate-limited') || reason?.message?.includes('slow down')) {
             console.warn('⚠️ Nostr network issue (handled):', reason.message);
             this.showUserNotification('Network busy, retrying automatically...');
             event.preventDefault();
@@ -246,7 +263,7 @@ class NostrService {
             console.warn('⚠️ Nostr connection timeout (handled):', reason.message);
             this.showUserNotification('Connection slow, using offline mode...');
             event.preventDefault();
-          } else if (reason?.message?.includes('Decryption failed') || reason?.message?.includes('decryption') || reason instanceof Error && reason.name === 'OperationError') {
+          } else if (reason?.message?.includes('Decryption failed') || reason?.message?.includes('decryption') || (reason instanceof Error && reason.name === 'OperationError')) {
             console.warn('⚠️ Message decryption failed (handled):', reason.message || reason);
             this.showUserNotification('Unable to decrypt some messages');
             event.preventDefault();
@@ -286,7 +303,7 @@ class NostrService {
         // Fallback to mock key
         this.publicKey = 'mock_public_key_' + Array.from(privateKeyBytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
       }
-      console.log(`🔑 Nostr public key: ${this.publicKey}`);
+      console.log(`🔑 Nostr public key: ${this.publicKey.substring(0, 16)}...`);
 
       // Initialize relay pool
       this.pool = new nostrTools.SimplePool();
@@ -487,18 +504,24 @@ class NostrService {
       try {
         decryptedContent = await this.decryptMessageWithTimeout(event.pubkey, event.content);
       } catch (decryptError: any) {
+        // Handle OperationError specifically (browser crypto API errors)
+        if (decryptError.name === 'OperationError') {
+          console.warn('⚠️ Browser crypto operation failed - incompatible keys:', event.pubkey.substring(0, 8));
+          this.showUserNotification('Unable to decrypt message - incompatible encryption');
+          return;
+        }
+        
         const errorMsg = decryptError.message || 'Unknown decryption error';
         
         if (errorMsg.includes('timeout')) {
-          console.warn('⚠️ Decryption timeout - message may be corrupted:', event.pubkey);
+          console.warn('⚠️ Decryption timeout - message may be corrupted');
         } else if (errorMsg.includes('Private key not initialized')) {
-          console.warn('⚠️ Cannot decrypt - keys not ready:', event.pubkey);
+          console.warn('⚠️ Cannot decrypt - keys not ready');
+        } else if (errorMsg.includes('bad mac') || errorMsg.includes('invalid')) {
+          console.warn('⚠️ Invalid message format or wrong keys');
         } else {
-          console.warn('⚠️ Decryption failed - incompatible keys or corrupted message:', errorMsg);
+          console.warn('⚠️ Decryption failed:', errorMsg);
         }
-        
-        // Emit notification for UI to show user-friendly message
-        this.showUserNotification('Unable to decrypt some messages');
         
         // Don't crash the app, just skip this message
         return;
@@ -529,17 +552,21 @@ class NostrService {
   }
 
   private handleChannelMessage(event: any): void {
-    const message = {
-      id: event.id,
-      channelId: event.tags.find((tag: string[]) => tag[0] === 'e')?.[1],
-      from: event.pubkey,
-      content: event.content,
-      timestamp: new Date(event.created_at * 1000),
-      type: 'channel'
-    };
+    try {
+      const message = {
+        id: event.id,
+        channelId: event.tags.find((tag: string[]) => tag[0] === 'e')?.[1],
+        from: event.pubkey,
+        content: event.content,
+        timestamp: new Date(event.created_at * 1000),
+        type: 'channel'
+      };
 
-    console.log(`📢 Received channel message in ${message.channelId}`);
-    this.emit('channelMessageReceived', message);
+      console.log(`📢 Received channel message in ${message.channelId}`);
+      this.emit('channelMessageReceived', message);
+    } catch (error) {
+      console.error('❌ Failed to handle channel message:', error);
+    }
   }
 
   private handleMetadataUpdate(event: any): void {
@@ -557,7 +584,7 @@ class NostrService {
       };
 
       this.peers.set(event.pubkey, peer);
-      console.log(`👤 Updated peer metadata: ${peer.name || event.pubkey}`);
+      console.log(`👤 Updated peer metadata: ${peer.name || event.pubkey.substring(0, 8) + '...'}`);
       this.emit('peerUpdated', peer);
     } catch (error) {
       console.error('❌ Failed to handle metadata update:', error);
@@ -570,11 +597,18 @@ class NostrService {
         throw new Error('Nostr service not initialized');
       }
 
+      // Validate recipient public key format FIRST
+      if (!recipientPublicKey || typeof recipientPublicKey !== 'string' || recipientPublicKey.length !== 64) {
+        console.error('❌ Invalid recipient public key format');
+        this.showUserNotification('Invalid peer address');
+        return false;
+      }
+
       // Find peer with retry mechanism
       const peer = await this.findPeerWithRetry(recipientPublicKey);
       if (!peer) {
-        console.warn(`⚠️ Peer ${recipientPublicKey} not reachable after retries`);
-        this.showUserNotification('Peer not found, searching...');
+        console.warn(`⚠️ Peer ${recipientPublicKey.substring(0, 8)}... not reachable after retries`);
+        this.showUserNotification('Peer not found - they may be offline');
         return false;
       }
 
@@ -589,11 +623,6 @@ class NostrService {
       // Validate encrypted content
       if (!encryptedContent || encryptedContent.length === 0) {
         throw new Error('Failed to encrypt message');
-      }
-
-      // Validate recipient public key format
-      if (!recipientPublicKey || typeof recipientPublicKey !== 'string' || recipientPublicKey.length !== 64) {
-        throw new Error('Invalid recipient public key format');
       }
 
       // Create event with validated data
@@ -639,7 +668,7 @@ class NostrService {
 
       const successfulRelays = await this.sendWithBackoff(publishOperation, 'message send');
 
-      console.log(`📤 Sent direct message to ${recipientPublicKey} via ${successfulRelays.length} relays`);
+      console.log(`📤 Sent direct message to ${recipientPublicKey.substring(0, 8)}... via ${successfulRelays.length} relays`);
       this.emit('messageSent', {
         id: event.id,
         to: recipientPublicKey,
@@ -1011,7 +1040,7 @@ class NostrService {
           };
           peers.push(peer);
         } catch (error) {
-          console.warn('Failed to parse metadata for user:', event.pubkey);
+          console.warn('Failed to parse metadata for user:', event.pubkey.substring(0, 8) + '...');
         }
       }
 
@@ -1055,7 +1084,13 @@ class NostrService {
   // EVENT LISTENERS
   private emit(event: string, data?: any): void {
     const listeners = this.listeners[event] || [];
-    listeners.forEach(callback => callback(data));
+    listeners.forEach(callback => {
+      try {
+        callback(data);
+      } catch (error) {
+        console.error(`❌ Error in event listener for ${event}:`, error);
+      }
+    });
   }
 
   subscribe(event: string, callback: (data: any) => void): () => void {
