@@ -95,7 +95,7 @@ const WiFiChatRoom: React.FC<WiFiChatRoomProps> = ({ peer, onBack }) => {
   return (
     <div className="flex-1 flex flex-col bg-black text-current font-mono no-scrollbar animate-in fade-in duration-300">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-current border-opacity-30 bg-[#050505]">
+      <div className="flex items-center justify-between p-4 border-b border-current border-opacity-30 bg-[#050505] ios-top-nav-fix">
         <div className="flex items-center gap-4">
           <button
             onClick={onBack}

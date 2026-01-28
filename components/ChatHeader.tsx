@@ -106,7 +106,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
     };
 
     return (
-        <div className={`px-3 sm:px-6 py-2 sm:py-4 border-b border-[#004400] flex items-center justify-between z-30 min-h-0 transition-all duration-500 ${isTransmitting ? 'bg-[#00ff41]/5 shadow-[inset_0_0_20px_rgba(0,255,65,0.1)]' : ''}`}>
+        <div className={`px-3 sm:px-6 py-2 sm:py-4 border-b border-[#004400] flex items-center justify-between z-30 min-h-0 transition-all duration-500 ios-top-nav-fix ${isTransmitting ? 'bg-[#00ff41]/5 shadow-[inset_0_0_20px_rgba(0,255,65,0.1)]' : ''}`}>
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 max-w-[50%] sm:max-w-[60%]">
                 <div className="relative">
                     <span className={`font-bold truncate text-sm sm:text-base glow-text ${chat.type === 'room' ? 'text-white' : getUserColor(chat.participant.id)} ${getChatThemeClass()}`}>

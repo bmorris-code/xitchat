@@ -49,6 +49,13 @@ body,
         padding-right: env(safe-area-inset-right);
     }
 
+    /* iOS Top Navigation Bar Fix */
+    .ios-top-nav-fix {
+        padding-top: env(safe-area-inset-top) !important;
+        padding-left: env(safe-area-inset-left) !important;
+        padding-right: env(safe-area-inset-right) !important;
+    }
+
     /* iOS Navbar fixes */
     .ios-navbar-fix {
         position: fixed !important;

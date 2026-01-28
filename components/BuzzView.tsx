@@ -290,7 +290,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
   return (
     <div className="flex-1 flex flex-col pt-0 p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
       {/* Sticky Header Group: Title + Filters */}
-      <div className="sticky top-0 z-50 bg-black/95 backdrop-blur-md border-b border-current border-opacity-20 -mx-6 px-6 pt-6 pb-2 mb-4 shadow-lg">
+      <div className="sticky top-0 z-50 bg-black/95 backdrop-blur-md border-b border-current border-opacity-20 -mx-6 px-6 pt-6 pb-2 mb-4 shadow-lg ios-top-nav-fix">
         {/* Title Row */}
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">

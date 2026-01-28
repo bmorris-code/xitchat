@@ -117,7 +117,7 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
 
   return (
     <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
-      <div className="flex justify-between items-start mb-10 border-b border-current border-opacity-20 pb-4">
+      <div className="flex justify-between items-start mb-10 border-b border-current border-opacity-20 pb-4 ios-top-nav-fix">
         <div>
           <h2 className="text-lg font-bold uppercase tracking-tighter glow-text">room_protocol.bin</h2>
           <p className="text-[10px] font-bold opacity-50 uppercase tracking-[0.2em] mt-2 text-white/30">
