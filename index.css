@@ -50,7 +50,15 @@ body,
     }
 
     /* iOS Navbar fixes */
-    .ios-navbar-fix {
+    /* Moved to global mobile scope as .mobile-navbar-fix */
+
+}
+
+/* GLOBAL MOBILE FIXES (Android & iOS) */
+@media (max-width: 768px) {
+
+    /* Fixed Bottom Navbar for ALL Mobile Devices */
+    .mobile-navbar-fix {
         position: fixed !important;
         bottom: 0 !important;
         left: 0 !important;
@@ -61,10 +69,7 @@ body,
         -webkit-backdrop-filter: blur(20px) !important;
         backdrop-filter: blur(20px) !important;
     }
-}
 
-/* GLOBAL MOBILE FIXES (Android & iOS) */
-@media (max-width: 768px) {
     .order-last {
         order: 999 !important;
     }
