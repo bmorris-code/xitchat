@@ -70,7 +70,7 @@ body,
 
         /* Fix for content being hidden behind fixed navbar on iOS */
         .ios-content-padding {
-            padding-bottom: calc(130px + env(safe-area-inset-bottom)) !important;
+            padding-bottom: calc(135px + env(safe-area-inset-bottom)) !important;
         }
     }
 }
