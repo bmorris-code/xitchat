@@ -149,7 +149,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 </button>
             </div>
 
-            <form onSubmit={handleSend} className="relative flex items-center px-3 pb-3">
+            <form onSubmit={handleSend} className="relative flex items-center px-3 pb-6">
                 <div className="text-[#00ff41] font-bold text-lg mr-2 glow-text">&gt;</div>
                 <input
                     type="text"
