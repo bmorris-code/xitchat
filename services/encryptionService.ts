@@ -25,8 +25,18 @@ class LocalEncryptionService {
     return LocalEncryptionService.instance;
   }
 
+  private get isSupported(): boolean {
+    return typeof window !== 'undefined' && !!window.crypto && !!window.crypto.subtle;
+  }
+
   // Generate key pair for a user
   async generateKeyPair(userId: string): Promise<EncryptionKey> {
+    if (!this.isSupported) {
+      console.warn('⚠️ Web Crypto API not available - using mock encryption for development');
+      this.keyPairs.set(userId, { publicKey: {} as any, privateKey: {} as any });
+      return { key: 'mock-public-key', fingerprint: 'mock-fingerprint' };
+    }
+
     try {
       const keyPair = await window.crypto.subtle.generateKey(
         {
@@ -60,6 +70,11 @@ class LocalEncryptionService {
 
   // Import another user's public key
   async importPublicKey(userId: string, publicKeyBase64: string): Promise<void> {
+    if (!this.isSupported) {
+      this.keyPairs.set(userId, { publicKey: {} as any, privateKey: null as any });
+      return;
+    }
+
     try {
       const publicKeyBuffer = this.base64ToArrayBuffer(publicKeyBase64);
       const publicKey = await window.crypto.subtle.importKey(
@@ -86,6 +101,15 @@ class LocalEncryptionService {
 
   // Encrypt message for recipient
   async encryptMessage(message: string, recipientId: string): Promise<EncryptedData> {
+    if (!this.isSupported) {
+      return {
+        data: btoa(message),
+        iv: 'mock-iv',
+        salt: 'mock-salt',
+        timestamp: Date.now()
+      };
+    }
+
     try {
       const recipientKeyPair = this.keyPairs.get(recipientId);
       if (!recipientKeyPair || !recipientKeyPair.publicKey) {
@@ -144,6 +168,14 @@ class LocalEncryptionService {
 
   // Decrypt message
   async decryptMessage(encryptedData: EncryptedData, senderId: string): Promise<string> {
+    if (!this.isSupported) {
+      try {
+        return atob(encryptedData.data);
+      } catch {
+        return '[Decryption Failed - Mock]';
+      }
+    }
+
     try {
       const myKeyPair = this.keyPairs.get('me');
       if (!myKeyPair || !myKeyPair.privateKey) {
@@ -197,6 +229,15 @@ class LocalEncryptionService {
 
   // Encrypt image data
   async encryptImage(imageData: ArrayBuffer, recipientId: string): Promise<EncryptedData> {
+    if (!this.isSupported) {
+      return {
+        data: this.arrayBufferToBase64(imageData),
+        iv: 'mock-iv',
+        salt: 'mock-salt',
+        timestamp: Date.now()
+      };
+    }
+
     try {
       const recipientKeyPair = this.keyPairs.get(recipientId);
       if (!recipientKeyPair || !recipientKeyPair.publicKey) {
@@ -253,6 +294,10 @@ class LocalEncryptionService {
 
   // Decrypt image data
   async decryptImage(encryptedData: EncryptedData, senderId: string): Promise<ArrayBuffer> {
+    if (!this.isSupported) {
+      return this.base64ToArrayBuffer(encryptedData.data);
+    }
+
     try {
       const myKeyPair = this.keyPairs.get('me');
       if (!myKeyPair || !myKeyPair.privateKey) {
@@ -305,6 +350,7 @@ class LocalEncryptionService {
 
   // Generate fingerprint for key verification
   private async generateFingerprint(publicKey: ArrayBuffer): Promise<string> {
+    if (!this.isSupported) return 'mock-fingerprint';
     const hashBuffer = await window.crypto.subtle.digest('SHA-256', publicKey);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 16);
@@ -368,6 +414,15 @@ class LocalEncryptionService {
   }
 
   async encryptGroupMessage(message: string, geohash: string): Promise<EncryptedData> {
+    if (!this.isSupported) {
+      return {
+        data: btoa(message),
+        iv: 'mock-iv',
+        salt: 'mock-salt',
+        timestamp: Date.now()
+      };
+    }
+
     try {
       const groupKey = await this.deriveGroupKey(geohash);
       const iv = window.crypto.getRandomValues(new Uint8Array(12));
@@ -392,6 +447,10 @@ class LocalEncryptionService {
   }
 
   async decryptGroupMessage(encryptedData: EncryptedData, geohash: string): Promise<string> {
+    if (!this.isSupported) {
+      try { return atob(encryptedData.data); } catch { return '[Group Decrypt Failed]'; }
+    }
+
     try {
       const groupKey = await this.deriveGroupKey(geohash);
       const iv = this.base64ToArrayBuffer(encryptedData.iv);

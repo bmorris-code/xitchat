@@ -424,6 +424,8 @@ const App: React.FC = () => {
 
   // Initialize Nostr Service
   useEffect(() => {
+    let cleanupFuncs: (() => void)[] = [];
+
     const initializeNostr = async () => {
       try {
         console.log('🔑 Initializing Nostr service...');
@@ -434,52 +436,52 @@ const App: React.FC = () => {
           console.log('✅ Nostr service connected');
 
           // Subscribe to Nostr events
-          const unsubscribeMessage = nostrService.subscribe('messageReceived', (message) => {
+          const unsubMsg = nostrService.subscribe('messageReceived', (message) => {
             console.log('📨 Nostr message received:', message);
             // Convert Nostr message to app format and add to chats
-            const nostrChat = chats.find(c => c.participant.id === `nostr-${message.from}`);
-            if (nostrChat) {
-              const newMessage: Message = {
-                id: message.id,
-                senderId: message.from,
-                text: message.content,
-                timestamp: message.timestamp.getTime(),
-                senderHandle: `nostr-${message.from.substring(0, 8)}`
-              };
+            setChats(prev => {
+              const nostrChat = prev.find(c => c.participant.id === `nostr-${message.from}`);
+              if (nostrChat) {
+                const newMessage: Message = {
+                  id: message.id,
+                  senderId: message.from,
+                  text: message.content,
+                  timestamp: message.timestamp.getTime(),
+                  senderHandle: `nostr-${message.from.substring(0, 8)}`
+                };
 
-              setChats(prev => prev.map(c =>
-                c.id === nostrChat.id
-                  ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
-                  : c
-              ));
-            }
+                return prev.map(c =>
+                  c.id === nostrChat.id
+                    ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
+                    : c
+                );
+              }
+              return prev;
+            });
           });
+          cleanupFuncs.push(unsubMsg);
 
-          const unsubscribePeer = nostrService.subscribe('peerUpdated', (peer: NostrPeer) => {
+          const unsubPeer = nostrService.subscribe('peerUpdated', (peer: NostrPeer) => {
             console.log('👤 Nostr peer updated:', peer);
             setNostrPeers(prev => {
               const filtered = prev.filter(p => p.id !== peer.id);
               return [...filtered, peer];
             });
           });
+          cleanupFuncs.push(unsubPeer);
 
-          const unsubscribeProfile = nostrService.subscribe('profileLoaded', (profile) => {
+          const unsubProfile = nostrService.subscribe('profileLoaded', (profile) => {
             console.log('👤 Nostr profile loaded:', profile);
             if (profile.name) setMyHandle(profile.name);
             if (profile.picture) setMyAvatar(profile.picture);
             if (profile.about) setMyMood(prev => ({ ...prev, text: profile.about }));
             if (profile.custom_fields?.emoji) setMyMood(prev => ({ ...prev, emoji: profile.custom_fields.emoji }));
           });
+          cleanupFuncs.push(unsubProfile);
 
           // Load initial peers
           const peers = nostrService.getPeers();
           setNostrPeers(peers);
-
-          return () => {
-            unsubscribeMessage();
-            unsubscribePeer();
-            unsubscribeProfile();
-          };
         }
       } catch (error) {
         console.error('❌ Failed to initialize Nostr:', error);
@@ -488,7 +490,11 @@ const App: React.FC = () => {
     };
 
     initializeNostr();
-  }, [chats]);
+
+    return () => {
+      cleanupFuncs.forEach(fn => fn());
+    };
+  }, []);
 
   const [myMood, setMyMood] = useState({ text: 'Connected to the matrix.', emoji: '⚡' });
   const [myAvatar, setMyAvatar] = useState('https://picsum.photos/seed/me/200');
@@ -831,8 +837,16 @@ const App: React.FC = () => {
 
     // Send message via hybrid mesh (Bluetooth first, WebRTC fallback)
     try {
-      await hybridMesh.sendMessage(text, activeChat?.participant?.id, options?.encryptedData);
-      console.log('Message sent via hybrid mesh:', { text, targetId: activeChat?.participant?.id, encrypted: !!options?.encryptedData });
+      // Strip prefixes to get the raw mesh ID
+      let meshTargetId = activeChat?.participant?.id;
+      if (meshTargetId?.startsWith('nostr-')) {
+        meshTargetId = meshTargetId.replace('nostr-', '');
+      } else if (meshTargetId?.startsWith('node-')) {
+        meshTargetId = meshTargetId.replace('node-', '');
+      }
+
+      await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData);
+      console.log('Message sent via hybrid mesh:', { text, targetId: meshTargetId, encrypted: !!options?.encryptedData });
     } catch (error) {
       console.error('Failed to send via hybrid mesh:', error);
     }
