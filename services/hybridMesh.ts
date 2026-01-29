@@ -353,23 +353,23 @@ class HybridMeshService {
         const peer = this.peers.get(targetId);
         if (peer) {
           console.log(`🎯 Targeted message to ${targetId} via ${peer.connectionType}`);
-          
+
           // Try primary network first
           let success = false;
           switch (peer.connectionType) {
-            case 'bluetooth': 
+            case 'bluetooth':
               success = await workingBluetoothMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
               break;
-            case 'wifi': 
+            case 'wifi':
               success = await wifiP2P.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
               break;
-            case 'nostr': 
+            case 'nostr':
               success = await nostrService.sendDirectMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
               break;
-            case 'broadcast': 
+            case 'broadcast':
               success = await broadcastMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
               break;
-            case 'webrtc': 
+            case 'webrtc':
               try {
                 await ablyWebRTC.sendMessage(payload);
                 success = true;
@@ -382,28 +382,34 @@ class HybridMeshService {
           // If primary network fails, try fallback networks
           if (!success) {
             console.log(`⚠️ Primary network ${peer.connectionType} failed, trying fallback networks...`);
-            
+
             // Try Nostr as universal fallback
             if (this.activeServices.nostr && peer.connectionType !== 'nostr') {
               console.log('🔄 Trying Nostr fallback...');
-              await nostrService.sendDirectMessage(peer.serviceId!, payload).catch(() => {});
+              await nostrService.sendDirectMessage(peer.serviceId!, payload).catch(() => { });
             }
-            
+
             // Try Broadcast as another fallback
             if (this.activeServices.broadcast && peer.connectionType !== 'broadcast') {
               console.log('🔄 Trying Broadcast fallback...');
-              await broadcastMesh.sendMessage(peer.serviceId!, payload).catch(() => {});
+              await broadcastMesh.sendMessage(peer.serviceId!, payload).catch(() => { });
             }
           }
           return;
         } else {
-          console.warn(`⚠️ Peer ${targetId} not found in hybrid mesh`);
+          // Fallback: If peer not found in mesh map, but looks like a valid ID and Nostr is active, try Nostr
+          if (this.activeServices.nostr) {
+            console.log(`⚠️ Peer ${targetId} not found in mesh map, falling back to direct Nostr send`);
+            nostrService.sendDirectMessage(targetId, payload).catch(e => console.error('Fallback Nostr send failed:', e));
+            return;
+          }
+          console.warn(`⚠️ Peer ${targetId} not found in hybrid mesh and no fallback available`);
         }
       }
 
       // Broadcast to all active services with enhanced reliability
       const broadcastPromises = [];
-      
+
       if (this.activeServices.broadcast) {
         broadcastPromises.push(broadcastMesh.broadcastMessage(payload).catch(e => console.log('Broadcast failed:', e)));
       }
