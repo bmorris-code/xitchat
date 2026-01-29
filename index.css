@@ -67,6 +67,11 @@ body,
         .order-last {
             order: 999 !important;
         }
+
+        /* Fix for content being hidden behind fixed navbar on iOS */
+        .ios-content-padding {
+            padding-bottom: calc(85px + env(safe-area-inset-bottom)) !important;
+        }
     }
 }
 

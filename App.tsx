@@ -284,7 +284,7 @@ const App: React.FC = () => {
 
             // Find or create chat for this peer
             let targetChat = chats.find(c => c.participant.id === senderId);
-            
+
             // If no chat exists, create one for radar peers
             if (!targetChat) {
               const radarPeer = radarPeers.find(p => p.id === senderId);
@@ -307,10 +307,10 @@ const App: React.FC = () => {
                   lastMessage: '',
                   unreadCount: 0
                 };
-                
+
                 setChats(prev => [...prev, newChat]);
                 targetChat = newChat;
-                
+
                 console.log(`🆕 Created chat for radar peer: ${radarPeer.handle}`);
               }
             }
@@ -331,7 +331,7 @@ const App: React.FC = () => {
                   ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
                   : c
               ));
-              
+
               console.log(`💬 Added message to chat ${targetChat.participant.handle}: ${message.content.substring(0, 30)}...`);
             }
 
@@ -504,20 +504,20 @@ const App: React.FC = () => {
     const initializePresenceBeacon = async () => {
       try {
         console.log('🗼 Initializing Presence Beacon with room membership...');
-        
+
         // Initialize presence beacon with user info
         const userInfo = {
           name: myHandle || 'Anonymous',
           handle: myHandle?.replace('@', '') || 'anon'
         };
-        
+
         await presenceBeacon.initialize(userInfo);
         await presenceBeacon.start();
-        
+
         // Join default rooms
         presenceBeacon.joinRoom('global');
         presenceBeacon.joinRoom('local');
-        
+
         console.log('✅ Presence Beacon initialized with room membership');
       } catch (error) {
         console.error('❌ Failed to initialize Presence Beacon:', error);
@@ -1322,7 +1322,7 @@ const App: React.FC = () => {
         WebkitOverflowScrolling: 'touch',
       }}>
       <Sidebar currentView={view} setView={setView} userAvatar={myAvatar} />
-      <div className="flex-1 flex overflow-hidden relative md:pt-0">
+      <div className="flex-1 flex overflow-hidden relative md:pt-0 ios-content-padding">
 
         {/* Transmission Toasts */}
         <TransmissionToast
