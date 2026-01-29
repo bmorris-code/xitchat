@@ -840,7 +840,12 @@ const App: React.FC = () => {
       // Strip prefixes to get the raw mesh ID
       let meshTargetId = activeChat?.participant?.id;
       if (meshTargetId?.startsWith('nostr-')) {
-        meshTargetId = meshTargetId.replace('nostr-', '');
+        // For Nostr peers, we need to use the actual public key
+        const nostrPeerId = meshTargetId.replace('nostr-', '');
+        const nostrPeer = nostrPeers.find(p => p.id === nostrPeerId);
+
+        // Use the publicKey field if available, otherwise use the id
+        meshTargetId = nostrPeer?.publicKey || nostrPeerId;
       } else if (meshTargetId?.startsWith('node-')) {
         meshTargetId = meshTargetId.replace('node-', '');
       }
@@ -863,7 +868,7 @@ const App: React.FC = () => {
       const botMessage: Message = { id: Math.random().toString(36).substr(2, 9), senderId: 'xit-bot', text: botResponseText, timestamp: Date.now(), isAi: true };
       setChats(prev => prev.map(c => (c.id === activeChatId ? { ...c, lastMessage: botResponseText, messages: [...c.messages, botMessage] } : c)));
     }
-  }, [activeChatId, activeChat?.participant.id, myHandle, nostrConnected]);
+  }, [activeChatId, activeChat?.participant.id, myHandle, nostrConnected, nostrPeers]);
 
   const handleDeleteMessage = useCallback((messageId: string) => {
     if (!activeChatId) return;

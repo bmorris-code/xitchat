@@ -77,7 +77,7 @@ body,
     /* Base padding for ALL mobile devices (Android + iOS PWA) */
     /* Clears the fixed Sidebar (72px) + Buffer */
     .mobile-content-padding {
-        padding-bottom: calc(95px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: calc(85px + env(safe-area-inset-bottom)) !important;
     }
 }
 
