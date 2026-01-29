@@ -13,6 +13,7 @@
     "sync": "npm run build:mobile && npx cap sync",
     "sync:ios": "npm run build:mobile && npx cap sync ios",
     "sync:android": "npm run build:mobile && npx cap sync android",
+    "android": "npx cap open android",
     "preview": "vite preview",
     "vercel-build": "vite build"
   },

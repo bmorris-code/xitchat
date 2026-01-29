@@ -65,12 +65,12 @@ class NostrService {
   private readonly RATE_LIMIT_DELAY = 60000; // 60 seconds between subscriptions (increased from 30)
   private readonly PUBLISH_RATE_LIMIT = 30000; // 30 seconds between publishes (increased from 15)
   private isInitialized = false;
-  
+
   // Exponential backoff properties
   private retryDelay = 1000;
   private maxRetries = 5;
   private lastErrorTime = new Map<string, number>();
-  
+
   private serviceInfo: NetworkService = {
     name: 'nostr',
     isConnected: false,
@@ -84,17 +84,15 @@ class NostrService {
   // Default public Nostr relays - using only most reliable ones
   private readonly defaultRelays = [
     'wss://relay.damus.io',
-    'wss://nos.lol',
-    'wss://relay.primal.net',
-    'wss://relay.snort.social'
+    'wss://nos.lol'
   ];
 
   // Presence event constants
   private readonly PRESENCE_KIND = 30315; // Custom kind for presence events
-  private readonly PRESENCE_TTL = 60000; // 1 minute TTL for presence events
+  private readonly PRESENCE_TTL = 120000; // 2 minutes TTL for presence events
   private presenceSubscription: any = null;
   private lastPresencePublish = 0;
-  private readonly PRESENCE_PUBLISH_INTERVAL = 60000; // Publish presence every 60 seconds (reduced from 30)
+  private readonly PRESENCE_PUBLISH_INTERVAL = 120000; // Publish presence every 120 seconds (reduced load)
   private isRateLimited = false;
   private rateLimitBackoff = 0;
 
@@ -106,7 +104,7 @@ class NostrService {
       message: message,
       timestamp: new Date()
     });
-    
+
     // Also log to console for debugging
     console.log(`🔔 User Notification: ${message}`);
   }
@@ -119,18 +117,18 @@ class NostrService {
     const originalConsoleError = console.error;
     console.error = (...args: any[]) => {
       const message = args.join(' ');
-      
+
       if (message.includes('rate-limited') || message.includes('slow down matey')) {
         console.debug('⚠️ Nostr network issue (handled):', message);
         // Don't spam console with rate limit errors
         return;
       }
-      
+
       if (message.includes('WebSocket') && message.includes('failed')) {
         console.debug('⚠️ WebSocket issue (handled):', message);
         return;
       }
-      
+
       originalConsoleError.apply(console, args);
     };
   }
@@ -145,7 +143,7 @@ class NostrService {
       if (error.message?.includes('rate-limited') && retries < this.maxRetries) {
         const delay = this.retryDelay * Math.pow(2, retries);
         console.log(`⏳ Rate limited, retrying ${operationType} in ${delay}ms (attempt ${retries + 1}/${this.maxRetries})`);
-        
+
         await new Promise(resolve => setTimeout(resolve, delay));
         return this.sendWithBackoff(operation, operationType, retries + 1);
       }
@@ -167,16 +165,16 @@ class NostrService {
       // Attempt decryption with timeout
       const result = await Promise.race([
         nostrTools.nip04.decrypt(this.privateKey, senderPubkey, encryptedContent),
-        new Promise<never>((_, reject) => 
+        new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Decryption timeout')), 5000)
         )
       ]);
-      
+
       return result;
     } catch (error: any) {
       // Handle all crypto-related errors comprehensively
       const errorMsg = error?.message || error?.toString() || 'Unknown decryption error';
-      
+
       // Check for various crypto error patterns
       if (
         error?.name === 'OperationError' ||
@@ -194,7 +192,7 @@ class NostrService {
         cryptoError.name = 'OperationError';
         throw cryptoError;
       }
-      
+
       // Re-throw timeout and other errors as-is
       throw error;
     }
@@ -204,20 +202,20 @@ class NostrService {
   private async findPeerWithRetry(peerId: string, maxAttempts = 3): Promise<NostrPeer | null> {
     for (let i = 0; i < maxAttempts; i++) {
       const peer = this.peers.get(peerId);
-      
+
       if (peer) {
         return peer;
       }
-      
+
       // Wait before retry with exponential backoff
       const delay = 2000 * Math.pow(2, i);
       console.log(`🔍 Peer ${peerId.substring(0, 8)}... not found, retrying in ${delay}ms (attempt ${i + 1}/${maxAttempts})`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      
+
       // Try refreshing peer list
       await this.refreshPeerList();
     }
-    
+
     return null;
   }
 
@@ -270,7 +268,7 @@ class NostrService {
       if (typeof window !== 'undefined') {
         window.addEventListener('unhandledrejection', (event) => {
           const reason = event.reason;
-          
+
           if (reason?.message?.includes('rate-limited') || reason?.message?.includes('slow down')) {
             console.warn('⚠️ Nostr network issue (handled):', reason.message);
             this.showUserNotification('Network busy, retrying automatically...');
@@ -363,7 +361,7 @@ class NostrService {
     for (const relayUrl of this.defaultRelays) {
       try {
         console.log(`📡 Connecting to ${relayUrl}...`);
-        
+
         // Add a 15-second timeout with better error handling
         const relay = await Promise.race([
           this.pool!.ensureRelay(relayUrl),
@@ -375,21 +373,21 @@ class NostrService {
         this.relays.add(relayUrl);
         this.connectedRelays.add(relayUrl);
         console.log(`✅ Connected to ${relayUrl}`);
-        
+
         // Add delay between connections to avoid rate limiting
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
       } catch (error) {
         console.warn(`⚠️ Failed to connect to ${relayUrl}:`, error);
         this.failedRelays.add(relayUrl);
-        
+
         // Continue with next relay instead of failing completely
         continue;
       }
     }
 
     console.log(`🌐 Connected to ${this.connectedRelays.size}/${this.defaultRelays.length} relays`);
-    
+
     // If no relays connected, don't fail completely - work in offline mode
     if (this.connectedRelays.size === 0) {
       console.warn('⚠️ No relays connected, working in offline mode');
@@ -526,9 +524,9 @@ class NostrService {
           this.showUserNotification('Unable to decrypt message - incompatible encryption');
           return;
         }
-        
+
         const errorMsg = decryptError.message || 'Unknown decryption error';
-        
+
         if (errorMsg.includes('timeout')) {
           console.warn('⚠️ Decryption timeout - message may be corrupted');
         } else if (errorMsg.includes('Private key not initialized')) {
@@ -538,7 +536,7 @@ class NostrService {
         } else {
           console.warn('⚠️ Decryption failed:', errorMsg);
         }
-        
+
         // Don't crash the app, just skip this message
         return;
       }
@@ -674,11 +672,11 @@ class NostrService {
         });
 
         await Promise.allSettled(promises);
-        
+
         if (successfulRelays.length === 0) {
           throw new Error('Failed to publish to any relay');
         }
-        
+
         return successfulRelays;
       };
 
@@ -934,7 +932,7 @@ class NostrService {
       }
 
       console.log(`🗼 Received presence from ${presenceData.pubkey.substring(0, 8)}...`);
-      
+
       // Emit presence event for radar integration
       this.emit('presenceEvent', {
         pubkey: presenceData.pubkey,
@@ -1021,9 +1019,9 @@ class NostrService {
   private handleRateLimit(): void {
     this.isRateLimited = true;
     this.rateLimitBackoff = Math.min(this.rateLimitBackoff + 30000, 300000); // Max 5 minutes backoff
-    
+
     console.debug(`⏳ Rate limited, backing off for ${this.rateLimitBackoff / 1000}s`);
-    
+
     setTimeout(() => {
       this.isRateLimited = false;
       this.rateLimitBackoff = 0;
