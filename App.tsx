@@ -1322,7 +1322,7 @@ const App: React.FC = () => {
         WebkitOverflowScrolling: 'touch',
       }}>
       <Sidebar currentView={view} setView={setView} userAvatar={myAvatar} />
-      <div className="flex-1 flex overflow-hidden relative md:pt-0 ios-content-padding">
+      <div className="flex-1 flex overflow-hidden relative md:pt-0 mobile-content-padding">
 
         {/* Transmission Toasts */}
         <TransmissionToast

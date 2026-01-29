@@ -61,21 +61,33 @@ body,
         -webkit-backdrop-filter: blur(20px) !important;
         backdrop-filter: blur(20px) !important;
     }
+}
 
-    /* Ensure mobile navbar is always visible */
+/* GLOBAL MOBILE FIXES (Android & iOS) */
+@media (max-width: 768px) {
+    .order-last {
+        order: 999 !important;
+    }
+
+    /* Base padding for ALL mobile devices (Android + iOS PWA) */
+    /* Clears the fixed Sidebar (72px) + Buffer */
+    .mobile-content-padding {
+        padding-bottom: calc(95px + env(safe-area-inset-bottom)) !important;
+    }
+}
+
+/* iOS SPECIFIC OVERRIDES */
+@supports (-webkit-touch-callout: none) {
     @media (max-width: 768px) {
-        .order-last {
-            order: 999 !important;
-        }
 
-        /* Fix for content being hidden behind fixed navbar on iOS */
-        .ios-content-padding {
+        /* iOS Web Safari needs extra padding for the bottom toolbar */
+        .mobile-content-padding {
             padding-bottom: calc(130px + env(safe-area-inset-bottom)) !important;
         }
 
-        /* PWA Mode Adjustment: Reduce padding since there's no browser toolbar */
+        /* iOS PWA Standalone (Home Screen) - Reduce back to normal */
         @media (display-mode: standalone) {
-            .ios-content-padding {
+            .mobile-content-padding {
                 padding-bottom: calc(90px + env(safe-area-inset-bottom)) !important;
             }
         }
