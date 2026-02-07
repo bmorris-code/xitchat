@@ -546,6 +546,26 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </div>
 
+          {/* Android APK Download Section */}
+          <div className="mb-6 p-4 border border-[#00ff41] border-opacity-30 bg-[#00ff41]/5 rounded-lg">
+            <div className="flex items-center gap-3 mb-3">
+              <i className="fa-solid fa-robot text-[#00ff41] text-lg"></i>
+              <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">native_mesh_upgrade</h4>
+            </div>
+            <p className="text-[11px] opacity-60 mb-4 text-current">
+              Download the native Android app to unlock high-performance Bluetooth & WiFi Direct mesh networking.
+            </p>
+            <a
+              href="/xitchat.apk"
+              download
+              className="w-full bg-current text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:opacity-90 transition-all flex items-center justify-center gap-2 no-underline"
+              style={{ backgroundColor: theme === 'green' ? '#00ff41' : theme === 'amber' ? '#ffb000' : theme === 'cyan' ? '#00ffff' : '#ff3131' }}
+            >
+              <i className="fa-brands fa-android text-base"></i>
+              Download Android APK
+            </a>
+          </div>
+
           <button
             onClick={onSOS}
             className="w-full bg-red-900/40 border border-red-500 text-red-500 py-4 font-black uppercase text-xs tracking-[0.4em] hover:bg-red-500 hover:text-white transition-all"
