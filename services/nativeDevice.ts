@@ -1,7 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { Geolocation, Position } from '@capacitor/geolocation';
-import { PushNotifications, PermissionStatus, PushNotificationSchema } from '@capacitor/push-notifications';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 export class NativeDeviceService {
@@ -87,58 +86,17 @@ export class NativeDeviceService {
     });
   }
 
-  // Push notifications
+  // Push notifications (Disabled)
   async initializePushNotifications(): Promise<boolean> {
-    if (!this.isNative) {
-      console.log('Push notifications not available on web');
-      return false;
-    }
-
-    try {
-      // Request permission
-      const permission = await PushNotifications.requestPermissions();
-      if (permission.receive !== 'granted') {
-        console.log('Push notification permission denied');
-        return false;
-      }
-
-      // Register for push notifications
-      await PushNotifications.register();
-
-      // Listen for notifications
-      PushNotifications.addListener(
-        'pushNotificationReceived',
-        (notification: PushNotificationSchema) => {
-          this.handlePushNotification(notification);
-        }
-      );
-
-      PushNotifications.addListener(
-        'pushNotificationActionPerformed',
-        (notification) => {
-          this.handleNotificationAction(notification);
-        }
-      );
-
-      return true;
-    } catch (error) {
-      console.error('Push notification setup error:', error);
-      return false;
-    }
+    return true;
   }
 
-  private handlePushNotification(notification: PushNotificationSchema) {
+  private handlePushNotification(notification: any) {
     console.log('Push notification received:', notification);
-    
-    // Show in-app notification
-    if (notification.title && notification.body) {
-      this.showInAppNotification(notification.title, notification.body);
-    }
   }
 
   private handleNotificationAction(notification: any) {
     console.log('Notification action performed:', notification);
-    // Handle notification tap - could navigate to specific chat/view
   }
 
   private showInAppNotification(title: string, body: string) {
@@ -149,9 +107,9 @@ export class NativeDeviceService {
       <div class="font-bold text-sm">${title}</div>
       <div class="text-xs opacity-80">${body}</div>
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     // Auto-remove after 5 seconds
     setTimeout(() => {
       if (notification.parentNode) {
@@ -198,11 +156,11 @@ export class NativeDeviceService {
     // For now, return mock data
     console.log('Scanning for mesh nodes...');
     await this.triggerHaptic(ImpactStyle.Light);
-    
+
     // Simulate found nodes
     return [
       'XIT-NODE-48F2',
-      'XIT-NODE-A812', 
+      'XIT-NODE-A812',
       'XIT-NODE-7B3C'
     ];
   }
