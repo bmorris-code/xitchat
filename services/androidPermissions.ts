@@ -103,26 +103,49 @@ export class AndroidPermissionsService {
   async requestBluetoothPermissions(): Promise<PermissionResult> {
     if (!this.isNative) return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
 
+    console.log('📶 Checking Bluetooth/WiFi permissions...');
+
     try {
       const { registerPlugin } = await import('@capacitor/core');
       const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
       const WiFiDirect = registerPlugin<any>('WiFiDirect');
 
-      // Request permissions from both plugins
-      const btResult = await BluetoothMesh.requestPermissions();
-      const wifiResult = await WiFiDirect.requestPermissions();
+      // Check Android version if possible, or just catch errors per request
+      // On Android 11 and below, these might fail or return nothing
+      let btGranted = false;
+      let wifiGranted = false;
 
-      const granted = (btResult.bluetoothScan === 'granted' || btResult.location === 'granted') &&
-        (wifiResult.location === 'granted' || wifiResult.nearbyWifiDevices === 'granted');
+      try {
+        console.log('📡 Requesting BluetoothMesh permissions...');
+        const btResult = await BluetoothMesh.requestPermissions();
+        console.log('BT Permission Result:', btResult);
+        // On Android 11, location is often the key
+        btGranted = btResult.location === 'granted' || btResult.bluetoothScan === 'granted' || btResult.bluetooth === 'granted';
+      } catch (e) {
+        console.warn('BluetoothMesh.requestPermissions failed (might be Android < 12):', e);
+        // Fallback: check location which is the real gatekeeper on Android < 12
+        const locStatus = await this.requestLocationPermissions();
+        btGranted = locStatus.granted;
+      }
+
+      try {
+        console.log('📡 Requesting WiFiDirect permissions...');
+        const wifiResult = await WiFiDirect.requestPermissions();
+        console.log('WiFi Permission Result:', wifiResult);
+        wifiGranted = wifiResult.location === 'granted' || wifiResult.nearbyWifiDevices === 'granted' || wifiResult.wifiState === 'granted';
+      } catch (e) {
+        console.warn('WiFiDirect.requestPermissions failed:', e);
+        wifiGranted = btGranted; // Fallback to whatever BT got
+      }
 
       return {
-        granted,
-        denied: !granted,
+        granted: btGranted && wifiGranted,
+        denied: !(btGranted && wifiGranted),
         permanentlyDenied: false,
         canAskAgain: true
       };
     } catch (error) {
-      console.error('Bluetooth/WiFi permission request failed:', error);
+      console.error('Bluetooth/WiFi permission request failed completely:', error);
       return { granted: false, denied: true, permanentlyDenied: false, canAskAgain: true };
     }
   }

@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
 import android.net.wifi.p2p.WifiP2pDeviceList;
@@ -12,6 +13,8 @@ import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.os.Build;
 import android.util.Log;
+
+import androidx.core.app.ActivityCompat;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -95,6 +98,11 @@ public class WiFiDirectPlugin extends Plugin {
 
     @PluginMethod
     public void startDiscovery(PluginCall call) {
+        if (!checkPermissions()) {
+            call.reject("Missing WiFi Direct/Location permissions");
+            return;
+        }
+
         // Re-check hardware if null
         if (wifiP2pManager == null || channel == null) {
             try {
@@ -286,6 +294,15 @@ public class WiFiDirectPlugin extends Plugin {
                 Log.e(TAG, "Error handling client", e);
             }
         }).start();
+    }
+
+    private boolean checkPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.NEARBY_WIFI_DEVICES) == PackageManager.PERMISSION_GRANTED &&
+                   ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        } else {
+            return ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        }
     }
 
     private class WiFiDirectBroadcastReceiver extends BroadcastReceiver {
