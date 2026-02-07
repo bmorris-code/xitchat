@@ -99,10 +99,39 @@ export class AndroidPermissionsService {
     }
   }
 
+  // Request Bluetooth & Nearby Devices Permissions (Android 12+)
+  async requestBluetoothPermissions(): Promise<PermissionResult> {
+    if (!this.isNative) return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
+
+    try {
+      const { registerPlugin } = await import('@capacitor/core');
+      const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
+      const WiFiDirect = registerPlugin<any>('WiFiDirect');
+
+      // Request permissions from both plugins
+      const btResult = await BluetoothMesh.requestPermissions();
+      const wifiResult = await WiFiDirect.requestPermissions();
+
+      const granted = (btResult.bluetoothScan === 'granted' || btResult.location === 'granted') &&
+        (wifiResult.location === 'granted' || wifiResult.nearbyWifiDevices === 'granted');
+
+      return {
+        granted,
+        denied: !granted,
+        permanentlyDenied: false,
+        canAskAgain: true
+      };
+    } catch (error) {
+      console.error('Bluetooth/WiFi permission request failed:', error);
+      return { granted: false, denied: true, permanentlyDenied: false, canAskAgain: true };
+    }
+  }
+
   // Request all critical permissions for the app
   async requestAllCriticalPermissions(): Promise<{
     camera: PermissionResult;
     location: PermissionResult;
+    bluetooth: PermissionResult;
     push: PermissionResult;
     overallGranted: boolean;
   }> {
@@ -111,12 +140,13 @@ export class AndroidPermissionsService {
     const results = {
       camera: await this.requestCameraPermissions(),
       location: await this.requestLocationPermissions(),
+      bluetooth: await this.requestBluetoothPermissions(),
       push: await this.requestPushPermissions(),
       overallGranted: false
     };
 
     // Calculate overall success
-    results.overallGranted = results.camera.granted && results.location.granted;
+    results.overallGranted = results.camera.granted && results.location.granted && results.bluetooth.granted;
 
     // Log results
     console.log('📸 Camera Permission:', results.camera);

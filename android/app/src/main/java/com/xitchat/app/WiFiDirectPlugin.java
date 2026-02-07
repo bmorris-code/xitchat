@@ -95,8 +95,20 @@ public class WiFiDirectPlugin extends Plugin {
 
     @PluginMethod
     public void startDiscovery(PluginCall call) {
+        // Re-check hardware if null
         if (wifiP2pManager == null || channel == null) {
-            call.reject("WiFi Direct not initialized");
+            try {
+                wifiP2pManager = (WifiP2pManager) getContext().getSystemService(Context.WIFI_P2P_SERVICE);
+                if (wifiP2pManager != null) {
+                    channel = wifiP2pManager.initialize(getContext(), getContext().getMainLooper(), null);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to re-initialize WiFi Direct", e);
+            }
+        }
+        
+        if (wifiP2pManager == null || channel == null) {
+            call.reject("WiFi Direct not initialized or not supported");
             return;
         }
         

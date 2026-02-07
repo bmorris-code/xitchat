@@ -113,9 +113,22 @@ public class BluetoothMeshPlugin extends Plugin {
             call.reject("Missing Bluetooth permissions");
             return;
         }
+
+        // Re-check hardware if null
+        if (bluetoothLeAdvertiser == null) {
+            if (bluetoothAdapter == null) {
+                bluetoothManager = (BluetoothManager) getContext().getSystemService(Context.BLUETOOTH_SERVICE);
+                if (bluetoothManager != null) {
+                    bluetoothAdapter = bluetoothManager.getAdapter();
+                }
+            }
+            if (bluetoothAdapter != null) {
+                bluetoothLeAdvertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
+            }
+        }
         
         if (bluetoothLeAdvertiser == null) {
-            call.reject("BLE advertising not supported");
+            call.reject("BLE advertising not supported or Bluetooth disabled");
             return;
         }
         
@@ -133,16 +146,21 @@ public class BluetoothMeshPlugin extends Plugin {
             .addServiceUuid(new ParcelUuid(SERVICE_UUID))
             .build();
         
-        bluetoothLeAdvertiser.startAdvertising(settings, data, advertiseCallback);
-        isAdvertising = true;
-        
-        // Start GATT server
-        startGattServer();
-        
-        JSObject ret = new JSObject();
-        ret.put("success", true);
-        ret.put("advertising", true);
-        call.resolve(ret);
+        try {
+            bluetoothLeAdvertiser.startAdvertising(settings, data, advertiseCallback);
+            isAdvertising = true;
+            
+            // Start GATT server
+            startGattServer();
+            
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("advertising", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start advertising", e);
+            call.reject("Failed to start advertising: " + e.getMessage());
+        }
     }
 
     @PluginMethod
@@ -169,20 +187,39 @@ public class BluetoothMeshPlugin extends Plugin {
             call.reject("Missing Bluetooth permissions");
             return;
         }
+
+        // Re-check hardware if null (e.g. if permissions were granted after load)
+        if (bluetoothLeScanner == null || bluetoothLeAdvertiser == null) {
+            if (bluetoothAdapter == null) {
+                bluetoothManager = (BluetoothManager) getContext().getSystemService(Context.BLUETOOTH_SERVICE);
+                if (bluetoothManager != null) {
+                    bluetoothAdapter = bluetoothManager.getAdapter();
+                }
+            }
+            if (bluetoothAdapter != null) {
+                bluetoothLeScanner = bluetoothAdapter.getBluetoothLeScanner();
+                bluetoothLeAdvertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
+            }
+        }
         
         if (bluetoothLeScanner == null) {
-            call.reject("BLE scanning not supported");
+            call.reject("BLE scanning not supported or Bluetooth disabled");
             return;
         }
         
         discoveredDevices.clear();
-        bluetoothLeScanner.startScan(scanCallback);
-        isScanning = true;
-        
-        JSObject ret = new JSObject();
-        ret.put("success", true);
-        ret.put("scanning", true);
-        call.resolve(ret);
+        try {
+            bluetoothLeScanner.startScan(scanCallback);
+            isScanning = true;
+            
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("scanning", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start scan", e);
+            call.reject("Failed to start scan: " + e.getMessage());
+        }
     }
 
     @PluginMethod

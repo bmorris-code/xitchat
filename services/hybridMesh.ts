@@ -11,6 +11,7 @@ import { realTorService } from './realTorService';
 import { realPowService } from './realPowService';
 import { ablyWebRTC } from './ablyWebRTC';
 import { networkStateManager } from './networkStateManager';
+import { androidPermissions } from './androidPermissions';
 
 export type MeshConnectionType = 'bluetooth' | 'webrtc' | 'broadcast' | 'local' | 'simulation' | 'wifi' | 'nostr';
 
@@ -60,6 +61,12 @@ class HybridMeshService {
   async initialize(): Promise<MeshConnectionType[]> {
     try {
       console.log('Initializing hybrid mesh service with 5-layer network...');
+
+      // CRITICAL: Request permissions on Android before starting hardware-based discovery
+      if ((window as any).Capacitor?.isNativePlatform()) {
+        console.log('🔐 Requesting Android hardware permissions...');
+        await androidPermissions.requestAllCriticalPermissions();
+      }
 
       const initializedTypes: MeshConnectionType[] = [];
 
