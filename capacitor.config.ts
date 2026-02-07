@@ -11,10 +11,6 @@ const config: CapacitorConfig = {
     cleartext: true
   },
   plugins: {
-    // Push Notifications is the ONLY plugin that uses config here
-    PushNotifications: {
-      presentationOptions: ["badge", "sound", "alert"]
-    }
     // NOTE: Camera and Geolocation permissions must be set in 
     // AndroidManifest.xml and Info.plist, not here.
   }

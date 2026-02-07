@@ -46,7 +46,7 @@ class WiFiP2PService {
   constructor() {
     this.myPeerId = this.generatePeerId();
     this.broadcastChannel = new BroadcastChannel('xitchat-wifi');
-    
+
     this.broadcastChannel.onmessage = (event) => {
       try {
         const message: WiFiMessage = JSON.parse(event.data);
@@ -292,6 +292,54 @@ class WiFiP2PService {
 
   async initialize(): Promise<boolean> {
     try {
+      // 1. Native Branch (Android WiFi Direct)
+      if ((window as any).Capacitor?.isNativePlatform()) {
+        console.log('📱 Native environment detected, using Capacitor WiFi Direct...');
+        try {
+          const { registerPlugin } = await import('@capacitor/core');
+          const WiFiDirect = registerPlugin<any>('WiFiDirect');
+
+          await WiFiDirect.initialize();
+
+          // Set up native listeners
+          WiFiDirect.addListener('peersChanged', (data: any) => {
+            if (data.peers) {
+              data.peers.forEach((nativePeer: any) => {
+                const peer: WiFiPeer = {
+                  id: nativePeer.deviceAddress,
+                  name: nativePeer.deviceName || 'Native WiFi Device',
+                  handle: `@${(nativePeer.deviceName || 'wifi').replace(/\s+/g, '').toLowerCase()}`,
+                  isConnected: nativePeer.status === 0, // 0 = CONNECTED in Android
+                  lastSeen: new Date()
+                };
+                this.peers.set(peer.id, peer);
+                this.emit('peerFound', peer);
+              });
+              this.emit('peersUpdated', Array.from(this.peers.values()));
+            }
+          });
+
+          WiFiDirect.addListener('messageReceived', (data: any) => {
+            this.handleChatMessage({
+              id: Math.random().toString(36).substr(2, 9),
+              from: data.from,
+              to: this.myPeerId,
+              content: data.message,
+              timestamp: new Date(),
+              type: 'chat'
+            });
+          });
+
+          this.serviceInfo.isConnected = true;
+          this.serviceInfo.isHealthy = true;
+          networkStateManager.updateServiceStatus('wifiP2P', true, true);
+          return true;
+        } catch (e) {
+          console.error('❌ Native WiFi Direct initialization failed:', e);
+        }
+      }
+
+      // 2. Web Fallback
       if (!('RTCPeerConnection' in window)) {
         console.warn('WebRTC not supported');
         return false;
@@ -314,9 +362,25 @@ class WiFiP2PService {
     }
   }
 
-  startDiscovery(): void {
+  async startDiscovery(): Promise<void> {
     if (this.isDiscovering) return;
 
+    // 1. Native Branch
+    if ((window as any).Capacitor?.isNativePlatform()) {
+      try {
+        const { registerPlugin } = await import('@capacitor/core');
+        const WiFiDirect = registerPlugin<any>('WiFiDirect');
+        await WiFiDirect.startDiscovery();
+        await WiFiDirect.startServer(); // Start socket server for receiving messages
+        this.isDiscovering = true;
+        this.emit('discoveryStarted');
+        return;
+      } catch (e) {
+        console.error('❌ Native WiFi discovery failed:', e);
+      }
+    }
+
+    // 2. Web Fallback
     this.isDiscovering = true;
     console.log('🔍 Starting WiFi P2P discovery...');
 
@@ -348,6 +412,30 @@ class WiFiP2PService {
   async sendMessage(peerId: string, content: string): Promise<void> {
     const peer = this.peers.get(peerId);
 
+    // 1. Native Branch
+    if ((window as any).Capacitor?.isNativePlatform()) {
+      try {
+        const { registerPlugin } = await import('@capacitor/core');
+        const WiFiDirect = registerPlugin<any>('WiFiDirect');
+
+        // If not already connected, trigger connect in Android
+        if (!peer?.isConnected) {
+          await WiFiDirect.connectToPeer({ deviceAddress: peerId });
+        }
+
+        await WiFiDirect.sendMessage({
+          targetAddress: peerId, // In native, ID is the IP or MAC address
+          message: content
+        });
+
+        this.emit('messageSent', { id: 'native', from: this.myPeerId, to: peerId, content, timestamp: new Date(), type: 'chat' });
+        return;
+      } catch (e) {
+        console.error('❌ Native WiFi send failed:', e);
+      }
+    }
+
+    // 2. Web Fallback
     const message: WiFiMessage = {
       id: Math.random().toString(36).substr(2, 9),
       from: this.myPeerId,

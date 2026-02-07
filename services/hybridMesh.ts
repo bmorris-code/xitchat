@@ -150,6 +150,10 @@ class HybridMeshService {
         this.activeServices.bluetooth = true;
         workingBluetoothMesh.subscribe('peersUpdated', (peers: WorkingMeshNode[]) => this.updatePeers(peers, 'bluetooth'));
         workingBluetoothMesh.subscribe('messageReceived', (msg: any) => this.handleMessage('bluetooth', msg));
+
+        // Auto-start scanning if possible (on native platforms)
+        workingBluetoothMesh.startScanning().catch(e => console.log('Bluetooth auto-scan skipped:', e));
+
         return true;
       }
       return false;
@@ -213,8 +217,7 @@ class HybridMeshService {
   }
 
   private handleChatMessage(content: string, from: string, connectionType: MeshConnectionType) {
-    // Emit message for chat system to handle
-    this.notifyListeners('messageReceived', {
+    const hybridMessage: HybridMeshMessage = {
       id: Math.random().toString(36).substr(2, 9),
       from: from,
       to: 'me',
@@ -223,7 +226,15 @@ class HybridMeshService {
       connectionType: connectionType,
       encrypted: false,
       isBridged: false
-    });
+    };
+
+    // Emit message for chat system to handle
+    this.notifyListeners('messageReceived', hybridMessage);
+
+    // CRITICAL: Handle bridging to relay this message to other network layers
+    if (this.isBridgeEnabled) {
+      this.handleBridging(hybridMessage);
+    }
 
     console.log(`💬 Chat message received from ${from} via ${connectionType}: ${content.substring(0, 50)}...`);
   }
