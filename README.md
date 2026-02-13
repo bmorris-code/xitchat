@@ -1,207 +1,108 @@
-# XitChat - Serverless Mesh Messaging
+# 📡 XitChat
 
-🔥 **Zero-server mesh messaging powered by nostr & bluetooth**
+<p align="center">
+  <img src="https://raw.githubusercontent.com/bmorris-code/xitchat/main/public/icon.png" width="128" height="128" alt="XitChat Logo">
+</p>
 
-## 🚀 Quick Start
+<h3 align="center">Pure Mesh. No Servers. Just Chat.</h3>
 
-### Web App
-```bash
-npm run dev
-```
-Open http://localhost:3001
-
-### Android App
-Download [xitchat-v1.apk](/xitchat-v1.apk) (59MB)
-
-### PWA Installation
-Visit the web app and click "Install" in your browser
-
-## ✨ Features
-
-### 🌐 Mesh Networking
-- **Bluetooth P2P**: Direct device-to-device connections
-- **WiFi Direct**: Local network messaging without internet
-- **Nostr Integration**: Global decentralized mesh network
-- **Offline First**: Works completely without servers
-
-### 🔒 Privacy & Security
-- **End-to-End Encryption**: All messages encrypted
-- **No Tracking**: Zero analytics or telemetry
-- **Anonymous**: No registration required
-- **Self-Destructing**: Messages auto-delete
-
-### 📱 Cross-Platform
-- **Web**: Modern browser support
-- **Android**: Native APK with full permissions
-- **PWA**: Installable web app
-- **iOS**: Web app with PWA capabilities
-
-## 🛠 Tech Stack
-
-### Frontend
-- **React 19**: Modern UI framework
-- **TypeScript**: Type-safe development
-- **TailwindCSS**: Utility-first styling
-- **Capacitor**: Native mobile features
-
-### Backend Services
-- **Nostr**: Decentralized protocol
-- **WebSocket**: Real-time signaling
-- **Bluetooth**: Direct P2P connections
-- **Service Worker**: Offline capabilities
-
-### Deployment
-- **Vercel**: Primary web hosting
-- **Netlify**: Alternative hosting
-- **GitHub Pages**: Static hosting
-- **Self-hosted**: Docker support
-
-## 📁 Project Structure
-
-```
-xitchat/
-├── components/          # React components
-│   ├── games/         # Mini games
-│   ├── ChatHeader.tsx
-│   ├── ChatInput.tsx
-│   └── ChatList.tsx
-├── services/           # Core services
-│   ├── ablyWebRTC.ts
-│   ├── bluetoothMesh.ts
-│   ├── realTorService.ts
-│   └── nostrService.ts
-├── android/           # Android app
-├── public/           # Static assets
-├── Fixes/server/     # Signaling server
-└── flutter_app/      # Flutter version
-```
-
-## 🎮 Mini Games
-- **Snake Game**: Classic snake with multiplayer
-- **Tic-Tac-Toe**: P2P tic-tac-toe
-- **More coming soon**: Chess, Checkers, etc.
-
-## 🔧 Development
-
-### Prerequisites
-- Node.js 18+
-- Android Studio (for mobile)
-- Git
-
-### Setup
-```bash
-git clone https://github.com/yourusername/xitchat.git
-cd xitchat
-npm install
-```
-
-### Development Commands
-```bash
-npm run dev              # Start web dev server
-npm run dev:server       # Start signaling server
-npm run build            # Build for production
-npm run preview          # Preview production build
-npm run sync:android     # Sync to Android
-npm run android          # Open Android Studio
-```
-
-### Environment Variables
-```bash
-GEMINI_API_KEY=your_gemini_key
-GROQ_API_KEY=your_groq_key
-```
-
-## 📱 Mobile Development
-
-### Android
-```bash
-npm run build:mobile
-npm run sync:android
-npm run android
-```
-
-### iOS
-```bash
-npm run build:mobile
-npm run sync:ios
-```
-
-## 🌍 Deployment
-
-### Vercel
-```bash
-npm run build
-vercel --prod
-```
-
-### Netlify
-```bash
-npm run build
-netlify deploy --prod --dir=dist
-```
-
-### Docker
-```bash
-docker build -t xitchat .
-docker run -p 3000:3000 xitchat
-```
-
-## 🔗 API & Services
-
-### WebSocket Signaling
-- **Port**: 8443
-- **Protocol**: WebSocket
-- **Purpose**: Peer discovery and signaling
-
-### Nostr Relays
-- **Default**: wss://relay.damus.io
-- **Backup**: wss://nos.lol
-- **Custom**: Add your own relays
-
-### Bluetooth Mesh
-- **Protocol**: BLE
-- **Range**: ~50m
-- **Devices**: Unlimited connections
-
-## 🐛 Troubleshooting
-
-### Common Issues
-1. **WebSocket Connection**: Ensure port 8443 is open
-2. **Bluetooth**: Enable location services
-3. **APK Install**: Allow "Unknown Sources"
-4. **PWA**: Use HTTPS in production
-
-### Debug Mode
-```bash
-# Enable debug logging
-localStorage.setItem('debug', 'true')
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-MIT License - feel free to use, modify, and distribute
-
-## 🙏 Acknowledgments
-
-- **Nostr Protocol**: Decentralized messaging
-- **Capacitor**: Native mobile features
-- **React**: Modern UI framework
-- **Vite**: Fast build tool
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/xitchat/issues)
-- **Discord**: [Join our community](https://discord.gg/xitchat)
-- **Email**: support@xitchat.app
+<p align="center">
+  <a href="https://github.com/bmorris-code/xitchat/actions/workflows/deploy.yml"><img src="https://github.com/bmorris-code/xitchat/actions/workflows/deploy.yml/badge.svg" alt="Build Status"></a>
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
+  <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License MIT">
+  <img src="https://img.shields.io/badge/Powered_by-Nostr-8f00ff.svg" alt="Powered by Nostr">
+</p>
 
 ---
 
-**Made with ❤️ for decentralized communication**
+**XitChat** is a decentralized, serverless mesh messaging platform designed for resilience, privacy, and community. Inspired by the nostalgia of Mxit and the technical capability of BitChat, XitChat leverages a 5-layer hybrid mesh to ensure you're never offline, even when the internet is.
+
+## ✨ Features
+
+- **🌐 5-Layer Hybrid Mesh**: Automatically switches between Bluetooth BLE, WiFi Direct, Nostr, WebRTC, and UDP Broadcast.
+- **🔐 End-to-End Privacy**: NIP-04 encrypted messaging powered by Schnorr signatures and secp256k1.
+- **� True Cross-Platform**: Run as a PWA, a Native Android App (Capacitor), or a standard Web App.
+- **🤖 Mesh AI**: Access high-performance AI (Groq/Gemini) even when local nodes are offline via mesh-proxy relays.
+- **💰 XC Economy**: A gamified chat experience with local "Joe Banker" bots and token-based incentives.
+- **📡 Real-time Radar**: Discover nearby users and rooms using decentralized geohashing nodes.
+
+## � Getting Started
+
+### Prerequisites
+
+- **Node.js** (v18 or newer)
+- **NPM** or **Yarn**
+- **Android Studio** (for mobile development)
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/bmorris-code/xitchat.git
+   cd xitchat
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Setup environment variables:
+   Create a `.env` file in the root:
+   ```env
+   VITE_GROQ_API_KEY=your_key_here
+   VITE_GEMINI_API_KEY=your_key_here
+   ```
+
+4. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+## 📱 Mobile Deployment (Android)
+
+XitChat uses Capacitor to provide a native Android experience with full hardware access.
+
+```bash
+# Build the web assets
+npm run build:mobile
+
+# Sync to Android project
+npm run sync:android
+
+# Open in Android Studio
+npm run android
+```
+
+## � Tech Stack
+
+- **Framework**: [React 19](https://react.dev/)
+- **Build Tool**: [Vite 6](https://vitejs.dev/)
+- **Native Bridge**: [Capacitor 6](https://capacitorjs.com/)
+- **Mesh Logic**: Custom Hybrid Mesh Orchestrator
+- **Cryptography**: [Noble Secp256k1](https://github.com/paulmillr/noble-secp256k1)
+- **Styling**: Tailwind CSS with custom CRT filters
+
+## � Documentation
+
+For a deeper dive into the system architecture, network layer details, and implementation history, please see our [Comprehensive Technical Guide](./UNIFIED_XITCHAT_GUIDE.md).
+
+## 🤝 Contributing
+
+We love contributions! Whether it's a new mini-game, a network optimization, or a UI tweak, feel free to open a Pull Request.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## � License
+
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+<p align="center">
+  Built with ❤️ by the XitChat Community
+</p>

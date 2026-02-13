@@ -9,7 +9,7 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
   const isMobile = process.env.IS_MOBILE === 'true';
 
   return {
-    base: isMobile ? './' : '/',
+    base: env.VITE_BASE_URL || (isMobile ? './' : '/'),
 
     server: {
       port: 3000,
