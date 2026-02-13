@@ -24,3 +24,70 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Android specific
+android/app/build/
+android/.gradle/
+android/app/release/
+android/app/debug/
+*.apk
+*.aab
+
+# iOS specific
+ios/App/Pods/
+ios/App/build/
+ios/App/Pods/
+ios/App/App.xcworkspace/
+ios/App/App.xcodeproj/project.xcworkspace/
+
+# Capacitor specific
+android/capacitor-build.properties
+ios/capacitor-build.properties
+
+# Flutter specific
+flutter_app/build/
+flutter_app/.dart_tool/
+flutter_app/.flutter-plugins
+flutter_app/.flutter-plugins-dependencies
+flutter_app/.packages
+flutter_app/pubspec.lock
+
+# Test files
+test-results/
+coverage/
+
+# Backup files
+*.backup
+*.bak
+
+# Environment files
+.env
+.env.test
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary files
+tmp/
+temp/
+*.swp
+*.swo
+*~
+
+# Lock files (keep package-lock.json but ignore others)
+yarn.lock
+pnpm-lock.yaml
+
+# Build artifacts
+*.tgz
+*.tar.gz
+
+# Local development
+.local
+.localcache
+
+# Debug and log files
+logs_*.txt
+pid_logs.txt
+package_info.txt

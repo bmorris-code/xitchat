@@ -297,20 +297,40 @@ class NostrService {
       if (privateKey) {
         this.privateKey = privateKey;
       } else {
-        // Generate new key pair if none provided - use bytesToHex approach
-        const secretKey = new Uint8Array(32);
-        crypto.getRandomValues(secretKey);
-        this.privateKey = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
-        localStorage.setItem('nostr_private_key', this.privateKey);
+        // Try to load from localStorage
+        const savedKey = localStorage.getItem('nostr_private_key');
+        if (savedKey && savedKey.length === 64 && /^[0-9a-fA-F]+$/.test(savedKey)) {
+          this.privateKey = savedKey;
+          console.log('🔑 Loaded existing Nostr private key');
+        } else {
+          // Generate new key pair if none provided - use bytesToHex approach
+          const secretKey = new Uint8Array(32);
+          crypto.getRandomValues(secretKey);
+          this.privateKey = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
+          localStorage.setItem('nostr_private_key', this.privateKey);
+          console.log('🔑 Generated new Nostr private key');
+        }
       }
 
       // Convert hex private key to public key using secp256k1
-      const privateKeyBytes = new Uint8Array(this.privateKey.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+      // Robust hex to bytes conversion
+      const cleanHex = this.privateKey.replace(/^0x/i, '');
+      if (cleanHex.length !== 64) {
+        throw new Error(`Invalid private key length: ${cleanHex.length} chars (expected 64)`);
+      }
+
+      const privateKeyBytes = new Uint8Array(32);
+      for (let i = 0; i < 32; i++) {
+        privateKeyBytes[i] = parseInt(cleanHex.substr(i * 2, 2), 16);
+      }
 
       // Generate real public key using secp256k1
       try {
         const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes);
-        this.publicKey = Array.from(publicKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+        // Nostr uses 32-byte x-only public keys (schnorr)
+        // If noble-secp256k1 returns 33-byte compressed key, we take last 32
+        const finalPubKey = publicKeyBytes.length === 33 ? publicKeyBytes.slice(1) : publicKeyBytes;
+        this.publicKey = Array.from(finalPubKey).map(b => b.toString(16).padStart(2, '0')).join('');
         console.log('✅ Generated real secp256k1 public key');
       } catch (error) {
         console.error('❌ Failed to generate public key with secp256k1:', error);

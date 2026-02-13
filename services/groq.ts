@@ -80,7 +80,7 @@ export const getXitBotResponseGroq = async (userMessage: string): Promise<string
 
     const response = await groq.chat.completions.create({
       messages: buildMessages(userMessage),
-      model: 'mixtral-8x7b-32768',
+      model: 'llama-3.1-70b-versatile',
       temperature: 0.8,
       max_tokens: 500,
       top_p: 0.9,
@@ -129,7 +129,7 @@ export const streamXitBotResponseGroq = async (
 
     const stream = await groq.chat.completions.create({
       messages: buildMessages(userMessage),
-      model: 'mixtral-8x7b-32768',
+      model: 'llama-3.1-70b-versatile',
       temperature: 0.8,
       max_tokens: 500,
       top_p: 0.9,
@@ -223,7 +223,7 @@ title, time, snippet, category.`
           content: 'Generate 5 trending news items for the XitChat mesh network buzz feed.'
         }
       ],
-      model: 'mixtral-8x7b-32768',
+      model: 'llama-3.1-70b-versatile',
       temperature: 0.9,
       max_tokens: 800,
       response_format: { type: 'json_object' }

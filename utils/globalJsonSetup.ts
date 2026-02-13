@@ -10,7 +10,7 @@ const originalStringify = JSON.stringify;
   }
   
   // If custom replacer is provided, handle it appropriately
-  if (Array.isArray(replacer)) {
+  if (replacer != null && Array.isArray(replacer)) {
     // Array replacer - just filter properties, then apply our BigInt handling
     return originalStringify.call(this, obj, (key, value) => {
       // Handle BigInt
@@ -23,7 +23,7 @@ const originalStringify = JSON.stringify;
       }
       return value;
     }, space);
-  } else {
+  } else if (replacer != null && typeof replacer === 'function') {
     // Function replacer - chain it with our BigInt handler
     return originalStringify.call(this, obj, (key, value) => {
       // Handle BigInt first
@@ -35,8 +35,16 @@ const originalStringify = JSON.stringify;
         return value.getTime();
       }
       // Then apply custom replacer
-      return (replacer as (key: string, value: any) => any)(key, value);
+      try {
+        return (replacer as (key: string, value: any) => any)(key, value);
+      } catch (error) {
+        console.warn('Replacer function error:', error);
+        return value;
+      }
     }, space);
+  } else {
+    // No valid replacer, use our safe serialization
+    return safeJsonStringify(obj, space as number);
   }
 };
 

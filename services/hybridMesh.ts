@@ -65,7 +65,7 @@ class HybridMeshService {
 
       // ANDROID SERVERLESS: Focus on direct P2P connections only
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
-      
+
       if (isNativeAndroid) {
         console.log('📱 Android: Starting TRUE serverless mesh (Bluetooth + WiFi Direct + Nostr)');
         // Request critical permissions for direct P2P
@@ -397,20 +397,25 @@ class HybridMeshService {
           switch (peer.connectionType) {
             case 'bluetooth':
               success = await workingBluetoothMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              if (success) console.log(`✅ Message sent via Bluetooth to ${peer.handle}`);
               break;
             case 'wifi':
               success = await wifiP2P.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              if (success) console.log(`✅ Message sent via WiFi P2P to ${peer.handle}`);
               break;
             case 'nostr':
               success = await nostrService.sendDirectMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              if (success) console.log(`✅ Message sent via Nostr to ${peer.handle}`);
               break;
             case 'broadcast':
               success = await broadcastMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              if (success) console.log(`✅ Message sent via Broadcast to ${peer.handle}`);
               break;
             case 'webrtc':
               try {
                 await ablyWebRTC.sendMessage(payload);
                 success = true;
+                console.log(`✅ Message sent via WebRTC to ${peer.handle}`);
               } catch (e) {
                 success = false;
               }
@@ -419,18 +424,20 @@ class HybridMeshService {
 
           // If primary network fails, try fallback networks
           if (!success) {
-            console.log(`⚠️ Primary network ${peer.connectionType} failed, trying fallback networks...`);
+            console.log(`⚠️ Primary network ${peer.connectionType} failed for ${peer.handle}, trying fallback networks...`);
 
             // Try Nostr as universal fallback
             if (this.activeServices.nostr && peer.connectionType !== 'nostr') {
               console.log('🔄 Trying Nostr fallback...');
-              await nostrService.sendDirectMessage(peer.serviceId!, payload).catch(() => { });
+              const nostrSuccess = await nostrService.sendDirectMessage(peer.serviceId!, payload).catch(() => false);
+              if (nostrSuccess) console.log(`✅ Message sent via Nostr fallback to ${peer.handle}`);
             }
 
             // Try Broadcast as another fallback
             if (this.activeServices.broadcast && peer.connectionType !== 'broadcast') {
               console.log('🔄 Trying Broadcast fallback...');
-              await broadcastMesh.sendMessage(peer.serviceId!, payload).catch(() => { });
+              const broadcastSuccess = await broadcastMesh.sendMessage(peer.serviceId!, payload).catch(() => false);
+              if (broadcastSuccess) console.log(`✅ Message sent via Broadcast fallback to ${peer.handle}`);
             }
           }
           return;

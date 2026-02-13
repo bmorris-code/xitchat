@@ -33,7 +33,6 @@ import GalleryView from './components/GalleryView';
 import NativeFeaturesView from './components/NativeFeaturesView';
 import TransmissionToast from './components/TransmissionToast';
 import { handshakePersistence, HandshakeNode } from './services/handshakePersistence';
-import { iOSFixes } from './ios-fixes';
 
 const App: React.FC = () => {
   console.log('App component initializing...');
@@ -158,12 +157,12 @@ const App: React.FC = () => {
     console.log('📡 Initializing services...');
     const radarUnsubscribers: Array<() => void> = [];
 
-    // iOS Debug: Run blank screen check
-    if (iOSFixes.isIOS || iOSFixes.isSafari) {
-      setTimeout(() => {
-        iOSFixes.debugBlankScreen();
-      }, 2000);
-    }
+    // iOS Debug: Removed iOS-specific fixes during cleanup
+    // if (iOSFixes.isIOS || iOSFixes.isSafari) {
+    //   setTimeout(() => {
+    //     iOSFixes.debugBlankScreen();
+    //   }, 2000);
+    // }
 
     const initializeRadar = async () => {
       try {

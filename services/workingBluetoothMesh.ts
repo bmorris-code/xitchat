@@ -74,11 +74,11 @@ class WorkingBluetoothMeshService {
       // ANDROID SERVERLESS: Skip native plugins (they don't exist)
       // Use Web Bluetooth API with simulation fallback for true P2P
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
-      
+
       if (isNativeAndroid) {
         console.log('📱 Android: Using Web Bluetooth API in Capacitor WebView');
         console.log('� Direct P2P Bluetooth - no native plugins needed');
-        
+
         // Try Web Bluetooth API in Android WebView
         if (typeof navigator !== 'undefined' && navigator.bluetooth) {
           try {
@@ -94,7 +94,7 @@ class WorkingBluetoothMeshService {
             console.warn('Web Bluetooth not available, will use simulation:', error);
           }
         }
-        
+
         // Fallback to simulation for demo purposes
         console.log('📱 Android: Using Bluetooth simulation for demo');
         this.startSimulation();
@@ -132,7 +132,7 @@ class WorkingBluetoothMeshService {
 
   private startSimulation(): void {
     console.log('🎭 Starting Bluetooth mesh simulation for demo...');
-    
+
     // Simulate discovering some demo devices
     setTimeout(() => {
       const demoDevices = [
@@ -305,9 +305,9 @@ class WorkingBluetoothMeshService {
     const peer = this.peers.get(peerId);
     if (!peer) return false;
 
-    console.log(`📤 Sending via Bluetooth to ${peer.name}: ${content}`);
+    console.log(`📤 Attempting Bluetooth send to ${peer.name}`);
 
-    // 1. Native Branch
+    // 1. Native Branch - Try native plugin if available
     if ((window as any).Capacitor?.isNativePlatform()) {
       try {
         const { registerPlugin } = await import('@capacitor/core');
@@ -318,9 +318,12 @@ class WorkingBluetoothMeshService {
           message: content
         });
 
+        console.log(`✅ Bluetooth message sent via native plugin to ${peer.name}`);
         return true;
       } catch (e) {
-        console.error('❌ Native send failed:', e);
+        // Silently fail - native plugin not available or not connected
+        // This is expected when native plugins aren't implemented yet
+        console.debug('Bluetooth native plugin not available, will use fallback networks');
         return false;
       }
     }

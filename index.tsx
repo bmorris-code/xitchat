@@ -6,9 +6,6 @@ import './index.css';
 // Import global JSON setup to handle BigInt serialization
 import './utils/globalJsonSetup';
 
-// Import iOS fixes for Safari/PWA compatibility
-import './ios-fixes';
-
 // Reduce console noise in development
 if (process.env.NODE_ENV === 'development') {
   // Filter out Ably transport warnings
@@ -91,7 +88,7 @@ const MinimalApp = () => {
   console.log('MinimalApp component rendering...');
 
   return (
-    <div style={{ padding: '20px', color: '#00ff41', fontFamily: 'monospace', backgroundColor: '#020202', minHeight: '100vh' }}>
+    <div style={{ padding: '20px', color: 'black', fontFamily: 'monospace', backgroundColor: 'yellow', minHeight: '100vh' }}>
       <h1>XitChat</h1>
       <p>Minimal version is working!</p>
       <div style={{ marginTop: '20px' }}>
