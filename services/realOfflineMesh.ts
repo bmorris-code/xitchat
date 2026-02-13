@@ -92,38 +92,27 @@ class RealOfflineMeshService {
 
   private async startLocalNetworkDiscovery(): Promise<void> {
     try {
-      // Create WebSocket for local network discovery
-      this.signalingServer = new WebSocket('ws://localhost:8443');
+      // ANDROID SERVERLESS: Skip WebSocket server - use true P2P only
+      const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
       
-      this.signalingServer.onopen = () => {
-        console.log('🌐 Connected to local signaling server');
-        this.announcePresence();
-      };
-      
-      this.signalingServer.onmessage = (event) => {
-        this.handleSignalingMessage(JSON.parse(event.data));
-      };
-      
-      this.signalingServer.onerror = (error) => {
-        console.warn('⚠️ Local signaling server not available, using P2P discovery');
-        this.startP2PDiscovery();
-      };
+      if (isNativeAndroid) {
+        console.log('📱 Android: SKIPPING local WebSocket server - using serverless P2P mesh');
+        console.log('🔥 Direct device-to-device connections only');
+        return;
+      }
+
+      // Web-only: Skip WebSocket for HTTPS security
+      if (window.location.protocol === 'https:') {
+        console.log('🌐 HTTPS detected: Skipping WebSocket for security - using P2P only');
+        return;
+      }
+
+      console.log('🌐 Web: WebSocket disabled in serverless mode');
+      return;
       
     } catch (error) {
-      console.log('🔄 Starting P2P discovery fallback');
-      this.startP2PDiscovery();
+      console.debug('Local network discovery disabled in serverless mode:', error);
     }
-  }
-
-  private startP2PDiscovery(): void {
-    // Use localStorage as fallback for same-browser testing
-    setInterval(() => {
-      this.broadcastDiscovery();
-    }, 5000);
-    
-    setInterval(() => {
-      this.checkForDiscoveryMessages();
-    }, 2000);
   }
 
   private async startLocalSignalingServer(): Promise<void> {

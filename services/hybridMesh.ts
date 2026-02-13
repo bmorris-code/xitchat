@@ -59,41 +59,61 @@ class HybridMeshService {
   getDeviceCompatibility: any;
 
   async initialize(): Promise<MeshConnectionType[]> {
+    console.log('--- HYBRID MESH INITIALIZE CALLED ---');
     try {
-      console.log('Initializing hybrid mesh service with 5-layer network...');
+      console.log('🔥 Initializing SERVERLESS mesh messaging...');
 
-      // CRITICAL: Request permissions on Android before starting hardware-based discovery
-      if ((window as any).Capacitor?.isNativePlatform()) {
-        console.log('🔐 Requesting Android hardware permissions...');
+      // ANDROID SERVERLESS: Focus on direct P2P connections only
+      const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+      
+      if (isNativeAndroid) {
+        console.log('📱 Android: Starting TRUE serverless mesh (Bluetooth + WiFi Direct + Nostr)');
+        // Request critical permissions for direct P2P
+        console.log('🔐 Requesting Android hardware permissions for direct P2P...');
         await androidPermissions.requestAllCriticalPermissions();
+      } else {
+        console.log('🌐 Web: Using mesh simulation + Nostr');
       }
 
       const initializedTypes: MeshConnectionType[] = [];
 
-      // 1. Start Nostr (so it's ready for Broadcast Mesh)
+      // 1. Start Nostr (global serverless mesh - works everywhere)
       const nostrSuccess = await this.startNostr();
       if (nostrSuccess) initializedTypes.push('nostr');
 
-      // 2. Start Broadcast Mesh
+      // 2. Start Broadcast Mesh (local same-device - works everywhere)
       const broadcastSuccess = await this.startBroadcastMesh();
       if (broadcastSuccess) initializedTypes.push('broadcast');
 
-      // 3. Start WiFi P2P
-      const wifiSuccess = await this.startWiFiP2P();
-      if (wifiSuccess) initializedTypes.push('wifi');
+      // ANDROID SERVERLESS: Only use direct P2P on Android
+      if (isNativeAndroid) {
+        // 3. Start WiFi Direct (direct P2P - no server)
+        console.log('📡 Starting WiFi Direct (serverless P2P)...');
+        const wifiSuccess = await this.startWiFiP2P();
+        console.log('✅ WiFi Direct P2P initialized:', wifiSuccess);
+        if (wifiSuccess) initializedTypes.push('wifi');
 
-      // 4. Start Bluetooth
-      const bluetoothSuccess = await this.startBluetooth();
-      if (bluetoothSuccess) initializedTypes.push('bluetooth');
+        // 4. Start Bluetooth Mesh (direct P2P - no server)  
+        console.log('🔵 Starting Bluetooth Mesh (serverless P2P)...');
+        const bluetoothSuccess = await this.startBluetooth();
+        console.log('✅ Bluetooth Mesh P2P initialized:', bluetoothSuccess);
+        if (bluetoothSuccess) initializedTypes.push('bluetooth');
 
-      // 5. Start WebRTC (Ably)
-      const webrtcSuccess = await this.startWebRTC();
-      if (webrtcSuccess) initializedTypes.push('webrtc');
+        // NO WEBRTC ON ANDROID - It requires servers
+        console.log('� Skipping WebRTC on Android (requires server - using true P2P instead)');
+      } else {
+        // Web-only: Use WebRTC simulation
+        console.log('🌐 Web: Using WebRTC simulation...');
+        const webrtcSuccess = await this.startWebRTC();
+        if (webrtcSuccess) initializedTypes.push('webrtc');
+      }
 
       this.isInitialized = true;
+      console.log('🔥 SERVERLESS MESH INITIALIZATION COMPLETE ---', initializedTypes);
+      console.log('📡 Active networks:', initializedTypes.join(', '));
       return initializedTypes;
     } catch (error) {
-      console.error('Hybrid mesh initialization failed:', error);
+      console.error('Serverless mesh initialization failed:', error);
       return ['local'];
     }
   }

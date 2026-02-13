@@ -11,6 +11,7 @@ import {
     startNativeMesh,
     stopNativeMesh,
     sendNativeMeshMessage,
+    getAllDiscoveredPeers,
     setupNativeMeshListeners,
     BluetoothDevice,
     WiFiDirectPeer

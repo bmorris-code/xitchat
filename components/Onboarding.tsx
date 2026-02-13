@@ -142,6 +142,28 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 </p>
               </div>
             </div>
+            {/* Download App - Web Only */}
+            {!(window as any).Capacitor?.isNativePlatform() && (
+              <div className="flex items-start gap-5 pt-8 border-t border-[#00ff41]/20">
+                <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
+                  <i className="fa-brands fa-android"></i>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Get the App</h3>
+                  <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed mb-3">
+                    For true serverless mesh networking (Bluetooth & WiFi Direct), download the Android app v1.0.
+                  </p>
+                  <a
+                    href="/xitchat-serverless-v3.apk"
+                    download="xitchat-serverless-v3.apk"
+                    className="inline-flex items-center gap-2 bg-[#00ff41]/10 border border-[#00ff41] text-[#00ff41] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#00ff41]/20 transition-colors"
+                  >
+                    <i className="fa-solid fa-download"></i>
+                    Download Serverless APK v1.0
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

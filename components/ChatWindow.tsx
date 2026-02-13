@@ -14,6 +14,8 @@ interface ChatWindowProps {
   chat: Chat | null;
   allChats: Chat[];
   myHandle: string;
+  aiStreaming?: boolean;
+  aiStreamingProvider?: string;
   onSendMessage: (text: string, options?: { replyTo?: Message['replyTo']; imageUrl?: string; videoUrl?: string, nostrRecipient?: string, encryptedData?: any }) => void;
   onForwardMessage: (message: Message, targetChatId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
@@ -28,6 +30,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   chat,
   allChats,
   myHandle,
+  aiStreaming = false,
+  aiStreamingProvider = 'auto',
   onSendMessage,
   onForwardMessage,
   onReaction,
@@ -180,6 +184,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       <ChatHeader
         chat={chat}
         myHandle={myHandle}
+        aiStreaming={aiStreaming}
+        aiStreamingProvider={aiStreamingProvider}
         secureMode={secureMode}
         encryptionEnabled={encryptionEnabled}
         onToggleSecureMode={() => setSecureMode(!secureMode)}

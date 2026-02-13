@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Chat, User, Message, Reaction } from './types';
 import { INITIAL_CHATS } from './constants';
-import { getXitBotResponse } from './services/hybridAI';
+import { streamXitBotResponse, hybridAI } from './services/hybridAI';
 import { meshDataSync } from './services/meshDataSync';
 import { hybridMesh } from './services/hybridMesh';
 import { enhancedDiscovery } from './services/enhancedDiscovery';
@@ -59,11 +59,17 @@ const App: React.FC = () => {
   const [radarPeers, setRadarPeers] = useState<RadarPeer[]>([]);
   const [showQRDiscovery, setShowQRDiscovery] = useState(false);
   const [isRealMode, setIsRealMode] = useState(true);
+  const botRequestCounterRef = useRef(0);
+  const [botStreamState, setBotStreamState] = useState<{ active: boolean; provider: string }>({
+    active: false,
+    provider: 'auto'
+  });
 
   console.log('App state initialized');
 
   // Initialize XC economy
   useEffect(() => {
+    console.log('--- TEST ECONOMY EFFECT FIRING ---');
     xcEconomy.awardDailyLogin();
     setBalance(xcEconomy.getBalance());
 
@@ -150,6 +156,7 @@ const App: React.FC = () => {
   // Initialize Real-time Radar Service
   useEffect(() => {
     console.log('📡 Initializing services...');
+    const radarUnsubscribers: Array<() => void> = [];
 
     // iOS Debug: Run blank screen check
     if (iOSFixes.isIOS || iOSFixes.isSafari) {
@@ -170,12 +177,12 @@ const App: React.FC = () => {
           console.log('✅ Real-time radar connected');
 
           // Subscribe to radar events
-          realtimeRadar.subscribe('peersUpdated', (peers) => {
+          radarUnsubscribers.push(realtimeRadar.subscribe('peersUpdated', (peers) => {
             console.log('📡 Radar peers updated:', peers);
             setRadarPeers(peers);
-          });
+          }));
 
-          realtimeRadar.subscribe('peerJoined', (peer) => {
+          radarUnsubscribers.push(realtimeRadar.subscribe('peerJoined', (peer) => {
             console.log('🆕 New radar peer:', peer);
             // Create transmission toast
             const event = new CustomEvent('newTransmission', {
@@ -185,12 +192,12 @@ const App: React.FC = () => {
               }
             });
             window.dispatchEvent(event);
-          });
+          }));
 
-          realtimeRadar.subscribe('directMessage', (message) => {
+          radarUnsubscribers.push(realtimeRadar.subscribe('directMessage', (message) => {
             console.log('💬 Radar direct message:', message);
             // Handle incoming messages from radar peers
-          });
+          }));
 
         } else {
           console.log('⚠️ Real-time radar unavailable, using simulation mode');
@@ -208,6 +215,7 @@ const App: React.FC = () => {
     initializeRadar();
 
     return () => {
+      radarUnsubscribers.forEach((unsubscribe) => unsubscribe());
       realtimeRadar.destroy();
     };
   }, []);
@@ -429,7 +437,7 @@ const App: React.FC = () => {
     const initializeNostr = async () => {
       try {
         console.log('🔑 Initializing Nostr service...');
-        const success = await nostrService.initialize();
+        const success = nostrService.isConnected() ? true : await nostrService.initialize();
 
         if (success) {
           setNostrConnected(true);
@@ -535,7 +543,7 @@ const App: React.FC = () => {
     return () => {
       presenceBeacon.stop();
     };
-  }, [myHandle]);
+  }, []);
 
   // Handle room membership based on current view
   useEffect(() => {
@@ -618,11 +626,13 @@ const App: React.FC = () => {
     };
   }, []);
 
+  /*
   // Track Node Uptime
   useEffect(() => {
     const timer = setInterval(() => setUptime(prev => prev + 1), 1000);
     return () => clearInterval(timer);
   }, []);
+  */
 
   // Simulated network transmissions
   // Simulated network transmissions REMOVED for Pure Mesh Mode
@@ -783,6 +793,61 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Sync room messages from geohash channels into chat windows in real time.
+  useEffect(() => {
+    const unsubscribeRoomMessages = geohashChannels.subscribe('messageReceived', (geoMessage: any) => {
+      const roomId = geoMessage.channelId;
+      if (!roomId) return;
+
+      const incomingMessage: Message = {
+        id: geoMessage.id || `room-msg-${Date.now()}`,
+        senderId: geoMessage.nodeId || 'unknown',
+        senderHandle: geoMessage.nodeHandle || '@unknown',
+        text: geoMessage.content || '',
+        timestamp: geoMessage.timestamp || Date.now()
+      };
+
+      setChats(prev => {
+        const roomChatIndex = prev.findIndex(c => c.type === 'room' && c.participant.id === roomId);
+
+        if (roomChatIndex === -1) {
+          const newRoomChat: Chat = {
+            id: `chat-${Date.now()}`,
+            type: 'room',
+            participant: {
+              id: roomId,
+              name: roomId.replace('xitchat-local-', ''),
+              handle: `#${roomId.replace('xitchat-local-', '')}`,
+              avatar: '',
+              status: 'Online',
+              mood: 'Mesh room active'
+            },
+            lastMessage: incomingMessage.text,
+            unreadCount: 1,
+            messages: [incomingMessage]
+          };
+          return [newRoomChat, ...prev];
+        }
+
+        const existing = prev[roomChatIndex];
+        if (existing.messages.some(m => m.id === incomingMessage.id)) {
+          return prev;
+        }
+
+        const updated = [...prev];
+        updated[roomChatIndex] = {
+          ...existing,
+          lastMessage: incomingMessage.text,
+          unreadCount: activeChatId === existing.id ? existing.unreadCount : existing.unreadCount + 1,
+          messages: [...existing.messages, incomingMessage]
+        };
+        return updated;
+      });
+    });
+
+    return () => unsubscribeRoomMessages();
+  }, [activeChatId]);
+
   const activeChat = chats.find(c => c.id === activeChatId) || null;
 
   const handleOpenChat = (user: User) => {
@@ -835,25 +900,34 @@ const App: React.FC = () => {
       }
     }
 
-    // Send message via hybrid mesh (Bluetooth first, WebRTC fallback)
-    try {
-      // Strip prefixes to get the raw mesh ID
-      let meshTargetId = activeChat?.participant?.id;
-      if (meshTargetId?.startsWith('nostr-')) {
-        // For Nostr peers, we need to use the actual public key
-        const nostrPeerId = meshTargetId.replace('nostr-', '');
-        const nostrPeer = nostrPeers.find(p => p.id === nostrPeerId);
-
-        // Use the publicKey field if available, otherwise use the id
-        meshTargetId = nostrPeer?.publicKey || nostrPeerId;
-      } else if (meshTargetId?.startsWith('node-')) {
-        meshTargetId = meshTargetId.replace('node-', '');
+    // Route room chat through geohash channels for cross-device room real-time updates.
+    if (activeChat?.type === 'room' && !options?.imageUrl && !options?.videoUrl) {
+      try {
+        await geohashChannels.sendMessage(activeChat.participant.id, text, 'text');
+      } catch (error) {
+        console.error('Failed to send room message via geohash channels:', error);
       }
+    } else {
+      // Send message via hybrid mesh (Bluetooth first, WebRTC fallback)
+      try {
+        // Strip prefixes to get the raw mesh ID
+        let meshTargetId = activeChat?.participant?.id;
+        if (meshTargetId?.startsWith('nostr-')) {
+          // For Nostr peers, we need to use the actual public key
+          const nostrPeerId = meshTargetId.replace('nostr-', '');
+          const nostrPeer = nostrPeers.find(p => p.id === nostrPeerId);
 
-      await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData);
-      console.log('Message sent via hybrid mesh:', { text, targetId: meshTargetId, encrypted: !!options?.encryptedData });
-    } catch (error) {
-      console.error('Failed to send via hybrid mesh:', error);
+          // Use the publicKey field if available, otherwise use the id
+          meshTargetId = nostrPeer?.publicKey || nostrPeerId;
+        } else if (meshTargetId?.startsWith('node-')) {
+          meshTargetId = meshTargetId.replace('node-', '');
+        }
+
+        await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData);
+        console.log('Message sent via hybrid mesh:', { text, targetId: meshTargetId, encrypted: !!options?.encryptedData });
+      } catch (error) {
+        console.error('Failed to send via hybrid mesh:', error);
+      }
     }
 
     // Sync message to mesh network
@@ -864,11 +938,74 @@ const App: React.FC = () => {
     });
 
     if (activeChat?.participant.id === 'xit-bot' && !options?.imageUrl && !options?.videoUrl) {
-      const botResponseText = await getXitBotResponse(text);
-      const botMessage: Message = { id: Math.random().toString(36).substr(2, 9), senderId: 'xit-bot', text: botResponseText, timestamp: Date.now(), isAi: true };
-      setChats(prev => prev.map(c => (c.id === activeChatId ? { ...c, lastMessage: botResponseText, messages: [...c.messages, botMessage] } : c)));
+      const targetChatId = activeChatId;
+      if (!targetChatId) return;
+
+      const requestId = ++botRequestCounterRef.current;
+      const botMessageId = `bot-stream-${requestId}`;
+      const startedAt = Date.now();
+      const providerStatus = hybridAI.getProviderStatus();
+      const streamProvider = providerStatus.groqHealthy
+        ? 'groq'
+        : providerStatus.primary === 'gemini'
+          ? 'gemini'
+          : 'mesh';
+
+      const placeholderMessage: Message = {
+        id: botMessageId,
+        senderId: 'xit-bot',
+        text: '',
+        timestamp: startedAt,
+        isAi: true
+      };
+
+      setBotStreamState({ active: true, provider: streamProvider });
+
+      setChats(prev => prev.map(c =>
+        c.id === targetChatId
+          ? { ...c, lastMessage: 'XitBot is typing...', messages: [...c.messages, placeholderMessage] }
+          : c
+      ));
+
+      try {
+        let latestText = '';
+        const finalText = await streamXitBotResponse(text, (_token, fullText) => {
+          latestText = fullText;
+          setChats(prev => prev.map(c => {
+            if (c.id !== targetChatId) return c;
+            return {
+              ...c,
+              lastMessage: fullText || 'XitBot is typing...',
+              messages: c.messages.map(m => (m.id === botMessageId ? { ...m, text: fullText } : m))
+            };
+          }));
+        });
+
+        const resolvedText = finalText || latestText || 'Sorry, I hit static in the mesh. Please try again.';
+        setChats(prev => prev.map(c => {
+          if (c.id !== targetChatId) return c;
+          return {
+            ...c,
+            lastMessage: resolvedText,
+            messages: c.messages.map(m => (m.id === botMessageId ? { ...m, text: resolvedText, timestamp: Date.now() } : m))
+          };
+        }));
+      } catch (error) {
+        console.error('Failed to stream bot response:', error);
+        setChats(prev => prev.map(c => {
+          if (c.id !== targetChatId) return c;
+          const fallback = 'Signal dropped while generating response. Please retry.';
+          return {
+            ...c,
+            lastMessage: fallback,
+            messages: c.messages.map(m => (m.id === botMessageId ? { ...m, text: fallback, timestamp: Date.now() } : m))
+          };
+        }));
+      } finally {
+        setBotStreamState({ active: false, provider: streamProvider });
+      }
     }
-  }, [activeChatId, activeChat?.participant.id, myHandle, nostrConnected, nostrPeers]);
+  }, [activeChatId, activeChat?.type, activeChat?.participant?.id, myHandle, nostrConnected, nostrPeers]);
 
   const handleDeleteMessage = useCallback((messageId: string) => {
     if (!activeChatId) return;
@@ -1289,6 +1426,14 @@ const App: React.FC = () => {
     } else {
       // Get channel info to check encryption status
       const channel = (geohashChannels as any).channels.get(roomId);
+      const roomHistory = geohashChannels.getChannelMessages(roomId);
+      const mappedHistory: Message[] = roomHistory.map((m: any) => ({
+        id: m.id,
+        senderId: m.nodeId || 'unknown',
+        senderHandle: m.nodeHandle || '@unknown',
+        text: m.content || '',
+        timestamp: m.timestamp || Date.now()
+      }));
 
       const roomChat: Chat = {
         id: `chat-${Date.now()}`,
@@ -1301,9 +1446,11 @@ const App: React.FC = () => {
           status: 'Online',
           mood: 'Connected node.'
         },
-        lastMessage: 'system: joined room.',
+        lastMessage: mappedHistory.length > 0 ? mappedHistory[mappedHistory.length - 1].text : 'system: joined room.',
         unreadCount: 0,
-        messages: [{ id: 'sys-1', senderId: 'system', text: `[SYSTEM] established connection to room_${roomId}`, timestamp: Date.now() }],
+        messages: mappedHistory.length > 0
+          ? mappedHistory
+          : [{ id: 'sys-1', senderId: 'system', text: `[SYSTEM] established connection to room_${roomId}`, timestamp: Date.now() }],
         isEncrypted: channel?.isEncrypted || false
       };
       setChats(prev => [roomChat, ...prev]);
@@ -1400,6 +1547,8 @@ const App: React.FC = () => {
                 chat={activeChat}
                 allChats={chats}
                 myHandle={myHandle}
+                aiStreaming={botStreamState.active}
+                aiStreamingProvider={botStreamState.provider}
                 onSendMessage={handleSendMessage}
                 onForwardMessage={handleForwardMessage}
                 onReaction={(msgId, emoji) => handleReaction(activeChatId, msgId, emoji)}

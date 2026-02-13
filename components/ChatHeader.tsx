@@ -10,6 +10,8 @@ import { hybridAI } from '../services/hybridAI';
 interface ChatHeaderProps {
     chat: Chat;
     myHandle: string;
+    aiStreaming?: boolean;
+    aiStreamingProvider?: string;
     secureMode: boolean;
     encryptionEnabled: boolean;
     onToggleSecureMode: () => void;
@@ -22,6 +24,8 @@ interface ChatHeaderProps {
 const ChatHeader: React.FC<ChatHeaderProps> = ({
     chat,
     myHandle,
+    aiStreaming = false,
+    aiStreamingProvider = 'auto',
     secureMode,
     encryptionEnabled,
     onToggleSecureMode,
@@ -196,6 +200,15 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                             <i className="fa-solid fa-robot text-[8px] sm:text-xs"></i>
                             <span className="hidden sm:inline ml-1">{aiStatus.groqHealthy ? 'AI:GROQ' : aiStatus.primary === 'gemini' ? 'AI:GEMINI' : 'AI:MESH'}</span>
                         </div>
+                        {aiStreaming && (
+                            <div
+                                className="flex items-center justify-center w-6 h-6 sm:w-auto sm:px-2 sm:py-1 rounded text-[8px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 animate-pulse"
+                                title={`AI streaming in progress (${aiStreamingProvider.toUpperCase()})`}
+                            >
+                                <i className="fa-solid fa-wave-square text-[8px] sm:text-xs"></i>
+                                <span className="hidden sm:inline ml-1">{`STREAM:${aiStreamingProvider.toUpperCase()}`}</span>
+                            </div>
+                        )}
                     </div>
                 )}
 

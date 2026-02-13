@@ -65,6 +65,7 @@ class PresenceBeaconService {
   private roleChangeUnsubscribe: (() => void) | null = null;
   private channel: BroadcastChannel | null = null;
   private nostrPublishTimer: any = null;
+  private cleanupTimer: any = null;
   private isNostrAvailable = false;
   private isChannelClosed = false;
 
@@ -86,21 +87,7 @@ class PresenceBeaconService {
     this.baseTtl = this.config.ttl;
 
     // Initialize BroadcastChannel for realtime presence
-    try {
-      this.channel = new BroadcastChannel('xitchat-presence');
-      this.channel.onmessage = (event) => {
-        const data = event.data;
-        if (!data?.type) return;
-
-        if (data.type === 'presence') {
-          this.handleIncomingPresence(data.peer);
-        }
-      };
-    } catch (error) {
-      console.warn('⚠️ BroadcastChannel not available:', error);
-      this.channel = null;
-      this.isChannelClosed = true;
-    }
+    this.ensureBroadcastChannel();
 
     this.setupMobileOptimizations();
     this.setupNodeRoleIntegration();
@@ -111,18 +98,48 @@ class PresenceBeaconService {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   }
 
-  private setupNostrIntegration(): void {
-    // Check if Nostr is available for global presence
-    this.isNostrAvailable = !!(window as any).nostr || !!(window as any).webln;
-    
-    if (this.isNostrAvailable) {
-      // Listen for Nostr presence events from global users
-      nostrService.subscribe('presenceEvent', (presenceData) => {
-        this.handleNostrPresenceEvent(presenceData);
-      });
-      
-      console.log('🗼 Nostr integration enabled for global presence');
+  private ensureBroadcastChannel(): void {
+    if (this.channel && !this.isChannelClosed) {
+      return;
     }
+
+    try {
+      this.channel = new BroadcastChannel('xitchat-presence');
+      this.channel.onmessage = (event) => {
+        const data = event.data;
+        if (!data?.type) return;
+
+        if (data.type === 'presence') {
+          this.handleIncomingPresence(data.peer);
+        }
+      };
+      this.isChannelClosed = false;
+    } catch (error) {
+      console.warn('⚠️ BroadcastChannel not available:', error);
+      this.channel = null;
+      this.isChannelClosed = true;
+    }
+  }
+
+  private setupNostrIntegration(): void {
+    // Nostr transport availability should be tied to our internal service state,
+    // not browser extension objects (window.nostr/webln).
+    this.isNostrAvailable = nostrService.isConnected();
+
+    nostrService.subscribe('initialized', () => {
+      this.isNostrAvailable = true;
+      console.log('🗼 Nostr integration enabled for global presence');
+    });
+
+    nostrService.subscribe('disconnected', () => {
+      this.isNostrAvailable = false;
+      console.log('🗼 Nostr integration disabled (service disconnected)');
+    });
+
+    // Always subscribe; events will flow once Nostr is initialized.
+    nostrService.subscribe('presenceEvent', (presenceData) => {
+      this.handleNostrPresenceEvent(presenceData);
+    });
   }
 
   private handleNostrPresenceEvent(presenceData: any): void {
@@ -325,10 +342,10 @@ class PresenceBeaconService {
     const caps: ('webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'broadcast')[] = [];
     
     // WebRTC capability
-    if (RTCPeerConnection) caps.push('webrtc');
+    if ('RTCPeerConnection' in window) caps.push('webrtc');
     
-    // Nostr capability
-    if ((window as any).nostr || (window as any).webln) caps.push('nostr');
+    // Nostr capability comes from service connectivity.
+    if (nostrService.isConnected()) caps.push('nostr');
     
     // Bluetooth capability (mobile only)
     if (this.config.isMobile && 'bluetooth' in navigator) caps.push('bluetooth');
@@ -359,6 +376,7 @@ class PresenceBeaconService {
     console.log('🗼 Starting Serverless Mesh Presence Beacon (15s intervals)...');
     this.isRunning = true;
     this.retryCount = 0;
+    this.ensureBroadcastChannel();
 
     // Start geohash updates
     this.startGeohashUpdates();
@@ -374,7 +392,10 @@ class PresenceBeaconService {
     }
     
     // Start TTL cleanup loop (critical for serverless)
-    setInterval(() => {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
+    this.cleanupTimer = setInterval(() => {
       this.cleanupExpiredPeers();
     }, 5000);
     
@@ -406,9 +427,9 @@ class PresenceBeaconService {
       this.nostrPublishTimer = null;
     }
 
-    if (this.roleChangeUnsubscribe) {
-      this.roleChangeUnsubscribe();
-      this.roleChangeUnsubscribe = null;
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
     }
 
     // Close BroadcastChannel

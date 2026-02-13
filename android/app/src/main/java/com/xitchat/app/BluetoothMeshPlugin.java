@@ -91,6 +91,7 @@ public class BluetoothMeshPlugin extends Plugin {
 
     @PluginMethod
     public void initialize(PluginCall call) {
+        Log.d(TAG, "initialize() called");
         if (bluetoothAdapter == null) {
             call.reject("Bluetooth not supported on this device");
             return;

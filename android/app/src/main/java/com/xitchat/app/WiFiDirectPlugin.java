@@ -81,19 +81,39 @@ public class WiFiDirectPlugin extends Plugin {
         }
     }
 
+    private boolean isReceiverRegistered = false;
+
     @PluginMethod
     public void initialize(PluginCall call) {
-        if (wifiP2pManager == null) {
-            call.reject("WiFi Direct not supported on this device");
-            return;
+        Log.d(TAG, "initialize() called");
+        try {
+            if (wifiP2pManager == null) {
+                // Try to re-initialize
+                wifiP2pManager = (WifiP2pManager) getContext().getSystemService(Context.WIFI_P2P_SERVICE);
+                if (wifiP2pManager != null) {
+                    channel = wifiP2pManager.initialize(getContext(), getContext().getMainLooper(), null);
+                }
+            }
+            
+            if (wifiP2pManager == null) {
+                call.reject("WiFi Direct not supported on this device");
+                return;
+            }
+            
+            if (!isReceiverRegistered && receiver != null) {
+                getContext().registerReceiver(receiver, intentFilter);
+                isReceiverRegistered = true;
+                Log.d(TAG, "BroadcastReceiver registered");
+            }
+            
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("message", "WiFi Direct initialized");
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "Error initializing WiFiDirectPlugin", e);
+            call.reject("Failed to initialize: " + e.getMessage());
         }
-        
-        getContext().registerReceiver(receiver, intentFilter);
-        
-        JSObject ret = new JSObject();
-        ret.put("success", true);
-        ret.put("message", "WiFi Direct initialized");
-        call.resolve(ret);
     }
 
     @PluginMethod

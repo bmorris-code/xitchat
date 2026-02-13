@@ -1,12 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { bluetoothMesh, MeshNode } from '../services/bluetoothMesh';
+import { hybridMesh, HybridMeshPeer } from '../services/hybridMesh';
 import { geohashChannels, GeohashChannel } from '../services/geohashChannels';
-import { meshPermissions } from '../services/meshPermissions';
-import { wifiP2P, WiFiPeer } from '../services/wifiP2P';
-import { trueMeshP2PService, RealPeer } from '../services/realP2P';
-import { realtimeRadar, RadarPeer } from '../services/realtimeRadar';
 
 interface MapViewProps {
   onUserSelect: (user: User) => void;
@@ -15,29 +11,25 @@ interface MapViewProps {
 
 const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
   const [hoveredUser, setHoveredUser] = useState<User | null>(null);
-  const [selectedPeer, setSelectedPeer] = useState<MeshNode | WiFiPeer | RealPeer | null>(null);
+  const [selectedPeer, setSelectedPeer] = useState<HybridMeshPeer | null>(null);
   const [signalStrength, setSignalStrength] = useState(75);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [meshNodes, setMeshNodes] = useState<MeshNode[]>([]);
-  const [wifiPeers, setWifiPeers] = useState<WiFiPeer[]>([]);
-  const [realPeers, setRealPeers] = useState<RealPeer[]>([]);
+  const [peers, setPeers] = useState<HybridMeshPeer[]>([]);
   const [nearbyChannels, setNearbyChannels] = useState<GeohashChannel[]>([]);
   const [currentGeohash, setCurrentGeohash] = useState<string>('');
   const [isRealMode, setIsRealMode] = useState(true);
-  const [radarPeers, setRadarPeers] = useState<RadarPeer[]>([]);
   const [is5GNetwork, setIs5GNetwork] = useState(false);
 
   useEffect(() => {
-    initializeRadarData();
-    initializeWiFiP2P();
-    initializeRealP2P();
+    // Initialize view with current mesh state
+    setPeers(hybridMesh.getPeers());
 
-    // Subscribe to real-time radar peers
-    const unsubscribeRadar = realtimeRadar.subscribe('peersUpdated', (peers) => {
-      setRadarPeers(peers);
-      setIsRealMode(realtimeRadar.isRealModeEnabled());
+    // Subscribe to hybrid mesh updates (single source of truth for all layers)
+    const unsubscribeMesh = hybridMesh.subscribe('peersUpdated', (updatedPeers: HybridMeshPeer[]) => {
+      console.log('🗺️ Radar received peer update:', updatedPeers.length, 'peers');
+      setPeers(updatedPeers);
 
-      // Detect 5G network status
+      // Update network status indicators
       const connection = (navigator as any).connection;
       if (connection) {
         const is5G = connection.effectiveType === '5g' || connection.downlink > 10;
@@ -45,99 +37,31 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
       }
     });
 
-    return () => {
-      unsubscribeRadar();
-    };
-  }, []);
-
-  const initializeRealP2P = async () => {
-    try {
-      const initialized = await trueMeshP2PService.initialize();
-      if (initialized) {
-        trueMeshP2PService.on('peerFound', (peer: RealPeer) => {
-          setRealPeers(prev => [...prev, peer]);
-        });
-
-        trueMeshP2PService.on('peerLost', (peer: RealPeer) => {
-          setRealPeers(prev => prev.filter(p => p.id !== peer.id));
-        });
-
-        trueMeshP2PService.on('peerConnected', (peer: RealPeer) => {
-          setRealPeers(prev => prev.map(p =>
-            p.id === peer.id ? { ...p, isConnected: true } : p
-          ));
-        });
-      }
-    } catch (error) {
-      console.error('Real P2P initialization failed:', error);
-    }
-  };
-
-  const initializeRadarData = () => {
-    bluetoothMesh.initialize();
-    setMeshNodes(bluetoothMesh.getPeers());
-    setNearbyChannels(geohashChannels.getNearbyChannels());
-
+    // Initialize Geohash logic
     const location = geohashChannels.getCurrentLocation();
     if (location) {
       setCurrentGeohash(location.geohash);
     }
-
-    const unsubscribePeers = bluetoothMesh.subscribe('peersUpdated', (peers: MeshNode[]) => {
-      setMeshNodes(peers);
-    });
+    setNearbyChannels(geohashChannels.getNearbyChannels());
 
     return () => {
-      unsubscribePeers();
+      unsubscribeMesh();
     };
-  };
+  }, []);
 
-  const initializeWiFiP2P = async () => {
-    try {
-      const initialized = await wifiP2P.initialize();
-      if (initialized) {
-        wifiP2P.subscribe('peerFound', (peer: WiFiPeer) => {
-          setWifiPeers(prev => [...prev, peer]);
-        });
-
-        wifiP2P.subscribe('peerLost', (peer: WiFiPeer) => {
-          setWifiPeers(prev => prev.filter(p => p.id !== peer.id));
-        });
-
-        wifiP2P.subscribe('peerConnected', (peer: WiFiPeer) => {
-          setWifiPeers(prev => prev.map(p =>
-            p.id === peer.id ? { ...p, isConnected: true } : p
-          ));
-        });
-      }
-    } catch (error) {
-      console.error('WiFi P2P initialization failed:', error);
-    }
-  };
-
-  const getPeerType = (peer: any): 'bluetooth' | 'wifi' | 'real' | 'radar' => {
-    if (peer.type) return peer.type;
-    if ('signalStrength' in peer) return 'bluetooth';
-    if ('connection' in peer && 'dataChannel' in peer) return 'real';
-    return 'wifi';
+  const getPercentageColor = (percentage: number) => {
+    if (percentage > 70) return '#00ff41'; // Green
+    if (percentage > 40) return '#ffff00'; // Yellow
+    return '#ff0000'; // Red
   };
 
   const getVisibleNodes = () => {
-    const bluetoothNodes = meshNodes.map(node => ({ ...node, type: 'bluetooth' as const }));
-    const wifiNodes = wifiPeers.map(peer => ({ ...peer, type: 'wifi' as const }));
-    const realNodes = isRealMode ? realPeers.map(peer => ({ ...peer, type: 'real' as const })) : [];
-    const radarNodes = isRealMode ? radarPeers.map(peer => ({
-      id: peer.id,
-      name: peer.name,
-      handle: peer.handle,
-      distance: peer.distance,
-      signalStrength: peer.signalStrength || 75,
-      isConnected: peer.isOnline,
-      type: 'radar' as const,
-      location: peer.location
-    })) : [];
-
-    return [...bluetoothNodes, ...wifiNodes, ...realNodes, ...radarNodes];
+    return peers.map(peer => ({
+      ...peer,
+      type: peer.connectionType,
+      // Ensure compatibility with UI expectations
+      signalStrength: peer.signalStrength || 75
+    }));
   };
 
   const getVisibleChannels = () => {
@@ -213,15 +137,15 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
 
           {/* Dynamic User Nodes - Red Squares in Circular Pattern */}
           {getVisibleNodes().map((node, idx) => {
-            const type = getPeerType(node);
-            const isConnected = node.isConnected || (node as any).isOnline || false;
-            
+            const type = node.type;
+            const isConnected = node.isConnected;
+
             // Calculate circular position
             const angle = (idx / Math.max(getVisibleNodes().length - 1, 1)) * 2 * Math.PI;
             const radius = 120; // Distance from center
             const centerX = 50; // Center percentage
             const centerY = 50; // Center percentage
-            
+
             const nodeLeft = centerX + (Math.cos(angle) * radius / 5); // Convert to percentage
             const nodeTop = centerY + (Math.sin(angle) * radius / 5);
 
@@ -293,17 +217,32 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
             {/* Bluetooth */}
             <div>
               <h3 className="text-sm font-bold text-[#00ff41] mb-3 uppercase tracking-wider">BLUETOOTH_MESH_NODES</h3>
-              {meshNodes.length === 0 ? (
-                <div className="text-[10px] opacity-40 p-4 border border-[#004400] bg-black/20 lowercase">no active bluetooth nodes found.</div>
+              {peers.filter(p => p.connectionType === 'bluetooth').length === 0 ? (
+                <div className="text-[10px] opacity-40 p-4 border border-[#004400] bg-black/20 lowercase">no active bluetooth nodes found. {isRealMode ? '(scanning...)' : ''}</div>
               ) : (
                 <div className="space-y-2">
-                  {meshNodes.map(node => (
+                  {peers.filter(p => p.connectionType === 'bluetooth').map(node => (
                     <div key={node.id} className="border border-[#00ff41]/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-2 h-2 bg-[#00ff41] rounded-full flex-shrink-0"></div>
+                        <div className="w-2 h-2 bg-[#00ff41] rounded-full flex-shrink-0 animate-pulse"></div>
                         <p className="font-bold text-[#00ff41] text-sm md:text-xs truncate">{node.handle}</p>
                       </div>
-                      <button onClick={() => onUserSelect({ id: node.id, name: node.name, handle: node.handle, avatar: `https://picsum.photos/seed/${node.handle}/200`, mood: 'Bluetooth Node', moodEmoji: '📡', reputation: 750, distance: 0, status: 'Away' })} className="text-[8px] bg-[#00ff41] text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
+                      <button
+                        onClick={() => onUserSelect({
+                          id: node.id,
+                          name: node.name,
+                          handle: node.handle,
+                          avatar: `https://picsum.photos/seed/${node.handle}/200`,
+                          mood: 'Bluetooth Node',
+                          moodEmoji: '📡',
+                          reputation: 750,
+                          distance: 0,
+                          status: 'Online'
+                        })}
+                        className="text-[8px] bg-[#00ff41] text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap hover:bg-[#00ff41]/80"
+                      >
+                        chat
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -313,57 +252,92 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
             {/* WiFi */}
             <div>
               <h3 className="text-sm font-bold text-cyan-400 mb-3 uppercase tracking-wider">WIFI_P2P_PEERS</h3>
-              {wifiPeers.length === 0 ? (
+              {peers.filter(p => p.connectionType === 'wifi').length === 0 ? (
                 <div className="text-[10px] opacity-40 p-4 border border-cyan-400/20 bg-cyan-400/5 lowercase">no active wifi p2p peers found.</div>
               ) : (
                 <div className="space-y-2">
-                  {wifiPeers.map(peer => (
+                  {peers.filter(p => p.connectionType === 'wifi').map(peer => (
                     <div key={peer.id} className="border border-cyan-400/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className={`w-2 h-2 ${peer.isConnected ? 'bg-cyan-400' : 'bg-cyan-600/50'} rounded-full flex-shrink-0`}></div>
                         <p className="font-bold text-cyan-400 text-sm md:text-xs truncate">{peer.handle}</p>
                       </div>
-                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'WiFi P2P Node', moodEmoji: '📶', reputation: 800, distance: 0, status: peer.isConnected ? 'Online' : 'Away' })} className="text-[8px] bg-cyan-400 text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
+                      <button
+                        onClick={() => onUserSelect({
+                          id: peer.id,
+                          name: peer.name,
+                          handle: peer.handle,
+                          avatar: `https://picsum.photos/seed/${peer.handle}/200`,
+                          mood: 'WiFi P2P Node',
+                          moodEmoji: '📶',
+                          reputation: 800,
+                          distance: 0,
+                          status: peer.isConnected ? 'Online' : 'Away'
+                        })}
+                        className="text-[8px] bg-cyan-400 text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap hover:bg-cyan-400/80"
+                      >
+                        chat
+                      </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Real */}
+            {/* Real (WebRTC) */}
             <div>
               <h3 className="text-sm font-bold text-red-500 mb-3 uppercase tracking-wider">REAL_P2P_PEERS</h3>
-              {realPeers.length === 0 ? (
-                <div className="text-[10px] opacity-40 p-4 border border-red-500/20 bg-red-500/5 lowercase">no active real p2p peers found.</div>
+              {peers.filter(p => p.connectionType === 'webrtc').length === 0 ? (
+                <div className="text-[10px] opacity-40 p-4 border border-red-500/20 bg-red-500/5 lowercase">no active webRTC peers found.</div>
               ) : (
                 <div className="space-y-2">
-                  {realPeers.map(peer => (
+                  {peers.filter(p => p.connectionType === 'webrtc').map(peer => (
                     <div key={peer.id} className="border border-red-500/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className={`w-2 h-2 ${peer.isConnected ? 'bg-red-500' : 'bg-red-600/50'} rounded-full flex-shrink-0`}></div>
                         <p className="font-bold text-red-500 text-sm md:text-xs truncate">{peer.handle}</p>
                       </div>
-                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'Real P2P Peer', moodEmoji: '🔴', reputation: 950, distance: 0, status: peer.isConnected ? 'Online' : 'Away' })} className="text-[8px] bg-red-500 text-white px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
+                      <button onClick={() => onUserSelect({
+                        id: peer.id,
+                        name: peer.name,
+                        handle: peer.handle,
+                        avatar: `https://picsum.photos/seed/${peer.handle}/200`,
+                        mood: 'WebRTC Peer',
+                        moodEmoji: '🔴',
+                        reputation: 950,
+                        distance: 0,
+                        status: peer.isConnected ? 'Online' : 'Away'
+                      })} className="text-[8px] bg-red-500 text-white px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Radar */}
+            {/* Radar (Nostr/Broadcast) */}
             <div>
               <h3 className="text-sm font-bold text-green-400 mb-3 uppercase tracking-wider">RADAR_PEERS</h3>
-              {radarPeers.length === 0 ? (
+              {peers.filter(p => p.connectionType === 'nostr' || p.connectionType === 'broadcast').length === 0 ? (
                 <div className="text-[10px] opacity-40 p-4 border border-green-400/20 bg-green-400/5 lowercase">no active radar peers found.</div>
               ) : (
                 <div className="space-y-2">
-                  {radarPeers.map(peer => (
+                  {peers.filter(p => p.connectionType === 'nostr' || p.connectionType === 'broadcast').map(peer => (
                     <div key={peer.id} className="border border-green-400/30 p-3 md:p-2 bg-[#050505] flex items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className={`w-2 h-2 ${peer.isOnline ? 'bg-green-400' : 'bg-green-600/50'} rounded-full flex-shrink-0`}></div>
+                        <div className={`w-2 h-2 ${peer.isConnected ? 'bg-green-400' : 'bg-green-600/50'} rounded-full flex-shrink-0`}></div>
                         <p className="font-bold text-green-400 text-sm md:text-xs truncate">{peer.handle}</p>
                       </div>
-                      <button onClick={() => onUserSelect({ id: peer.id, name: peer.name, handle: peer.handle, avatar: `https://picsum.photos/seed/${peer.handle}/200`, mood: 'Radar Peer', moodEmoji: '📡', reputation: 850, distance: peer.distance || 0, status: peer.isOnline ? 'Online' : 'Away' })} className="text-[8px] bg-green-400 text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
+                      <button onClick={() => onUserSelect({
+                        id: peer.id,
+                        name: peer.name,
+                        handle: peer.handle,
+                        avatar: `https://picsum.photos/seed/${peer.handle}/200`,
+                        mood: 'Radar Peer',
+                        moodEmoji: '📡',
+                        reputation: 850,
+                        distance: 0,
+                        status: peer.isConnected ? 'Online' : 'Away'
+                      })} className="text-[8px] bg-green-400 text-black px-3 py-2 md:px-2 md:py-1 rounded font-bold uppercase min-h-[36px] md:min-h-0 whitespace-nowrap">chat</button>
                     </div>
                   ))}
                 </div>
@@ -387,32 +361,31 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
         </div>
       </div>
 
-      {/* Peer Interaction Modal */}
       {selectedPeer && (
         <div className="absolute inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center p-4">
-          <div className={`bg-[#0a0a0a] border ${getPeerType(selectedPeer) === 'bluetooth' ? 'border-green-500' :
-            getPeerType(selectedPeer) === 'wifi' ? 'border-cyan-400' :
+          <div className={`bg-[#0a0a0a] border ${selectedPeer.connectionType === 'bluetooth' ? 'border-green-500' :
+            selectedPeer.connectionType === 'wifi' ? 'border-cyan-400' :
               'border-red-500'
             } rounded-lg p-6 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.5)]`}>
             <div className="flex items-center gap-4 mb-6">
-              <div className={`w-16 h-16 border ${getPeerType(selectedPeer) === 'bluetooth' ? 'border-green-500' :
-                getPeerType(selectedPeer) === 'wifi' ? 'border-cyan-400' :
+              <div className={`w-16 h-16 border ${selectedPeer.connectionType === 'bluetooth' ? 'border-green-500' :
+                selectedPeer.connectionType === 'wifi' ? 'border-cyan-400' :
                   'border-red-500'
                 } rounded-full overflow-hidden`}>
                 <img src={`https://picsum.photos/seed/${selectedPeer.handle}/200`} className="w-full h-full object-cover grayscale" alt="" />
               </div>
               <div className="flex-1">
-                <h3 className={`text-lg font-bold ${getPeerType(selectedPeer) === 'bluetooth' ? 'text-green-500' :
-                  getPeerType(selectedPeer) === 'wifi' ? 'text-cyan-400' :
+                <h3 className={`text-lg font-bold ${selectedPeer.connectionType === 'bluetooth' ? 'text-green-500' :
+                  selectedPeer.connectionType === 'wifi' ? 'text-cyan-400' :
                     'text-red-400'
                   }`}>{selectedPeer.handle}</h3>
                 <p className="text-sm opacity-60 lowercase">{selectedPeer.name || selectedPeer.handle}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className={`px-2 py-1 text-xs rounded ${!(selectedPeer.isConnected || (selectedPeer as any).isOnline) ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+                  <span className={`px-2 py-1 text-xs rounded ${!selectedPeer.isConnected ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
                     }`}>
-                    {(selectedPeer.isConnected || (selectedPeer as any).isOnline) ? 'Connected' : 'Available'}
+                    {selectedPeer.isConnected ? 'Connected' : 'Available'}
                   </span>
-                  <span className="text-xs opacity-50 uppercase">{getPeerType(selectedPeer)}</span>
+                  <span className="text-xs opacity-50 uppercase">{selectedPeer.connectionType}</span>
                 </div>
               </div>
             </div>
@@ -420,26 +393,13 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
             <div className="space-y-3">
               <button
                 onClick={() => {
-                  if (getPeerType(selectedPeer) === 'real') trueMeshP2PService.connectToPeer(selectedPeer.id);
-                  // WiFi P2P auto-connects when peers are discovered
-                  setSelectedPeer(null);
-                }}
-                className={`w-full font-bold py-3 px-4 rounded transition-colors uppercase text-[10px] tracking-widest ${getPeerType(selectedPeer) === 'bluetooth' ? 'bg-green-500 text-black' :
-                  getPeerType(selectedPeer) === 'wifi' ? 'bg-cyan-500 text-black' :
-                    'bg-red-500 text-white'
-                  }`}
-              >
-                Establish Uplink
-              </button>
-
-              <button
-                onClick={() => {
+                  // Direct connection logic if needed, or just standard select
                   onUserSelect({
                     id: selectedPeer.id,
                     name: selectedPeer.name || selectedPeer.handle,
                     handle: selectedPeer.handle,
                     avatar: `https://picsum.photos/seed/${selectedPeer.handle}/200`,
-                    mood: `Connected via ${getPeerType(selectedPeer)}`,
+                    mood: `Connected via ${selectedPeer.connectionType}`,
                     moodEmoji: '📡',
                     reputation: 800,
                     distance: 0,
@@ -447,9 +407,12 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                   });
                   setSelectedPeer(null);
                 }}
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded transition-colors uppercase text-[10px] tracking-widest"
+                className={`w-full font-bold py-3 px-4 rounded transition-colors uppercase text-[10px] tracking-widest ${selectedPeer.connectionType === 'bluetooth' ? 'bg-green-500 text-black' :
+                  selectedPeer.connectionType === 'wifi' ? 'bg-cyan-500 text-black' :
+                    'bg-red-500 text-white'
+                  }`}
               >
-                Open Chat
+                Start Chat
               </button>
 
               <button

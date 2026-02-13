@@ -44,6 +44,7 @@ class RealtimeRadarService {
   private geohashZones: Map<string, GeohashZone> = new Map();
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private cleanupInterval: any = null;
+  private isInitialized = false;
 
   // Cache current location
   private myCurrentLocation: { lat: number; lng: number; geohash: string } | null = null;
@@ -75,12 +76,11 @@ class RealtimeRadarService {
       this.handlePresencePeersUpdate(peers);
     });
     
-    // Listen for Nostr presence events (global users)
-    if (nostrService.isConnected()) {
-      nostrService.subscribe('presenceEvent', (presenceData) => {
-        this.handleNostrPresenceEvent(presenceData);
-      });
-    }
+    // Listen for Nostr presence events (global users).
+    // Do not gate this on current connection state; Nostr may initialize later.
+    nostrService.subscribe('presenceEvent', (presenceData) => {
+      this.handleNostrPresenceEvent(presenceData);
+    });
   }
 
   private setupLifecycleIntegration(): void {
@@ -134,9 +134,10 @@ class RealtimeRadarService {
     const now = Date.now();
     const updatedPeers: RadarPeer[] = [];
 
+    const myPubkey = presenceBeacon.getMyPresence()?.pubkey;
     presencePeers.forEach(presencePeer => {
       // Skip self
-      if (presencePeer.pubkey === this.myId) return;
+      if (myPubkey && presencePeer.pubkey === myPubkey) return;
 
       // TTL-based visibility check (CRITICAL for mobile)
       const isVisible = now - presencePeer.lastSeen < (presencePeer.ttl * 1000);
@@ -440,7 +441,11 @@ class RealtimeRadarService {
   // Public API methods
   async initialize(serverUrl?: string): Promise<boolean> {
     try {
-      console.log('📡 Initializing Mobile Mesh Radar...');
+      if (this.isInitialized) {
+        return true;
+      }
+
+      console.log('📡 Initializing SERVERLESS Mobile Mesh Radar...');
 
       // Initialize presence beacon first
       const presenceInitialized = await presenceBeacon.initialize();
@@ -454,12 +459,44 @@ class RealtimeRadarService {
       // Update my location
       this.updateMyLocation();
 
-      console.log('✅ Mobile Mesh Radar initialized successfully');
+      // SERVERLESS: Skip server connection test - use direct P2P only
+      const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+      
+      if (isNativeAndroid) {
+        console.log('📱 Android: Using SERVERLESS mesh (Bluetooth + WiFi Direct + Nostr)');
+        console.log('🔥 No signaling server needed - direct P2P connections only');
+      } else {
+        console.log('🌐 Web: Testing optional signaling server...');
+        await this.testSignalingServerConnection();
+      }
+
+      console.log('✅ Serverless Mobile Mesh Radar initialized successfully');
+      this.isInitialized = true;
       return true;
     } catch (error) {
-      console.error('❌ Failed to initialize radar:', error);
+      console.error('❌ Failed to initialize serverless radar:', error);
       return false;
     }
+  }
+
+  private async testSignalingServerConnection(): Promise<void> {
+    // ANDROID SERVERLESS: Skip all WebSocket connections - use true P2P only
+    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+    
+    if (isNativeAndroid) {
+      console.log('📱 Android: SKIPPING WebSocket server connections - using serverless P2P only');
+      console.log('🔥 True serverless mesh - no signaling servers needed');
+      return;
+    }
+
+    // Web-only: Optional WebSocket testing (but skip for serverless deployment)
+    if (window.location.protocol === 'https:') {
+      console.log('🌐 HTTPS detected: Skipping WebSocket connections for security');
+      return;
+    }
+
+    console.log('🌐 Web: WebSocket connections disabled in serverless mode');
+    return;
   }
 
   getPeers(): RadarPeer[] {
@@ -513,6 +550,7 @@ class RealtimeRadarService {
     // Clear peers
     this.peers.clear();
     this.geohashZones.clear();
+    this.isInitialized = false;
   }
 }
 

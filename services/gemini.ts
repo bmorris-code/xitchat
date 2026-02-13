@@ -1,161 +1,171 @@
+import { GoogleGenAI, Type } from '@google/genai';
 
-import { GoogleGenAI, Type } from "@google/genai";
+const getClientEnv = (key: string): string => {
+  const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+  const processEnv = typeof process !== 'undefined' ? (process as any).env : undefined;
+  return metaEnv?.[key] || processEnv?.[key] || '';
+};
 
-// Fix: Only initialize GoogleGenAI when API key is available
-// Add fallback to prevent crashes when API key is missing
-const geminiApiKey = process.env.VITE_GEMINI_API_KEY;
-let ai: GoogleGenAI | null = null;
+const geminiApiKey = getClientEnv('VITE_GEMINI_API_KEY') || getClientEnv('GEMINI_API_KEY');
+const ai: GoogleGenAI | null = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
 
-// Only initialize if we have a valid API key
-if (geminiApiKey && geminiApiKey !== 'demo_key_fallback') {
-  ai = new GoogleGenAI({ apiKey: geminiApiKey });
-}
-
-// Cache for chat responses to reduce API calls
 const chatCache = new Map<string, { response: string; timestamp: number }>();
-const CHAT_CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+const CHAT_CACHE_DURATION = 2 * 60 * 1000;
 let lastChatApiCall = 0;
-const CHAT_API_COOLDOWN = 5 * 60 * 1000; // 5 minutes between chat calls
-
-// Global rate limiting to prevent quota exhaustion
+const CHAT_API_COOLDOWN = 1000;
 let lastGlobalApiCall = 0;
-const GLOBAL_API_COOLDOWN = 15 * 60 * 1000; // 15 minutes between ANY API calls
-const DAILY_API_LIMIT = 15; // Stay well under the 20/day limit
+const GLOBAL_API_COOLDOWN = 2000;
+const DAILY_API_LIMIT = 500;
 let dailyApiCount = 0;
 let lastDailyReset = Date.now();
 
-export const getXitBotResponse = async (userMessage: string) => {
-  const now = Date.now();
-  const cacheKey = userMessage.toLowerCase().trim();
-  
-  // Check if API key is configured and AI is initialized
-  if (!ai) {
-    console.log('⚠️ Gemini API key not configured, using fallback response');
-    return getFallbackChatResponse(userMessage);
-  }
-  
-  // Reset daily counter if needed
+const SYSTEM_PROMPT = `You are XitBot, the helpful and witty mascot for XitChat.
+XitChat is a modern chat application inspired by Mxit and BitChat.
+Be friendly, slightly retro, concise, and practical for mobile chat.`;
+
+const maybeResetDailyCounter = (now: number) => {
   if (now - lastDailyReset > 24 * 60 * 60 * 1000) {
     dailyApiCount = 0;
     lastDailyReset = now;
   }
-  
-  // Check daily limit
-  if (dailyApiCount >= DAILY_API_LIMIT) {
-    console.log('Daily API limit reached, using fallback response');
-    return getFallbackChatResponse(userMessage);
-  }
-  
-  // Check global cooldown
-  if (now - lastGlobalApiCall < GLOBAL_API_COOLDOWN) {
-    console.log('Global API cooldown active, using fallback response');
-    return getFallbackChatResponse(userMessage);
-  }
-  
-  // Check cache first
+};
+
+export const getXitBotResponse = async (userMessage: string): Promise<string> => {
+  const now = Date.now();
+  const cacheKey = userMessage.toLowerCase().trim();
+
+  if (!ai) return getFallbackChatResponse(userMessage);
+
+  maybeResetDailyCounter(now);
+  if (dailyApiCount >= DAILY_API_LIMIT) return getFallbackChatResponse(userMessage);
+
   const cached = chatCache.get(cacheKey);
-  if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) {
-    console.log('Using cached chat response');
-    return cached.response;
+  if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) return cached.response;
+
+  if (now - lastGlobalApiCall < GLOBAL_API_COOLDOWN || now - lastChatApiCall < CHAT_API_COOLDOWN) {
+    console.debug('Gemini soft cooldown active, continuing for real-time chat');
   }
-  
-  // Rate limiting: don't call API if we called recently
-  if (now - lastChatApiCall < CHAT_API_COOLDOWN) {
-    console.log('Chat API cooldown active, using fallback response');
-    return getFallbackChatResponse(userMessage);
-  }
-  
+
   try {
     lastChatApiCall = now;
     lastGlobalApiCall = now;
     dailyApiCount++;
-    
-    console.log(`Making API call ${dailyApiCount}/${DAILY_API_LIMIT} for today`);
-    
-    if (!ai) {
-      console.log('⚠️ Gemini AI not initialized, using fallback response');
-      return getFallbackChatResponse(userMessage);
-    }
-    
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: 'gemini-3-flash-preview',
       contents: userMessage,
       config: {
-        systemInstruction: `You are XitBot, the helpful and witty mascot for XitChat. 
-        XitChat is a modern chat application inspired by the nostalgic Mxit and BitChat. 
-        It features location-based discovery. Be friendly, slightly retro (using '80s and '90s slang occasionally), 
-        and very helpful. Keep answers concise as it's a mobile-focused chat app.`,
+        systemInstruction: SYSTEM_PROMPT,
         temperature: 0.8,
-        topP: 0.9,
+        topP: 0.9
       }
     });
 
-    const result = response.text || "Sorry, my circuits are slightly buzzed. Try again!";
-    
-    // Cache the successful response
+    const result = (response as any).text || getFallbackChatResponse(userMessage);
     chatCache.set(cacheKey, { response: result, timestamp: now });
-    
     return result;
   } catch (error) {
-    console.error("Gemini Error:", error);
+    console.error('Gemini Error:', error);
     return getFallbackChatResponse(userMessage);
   }
 };
 
-// Fallback chat responses when API is unavailable
+export const streamXitBotResponseGemini = async (
+  userMessage: string,
+  onToken: (token: string, fullText: string) => void
+): Promise<string> => {
+  if (!ai) {
+    const fallback = getFallbackChatResponse(userMessage);
+    onToken(fallback, fallback);
+    return fallback;
+  }
+
+  const now = Date.now();
+  const cacheKey = userMessage.toLowerCase().trim();
+  maybeResetDailyCounter(now);
+
+  const cached = chatCache.get(cacheKey);
+  if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) {
+    onToken(cached.response, cached.response);
+    return cached.response;
+  }
+
+  try {
+    lastChatApiCall = now;
+    lastGlobalApiCall = now;
+    dailyApiCount++;
+
+    const streamResult: any = await (ai.models as any).generateContentStream({
+      model: 'gemini-3-flash-preview',
+      contents: userMessage,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        temperature: 0.8,
+        topP: 0.9
+      }
+    });
+
+    let fullText = '';
+    for await (const chunk of streamResult) {
+      const token = typeof chunk?.text === 'function' ? chunk.text() : (chunk?.text || '');
+      if (!token) continue;
+      fullText += token;
+      onToken(token, fullText);
+    }
+
+    if (!fullText.trim()) {
+      fullText = getFallbackChatResponse(userMessage);
+      onToken(fullText, fullText);
+    }
+
+    chatCache.set(cacheKey, { response: fullText, timestamp: now });
+    return fullText;
+  } catch (error) {
+    console.error('Gemini stream error, falling back to non-stream:', error);
+    return getXitBotResponse(userMessage);
+  }
+};
+
 const getFallbackChatResponse = (userMessage: string): string => {
   const lowerMessage = userMessage.toLowerCase();
-  
-  if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-    return "Hey there! Ready to surf the digital waves? 🌊";
-  }
-  if (lowerMessage.includes('help')) {
-    return "Need assistance? I'm your mainframe buddy! What can I help you with?";
-  }
-  if (lowerMessage.includes('bug') || lowerMessage.includes('error')) {
-    return "Uh oh, digital static detected! Try refreshing or clearing your cache.";
-  }
-  if (lowerMessage.includes('xc') || lowerMessage.includes('token')) {
-    return "XC tokens are rad! Earn them by chatting and playing games in the mesh!";
-  }
-  
+  if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) return 'Hey there! Ready to surf the digital waves?';
+  if (lowerMessage.includes('help')) return "Need assistance? I'm your mainframe buddy! What can I help you with?";
+  if (lowerMessage.includes('bug') || lowerMessage.includes('error')) return 'Uh oh, digital static detected! Try refreshing or clearing your cache.';
+  if (lowerMessage.includes('xc') || lowerMessage.includes('token')) return 'XC tokens are rad! Earn them by chatting and playing games in the mesh!';
+
   const fallbackResponses = [
-    "Whoa, that's some heavy data! Let me process... *beep boop*",
-    "Totally tubular question! My circuits are buzzing with ideas!",
-    "Rad query! Let me boot up my knowledge banks...",
+    "Whoa, that's some heavy data! Let me process...",
+    'Totally tubular question! My circuits are buzzing with ideas!',
+    'Rad query! Let me boot up my knowledge banks...',
     "Far out! That's some next-level thinking right there!",
-    "Excellent question! Let me dial into the mainframe for you..."
+    'Excellent question! Let me dial into the mainframe for you...'
   ];
-  
+
   return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
 };
 
 export const getQuickReplies = async (lastMessage: string): Promise<string[]> => {
   try {
-    if (!ai) {
-      console.log('⚠️ Gemini AI not initialized for quick replies, using fallback');
-      return ["That's interesting!", "Tell me more!", "Cool! 🤙"];
-    }
-    
+    if (!ai) return ['Rad!', 'On it.', '10-4'];
+
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
+      model: 'gemini-3-flash-preview',
       contents: `Suggest 3 short, snappy quick replies for this message: "${lastMessage}"`,
       config: {
-        systemInstruction: `You are an AI assistant generating quick replies for XitChat, a retro terminal-themed chat app. 
-        Replies must be extremely short (1-3 words max). 
-        Use a mix of standard and retro slang (e.g., "Rad!", "On it.", "No prob", "10-4", "Loud and clear"). 
-        Format as a JSON array of strings.`,
-        responseMimeType: "application/json",
+        systemInstruction: `You generate quick replies for XitChat.
+Replies must be extremely short (1-3 words max).
+Format as a JSON array of strings.`,
+        responseMimeType: 'application/json',
         responseSchema: {
           type: Type.ARRAY,
           items: { type: Type.STRING }
         }
       }
     });
-    return JSON.parse(response.text || '[]');
-  } catch (e) {
-    console.error("Quick Replies Error:", e);
-    return ["Rad!", "On it.", "10-4"];
+    return JSON.parse((response as any).text || '[]');
+  } catch (error) {
+    console.error('Quick Replies Error:', error);
+    return ['Rad!', 'On it.', '10-4'];
   }
 };
 
@@ -166,46 +176,28 @@ export interface BuzzItem {
   category: 'NEWS' | 'GOSSIP' | 'UPDATE' | 'AD';
 }
 
-// Cache for API responses to reduce calls
 const buzzCache = new Map<string, { data: BuzzItem[]; timestamp: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 5 * 60 * 1000;
 let lastApiCall = 0;
-const API_COOLDOWN = 10 * 60 * 1000; // 10 minutes between calls
+const API_COOLDOWN = 10 * 60 * 1000;
 
 export const getLatestBuzz = async (): Promise<BuzzItem[]> => {
   const now = Date.now();
   const cacheKey = 'latest-buzz';
-  
-  // Check cache first
   const cached = buzzCache.get(cacheKey);
-  if (cached && now - cached.timestamp < CACHE_DURATION) {
-    console.log('Using cached buzz data');
-    return cached.data;
-  }
-  
-  // Rate limiting: don't call API if we called recently
-  if (now - lastApiCall < API_COOLDOWN) {
-    console.log('API cooldown active, using fallback data');
-    return getFallbackBuzz();
-  }
-  
+  if (cached && now - cached.timestamp < CACHE_DURATION) return cached.data;
+  if (now - lastApiCall < API_COOLDOWN) return getFallbackBuzz();
+  if (!ai) return getFallbackBuzz();
+
   try {
     lastApiCall = now;
-    
-    if (!ai) {
-      console.log('⚠️ Gemini AI not initialized for buzz, using fallback');
-      return getFallbackBuzz();
-    }
-    
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: "Generate 5 trending news items for the XitChat mesh network buzz feed.",
+      model: 'gemini-3-flash-preview',
+      contents: 'Generate 5 trending news items for the XitChat mesh network buzz feed.',
       config: {
-        systemInstruction: `You are the editor of 'The Buzz', a news feed for XitChat (a terminal-themed social network). 
-        Create 5 items that sound like futuristic hacker news mixed with retro slang (tubular, rad, mainframe, node). 
-        Categories: NEWS, GOSSIP, UPDATE, AD.
-        Format strictly as JSON.`,
-        responseMimeType: "application/json",
+        systemInstruction: `Create 5 buzz items for XitChat.
+Return JSON with fields title, time, snippet, category.`,
+        responseMimeType: 'application/json',
         responseSchema: {
           type: Type.ARRAY,
           items: {
@@ -222,29 +214,22 @@ export const getLatestBuzz = async (): Promise<BuzzItem[]> => {
       }
     });
 
-    const result = JSON.parse(response.text || '[]');
-    
-    // Cache the successful response
+    const result = JSON.parse((response as any).text || '[]');
     buzzCache.set(cacheKey, { data: result, timestamp: now });
-    
     return result;
   } catch (error) {
-    console.error("Buzz Fetch Error:", error);
+    console.error('Buzz Fetch Error:', error);
     return getFallbackBuzz();
   }
 };
 
-// Fallback buzz data when API is unavailable
 const getFallbackBuzz = (): BuzzItem[] => {
   const fallbackData = [
-    { title: "Mesh Signal Stable", time: "Now", snippet: "System reports all nodes operating at peak efficiency.", category: "UPDATE" as const },
-    { title: "Static on the Wire", time: "5m ago", snippet: "Minor interference detected in Sector 7. Technicians are on it.", category: "NEWS" as const },
-    { title: "Node Discovery Active", time: "12m ago", snippet: "New mesh nodes detected in your vicinity. Connection strength: optimal.", category: "NEWS" as const },
-    { title: "Retro Terminal Pack", time: "1h ago", snippet: "Limited edition terminal themes now available in NodeShop. Get that vintage mainframe look!", category: "AD" as const },
-    { title: "Cipher Challenge", time: "2h ago", snippet: "Weekly encryption challenge starts soon. Prize: 500 XC for first to crack the code.", category: "GOSSIP" as const }
+    { title: 'Mesh Signal Stable', time: 'Now', snippet: 'System reports all nodes operating at peak efficiency.', category: 'UPDATE' as const },
+    { title: 'Static on the Wire', time: '5m ago', snippet: 'Minor interference detected in Sector 7.', category: 'NEWS' as const },
+    { title: 'Node Discovery Active', time: '12m ago', snippet: 'New mesh nodes detected nearby.', category: 'NEWS' as const },
+    { title: 'Retro Terminal Pack', time: '1h ago', snippet: 'Limited edition terminal themes now available.', category: 'AD' as const },
+    { title: 'Cipher Challenge', time: '2h ago', snippet: 'Weekly encryption challenge starts soon.', category: 'GOSSIP' as const }
   ];
-  
-  // Add some variety by randomly selecting 3-5 items
-  const count = Math.floor(Math.random() * 3) + 3;
-  return fallbackData.sort(() => Math.random() - 0.5).slice(0, count);
+  return fallbackData.sort(() => Math.random() - 0.5).slice(0, 4);
 };

@@ -1,8 +1,19 @@
 // Hybrid AI Service for XitChat
 // Automatically switches between Groq (primary) and Gemini (fallback)
 
-import { getXitBotResponse as getXitBotResponseGemini, getQuickReplies as getQuickRepliesGemini, getLatestBuzz as getLatestBuzzGemini } from './gemini';
-import { getXitBotResponseGroq, getQuickRepliesGroq, getLatestBuzzGroq, checkGroqHealth } from './groq';
+import {
+  getXitBotResponse as getXitBotResponseGemini,
+  streamXitBotResponseGemini,
+  getQuickReplies as getQuickRepliesGemini,
+  getLatestBuzz as getLatestBuzzGemini
+} from './gemini';
+import {
+  getXitBotResponseGroq,
+  streamXitBotResponseGroq,
+  getQuickRepliesGroq,
+  getLatestBuzzGroq,
+  checkGroqHealth
+} from './groq';
 import { hybridMesh, HybridMeshPeer } from './hybridMesh';
 
 export type AIProvider = 'groq' | 'gemini' | 'fallback';
@@ -209,6 +220,54 @@ class HybridAIService {
     );
   }
 
+  async streamXitBotResponse(
+    userMessage: string,
+    onToken: (token: string, fullText: string) => void,
+    skipMesh: boolean = false
+  ): Promise<string> {
+    console.log('🤖 Hybrid AI: Streaming response for:', userMessage);
+    console.log('🔧 Current provider:', this.primaryProvider, 'Groq healthy:', this.isGroqHealthy, 'Online:', this.isOnline);
+
+    if (this.primaryProvider === 'groq' && this.isGroqHealthy) {
+      try {
+        const result = await streamXitBotResponseGroq(userMessage, onToken);
+        console.log('✅ Chat stream completed with Groq');
+        return result;
+      } catch (error) {
+        console.warn('⚠️ Groq stream failed, trying Gemini:', error);
+        this.failureCount++;
+        if (this.failureCount >= this.MAX_FAILURES) {
+          this.isGroqHealthy = false;
+          this.primaryProvider = 'gemini';
+        }
+      }
+    }
+
+    try {
+      const result = await streamXitBotResponseGemini(userMessage, onToken);
+      console.log('✅ Chat stream completed with Gemini');
+      return result;
+    } catch (error) {
+      console.warn('⚠️ Gemini stream failed:', error);
+    }
+
+    if (!this.isOnline && !skipMesh && this.aiPeers.length > 0) {
+      try {
+        const meshResult = await this.requestMeshAI(userMessage);
+        if (meshResult) {
+          onToken(meshResult, meshResult);
+          return meshResult;
+        }
+      } catch (error) {
+        console.warn('⚠️ Mesh AI Proxy failed:', error);
+      }
+    }
+
+    const fallback = this.getFallbackResponse(userMessage);
+    onToken(fallback, fallback);
+    return fallback;
+  }
+
   async getQuickReplies(lastMessage: string): Promise<string[]> {
     return this.executeWithFallback(
       () => getQuickRepliesGroq(lastMessage),
@@ -311,5 +370,9 @@ export const hybridAI = new HybridAIService();
 
 // Export the hybrid functions as drop-in replacements
 export const getXitBotResponse = (userMessage: string) => hybridAI.getXitBotResponse(userMessage);
+export const streamXitBotResponse = (
+  userMessage: string,
+  onToken: (token: string, fullText: string) => void
+) => hybridAI.streamXitBotResponse(userMessage, onToken);
 export const getQuickReplies = (lastMessage: string) => hybridAI.getQuickReplies(lastMessage);
 export const getLatestBuzz = () => hybridAI.getLatestBuzz();

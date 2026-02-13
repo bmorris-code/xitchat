@@ -11,6 +11,9 @@ interface HandshakeNode {
 }
 
 class HandshakePersistenceService {
+  stopBackgroundMaintenance() {
+    throw new Error('Method not implemented.');
+  }
   private readonly STORAGE_KEY = 'xitchat_handshake_nodes';
   private nodes: Map<string, HandshakeNode> = new Map();
   private listeners: { [key: string]: ((data: any) => void)[] } = {};

@@ -24,14 +24,14 @@ if (process.env.NODE_ENV === 'development') {
   // Handle unhandled promise rejections (especially Nostr rate limits)
   window.addEventListener('unhandledrejection', (event) => {
     const message = event.reason?.message || event.reason || '';
-    
+
     // Handle Nostr rate limit errors gracefully
     if (message.includes('rate-limited') || message.includes('slow down')) {
       console.debug('🕊️ Nostr rate limit detected, handling gracefully');
       event.preventDefault(); // Prevent the error from showing in console
       return;
     }
-    
+
     // Log other unhandled rejections
     console.error('Unhandled promise rejection:', event.reason);
   });
@@ -111,19 +111,17 @@ const MinimalApp = () => {
 
 try {
   console.log('Creating React root...');
-  
+
   // Check if root already exists to avoid multiple createRoot() calls
   let root = (rootElement as any)._reactRoot;
   if (!root) {
     root = ReactDOM.createRoot(rootElement);
     (rootElement as any)._reactRoot = root;
   }
-  
+
   console.log('Rendering app...');
   root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
+    <App />
   );
   console.log('App rendered successfully');
 } catch (error) {
