@@ -1,7 +1,7 @@
 # 📡 XitChat
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/bmorris-code/xitchat/main/public/icon.png" width="128" height="128" alt="XitChat Logo">
+  <img src="https://raw.githubusercontent.com/bmorris-code/xitchat/main/public/icon.svg" width="128" height="128" alt="XitChat Logo">
 </p>
 
 <h3 align="center">Pure Mesh. No Servers. Just Chat.</h3>
