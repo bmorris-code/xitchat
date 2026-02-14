@@ -1,13 +1,13 @@
 # 📡 XitChat
 
 <p align="center">
-  <img src="./public/icon-96.png" width="128" height="128" alt="XitChat Logo">
+  <img src="./public/icon-96.png" width="64" height="64" alt="XitChat Logo">
 </p>
 
 <h3 align="center">Pure Mesh. No Servers. Just Chat.</h3>
 
 <p align="center">
-  <a href="https://github.com/bmorris-code/xitchat/actions/workflows/deploy.yml"><img src="https://github.com/bmorris-code/xitchat/actions/workflows/deploy.yml/badge.svg" alt="Build Status"></a>
+  <a href="https://xitchat.vercel.app"><img src="https://github.com/bmorris-code/xitchat/actions/workflows/deploy.yml/badge.svg" alt="Build Status"></a>
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome">
   <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License MIT">
   <img src="https://img.shields.io/badge/Powered_by-Nostr-8f00ff.svg" alt="Powered by Nostr">
