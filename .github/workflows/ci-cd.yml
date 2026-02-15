@@ -91,7 +91,7 @@ jobs:
       run: npm run build
     
     - name: Deploy to Vercel
-      uses: vercel/action@v20
+      uses: vercel/vercel-action@v20
       env:
         VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
         VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
