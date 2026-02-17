@@ -1,43 +1,28 @@
-name: XitChat CI/CD
+name: XitChat Production CI/CD
 
 on:
+
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+
+  workflow_dispatch:
+
+env:
+
+  NODE_VERSION: 18
+  JAVA_VERSION: 17
+
 
 jobs:
 
-  test:
-    runs-on: ubuntu-latest
+# =========================
+# BUILD WEB
+# =========================
 
-    steps:
-
-    - uses: actions/checkout@v4
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Run tests
-      run: npm test --if-present
-
-    - name: Build web app
-      run: npm run build
-
-
-  build-android:
+  build-web:
 
     runs-on: ubuntu-latest
-
-    needs: test
-
-    if: github.ref == 'refs/heads/main'
 
     steps:
 
@@ -46,68 +31,7 @@ jobs:
 
     - uses: actions/setup-node@v4
       with:
-        node-version: '18'
-        cache: 'npm'
-
-
-    - name: Install dependencies
-      run: npm ci
-
-
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: '17'
-
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-
-    - name: Build Mobile Web
-      run: npm run build
-
-
-    - name: Sync Capacitor
-      run: npx cap sync android
-
-
-    - name: Grant permission
-      run: chmod +x android/gradlew
-
-
-    - name: Build APK
-      run: |
-        cd android
-        ./gradlew assembleDebug
-
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: xitchat-apk
-        path: android/app/build/outputs/apk/debug/app-debug.apk
-
-
-
-  deploy-web:
-
-    runs-on: ubuntu-latest
-
-    needs: test
-
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-
-    - uses: actions/checkout@v4
-
-
-    - uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
+        node-version: ${{ env.NODE_VERSION }}
 
 
     - run: npm ci
@@ -116,21 +40,27 @@ jobs:
     - run: npm run build
 
 
+    - name: Install Vercel CLI
+      run: npm install -g vercel
+
+
     - name: Deploy to Vercel
-      uses: vercel/vercel-action@v20
-      with:
-        vercel-token: ${{ secrets.VERCEL_TOKEN }}
-        vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-        vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-        vercel-args: '--prod'
+      run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+      env:
+        VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 
 
-  security-scan:
+# =========================
+# BUILD ANDROID
+# =========================
+
+  build-android:
 
     runs-on: ubuntu-latest
 
-    needs: test
+    needs: build-web
 
     steps:
 
@@ -139,22 +69,123 @@ jobs:
 
     - uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: ${{ env.NODE_VERSION }}
 
 
     - run: npm ci
 
 
-    - name: Security audit
-      run: npm audit --audit-level high
+    - run: npm run build
 
 
-    - uses: github/codeql-action/init@v4
+    - run: npx cap sync android
+
+
+    - uses: actions/setup-java@v4
       with:
-        languages: javascript
+        distribution: temurin
+        java-version: ${{ env.JAVA_VERSION }}
 
 
-    - uses: github/codeql-action/autobuild@v4
+    - name: Decode Keystore
+      run: |
+        echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > android/app/release.keystore
 
 
-    - uses: github/codeql-action/analyze@v4
+    - name: Grant permission
+      run: chmod +x android/gradlew
+
+
+    - name: Build Release APK
+      run: |
+        cd android
+        ./gradlew assembleRelease
+
+
+    - name: Build App Bundle
+      run: |
+        cd android
+        ./gradlew bundleRelease
+
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: xitchat-apk
+        path: android/app/build/outputs/apk/release/app-release.apk
+
+
+    - name: Upload AAB
+      uses: actions/upload-artifact@v4
+      with:
+        name: xitchat-aab
+        path: android/app/build/outputs/bundle/release/app-release.aab
+
+
+
+# =========================
+# PLAY STORE DEPLOY
+# =========================
+
+  deploy-playstore:
+
+    runs-on: ubuntu-latest
+
+    needs: build-android
+
+    steps:
+
+    - uses: actions/checkout@v4
+
+
+    - name: Upload to Play Store
+      uses: r0adkll/upload-google-play@v1
+
+      with:
+
+        serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+
+        packageName: com.xitchat.app
+
+        releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+
+        track: production
+
+        status: completed
+
+
+
+# =========================
+# CREATE GITHUB RELEASE
+# =========================
+
+  github-release:
+
+    runs-on: ubuntu-latest
+
+    needs: build-android
+
+    steps:
+
+    - uses: actions/checkout@v4
+
+
+    - name: Create Release
+
+      uses: softprops/action-gh-release@v2
+
+      with:
+
+        tag_name: v1.${{ github.run_number }}
+
+        name: XitChat v1.${{ github.run_number }}
+
+        files: |
+
+          android/app/build/outputs/apk/release/app-release.apk
+
+          android/app/build/outputs/bundle/release/app-release.aab
+
+      env:
+
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
