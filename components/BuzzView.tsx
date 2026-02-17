@@ -74,43 +74,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
       }
     });
 
-    // Load some demo buzz content for local mesh
-    const initialBuzz: Shoutout[] = [
-      {
-        id: 'demo-1',
-        title: 'Live Intelligence Feed Active',
-        time: 'now',
-        snippet: 'Real-time cybersecurity and mesh network intelligence monitoring enabled.',
-        category: 'UPDATE',
-        user: {
-          name: 'XitChat Core',
-          handle: '@core',
-          avatar: 'https://picsum.photos/seed/core/200',
-          distance: '0.0km'
-        },
-        likes: 12,
-        comments: 0,
-        isLiked: false
-      },
-      {
-        id: 'demo-2',
-        title: 'Local Event Tonight',
-        time: '1h ago',
-        snippet: 'Mesh networking meetup at the usual spot. Bring your devices!',
-        category: 'NEWS',
-        user: {
-          name: 'Local Events',
-          handle: '@events',
-          avatar: 'https://picsum.photos/seed/events/200',
-          distance: '1.2km'
-        },
-        likes: 15,
-        comments: 5,
-        isLiked: false
-      }
-    ];
-
-    setShoutouts(initialBuzz);
+    setShoutouts([]);
 
     // Listen for mesh buzz items
     const handleMeshItem = (event: any) => {
@@ -134,17 +98,17 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
     try {
       const buzzItems = await getLatestBuzz();
 
-      const mapped: Shoutout[] = buzzItems.map((item, i) => ({
+      const mapped: Shoutout[] = buzzItems.map((item) => ({
         ...item,
-        id: Math.random().toString(36).substr(2, 9),
+        id: item.id || `${Date.now()}-${item.title}`,
         user: {
-          name: i % 2 === 0 ? 'Neo' : 'Jade',
-          handle: i % 2 === 0 ? '@neo' : '@jade',
-          avatar: `https://picsum.photos/seed/${i + 50}/200`,
-          distance: `${(Math.random() * 2).toFixed(1)}km`
+          name: 'Live User',
+          handle: '@live',
+          avatar: '',
+          distance: '--'
         },
-        likes: Math.floor(Math.random() * 100),
-        comments: Math.floor(Math.random() * 10),
+        likes: 0,
+        comments: 0,
         isLiked: false
       }));
 

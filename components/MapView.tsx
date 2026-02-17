@@ -84,7 +84,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
           <p className="text-[8px] font-bold mt-1 flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${isRealMode ? 'bg-red-500' : 'bg-green-500'}`}></span>
             <span className={`${isRealMode ? 'text-red-500' : 'text-green-500'} lowercase`}>
-              {isRealMode ? 'real mode' : 'simulated mode'}
+              {isRealMode ? 'real mode' : 'degraded mode'}
             </span>
           </p>
         </div>

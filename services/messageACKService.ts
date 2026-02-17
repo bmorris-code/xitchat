@@ -116,6 +116,52 @@ class MessageACKService {
     return messageId;
   }
 
+  // Track an outgoing message sent by another transport service (hybrid mesh, nostr, etc.)
+  trackOutgoingMessage(
+    messageId: string,
+    to: string,
+    content: string,
+    transportLayer: 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' = 'relay',
+    requiresAck: boolean = true
+  ): void {
+    if (!requiresAck) return;
+
+    const pendingMessage: PendingMessage = {
+      id: messageId,
+      from: 'me',
+      to,
+      content,
+      timestamp: Date.now(),
+      retryCount: 0,
+      maxRetries: this.MAX_RETRIES,
+      lastRetry: Date.now(),
+      transportLayer,
+      requiresAck,
+      acknowledged: false
+    };
+
+    this.pendingMessages.set(messageId, pendingMessage);
+    this.saveToStorage();
+  }
+
+  markMessageDelivered(
+    messageId: string,
+    to: string,
+    transportLayer: 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' = 'relay'
+  ): void {
+    const ack: MessageACK = {
+      messageId,
+      from: to,
+      to: 'me',
+      timestamp: Date.now(),
+      acknowledged: true,
+      retryCount: 0,
+      maxRetries: this.MAX_RETRIES,
+      transportLayer
+    };
+    this.receiveACK(ack).catch(() => { });
+  }
+
   // Handle incoming message
   async receiveMessage(
     messageId: string,

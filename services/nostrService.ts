@@ -65,6 +65,7 @@ class NostrService {
   private readonly RATE_LIMIT_DELAY = 60000; // 60 seconds between subscriptions (increased from 30)
   private readonly PUBLISH_RATE_LIMIT = 30000; // 30 seconds between publishes (increased from 15)
   private isInitialized = false;
+  private isInitializing = false;
 
   // Exponential backoff properties
   private retryDelay = 1000;
@@ -258,6 +259,17 @@ class NostrService {
   }
 
   async initialize(privateKey?: string): Promise<boolean> {
+    if (this.isInitialized) {
+      return true;
+    }
+    if (this.isInitializing) {
+      for (let i = 0; i < 50; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (this.isInitialized) return true;
+      }
+      return false;
+    }
+    this.isInitializing = true;
     try {
       console.log('🔑 Initializing Nostr service...');
 
@@ -334,8 +346,7 @@ class NostrService {
         console.log('✅ Generated real secp256k1 public key');
       } catch (error) {
         console.error('❌ Failed to generate public key with secp256k1:', error);
-        // Fallback to mock key
-        this.publicKey = 'mock_public_key_' + Array.from(privateKeyBytes.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join('');
+        throw new Error('Failed to generate valid Nostr public key');
       }
       console.log(`🔑 Nostr public key: ${this.publicKey.substring(0, 16)}...`);
 
@@ -366,10 +377,11 @@ class NostrService {
 
       console.log('✅ Nostr service initialized successfully');
       this.emit('initialized', { publicKey: this.publicKey });
-
+      this.isInitializing = false;
       return true;
     } catch (error) {
       console.warn('⚠️ Nostr service initialization skipped (Offline Mode):', error);
+      this.isInitializing = false;
       return false;
     }
   }
@@ -398,7 +410,14 @@ class NostrService {
         await new Promise(resolve => setTimeout(resolve, 2000));
 
       } catch (error) {
-        console.warn(`⚠️ Failed to connect to ${relayUrl}:`, error);
+        const lastError = this.lastErrorTime.get(relayUrl) || 0;
+        const now = Date.now();
+        if (now - lastError > 60000) {
+          console.warn(`⚠️ Failed to connect to ${relayUrl}:`, error);
+          this.lastErrorTime.set(relayUrl, now);
+        } else {
+          console.debug(`Relay connect retry failed for ${relayUrl}`);
+        }
         this.failedRelays.add(relayUrl);
 
         // Continue with next relay instead of failing completely
@@ -1234,3 +1253,4 @@ class NostrService {
 }
 
 export const nostrService = new NostrService();
+

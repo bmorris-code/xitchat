@@ -62,12 +62,14 @@ const ChatSettings: React.FC<ChatSettingsProps> = ({
     };
     localStorage.setItem(chatSettingsKey, JSON.stringify(currentSettings));
 
-    // Sync settings via Nostr (simulated broadcast)
-    nostrService.broadcastMessage(JSON.stringify({
+    // Sync settings via Nostr broadcast
+    void nostrService.broadcastMessage(JSON.stringify({
       type: 'chat_settings_sync',
       chatId: chat.id,
       settings: currentSettings
-    }));
+    })).catch((error) => {
+      console.debug('Chat settings sync skipped:', error);
+    });
   };
 
   const handleMuteToggle = () => {

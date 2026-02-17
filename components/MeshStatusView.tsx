@@ -10,7 +10,7 @@ const MeshStatusView: React.FC = () => {
   const [conflicts, setConflicts] = useState<MeshDataConflict[]>([]);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [lastSyncTime, setLastSyncTime] = useState<number>(0);
-  const [connectionType, setConnectionType] = useState<MeshConnectionType>('simulation');
+  const [connectionType, setConnectionType] = useState<MeshConnectionType>('broadcast');
   const [connectionInfo, setConnectionInfo] = useState<any>(null);
   const [bridgeStats, setBridgeStats] = useState({ bridgedIn: 0, bridgedOut: 0 });
 
@@ -19,9 +19,10 @@ const MeshStatusView: React.FC = () => {
   }, []);
 
   const initializeMeshStatus = async () => {
-    // Initialize hybrid mesh (Bluetooth first, WebRTC fallback)
-    const connType = await hybridMesh.initialize();
-    setConnectionType(connType);
+    // Initialize hybrid mesh (real transports only)
+    const connTypes = await hybridMesh.initialize();
+    const primaryType: MeshConnectionType = connTypes[0] || 'broadcast';
+    setConnectionType(primaryType);
     setConnectionInfo(hybridMesh.getConnectionInfo());
 
     // Check connection status
@@ -122,7 +123,9 @@ const MeshStatusView: React.FC = () => {
             <span className="text-[8px] opacity-50 uppercase">
               {connectionType === 'bluetooth' && '🔵 bluetooth'}
               {connectionType === 'webrtc' && '🔗 webrtc'}
-              {connectionType === 'simulation' && '📱 simulation'}
+              {connectionType === 'broadcast' && 'broadcast'}
+              {connectionType === 'wifi' && 'wifi'}
+              {connectionType === 'nostr' && 'nostr'}
             </span>
           </div>
         </div>
@@ -143,8 +146,8 @@ const MeshStatusView: React.FC = () => {
             </div>
             <div>
               <span className="opacity-50">real:</span>
-              <span className={`ml-2 font-bold ${connectionInfo.isRealConnection ? 'text-green-500' : 'text-yellow-500'}`}>
-                {connectionInfo.isRealConnection ? 'yes' : 'sim'}
+              <span className={`ml-2 font-bold ${connectionInfo.isRealConnection ? 'text-green-500' : 'text-red-500'}`}>
+                {connectionInfo.isRealConnection ? 'yes' : 'no'}
               </span>
             </div>
           </div>

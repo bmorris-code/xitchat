@@ -122,7 +122,9 @@ class MeshPermissionsService {
     }
 
     // 2. Broadcast to Nostr (cross-device sync)
-    nostrService.broadcastMessage(JSON.stringify(message));
+    void nostrService.broadcastMessage(JSON.stringify(message)).catch((error) => {
+      console.debug('Permission sync over Nostr skipped:', error);
+    });
   }
 
   // GRANT PERMISSIONS TO SPECIFIC USER
@@ -153,7 +155,9 @@ class MeshPermissionsService {
 
     // 2. Send via Nostr (if it's a Nostr pubkey)
     if (nodeId.length === 64) {
-      nostrService.sendDirectMessage(nodeId, JSON.stringify(confirmation));
+      void nostrService.sendDirectMessage(nodeId, JSON.stringify(confirmation)).catch((error) => {
+        console.debug('Permission confirmation over Nostr skipped:', error);
+      });
     }
   }
 

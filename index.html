@@ -12,15 +12,18 @@
     <meta http-equiv="Expires" content="0">
 
     <!-- FIX 2: Security Policy (Allows Websockets for Chat & Images) -->
-    <meta http-equiv="Content-Security-Policy"
+   <meta http-equiv="Content-Security-Policy"
 content="
 default-src 'self' data: blob:;
 script-src 'self' 'unsafe-inline' 'unsafe-eval';
+worker-src 'self' blob:;
 connect-src 'self' https: http: ws: wss:;
 img-src 'self' data: blob: https:;
 style-src 'self' 'unsafe-inline' https:;
 font-src 'self' data: https:;
 ">
+
+    <script>
         // CRITICAL POLYFILLS for Mobile/PWA
         window.global = window;
         window.process = window.process || { env: { NODE_ENV: 'production' }, version: '' };
@@ -30,6 +33,17 @@ font-src 'self' data: https:;
             console.error("Global Error:", msg, "at", line, ":", col);
         };
         window.addEventListener('unhandledrejection', function (event) {
+            const reason = event.reason ? (event.reason.message || event.reason.toString()) : '';
+            if (
+                reason.includes('rate-limited') ||
+                reason.includes('slow down') ||
+                reason.includes('connection timed out') ||
+                reason.includes('publish timed out') ||
+                reason.includes('timeout')
+            ) {
+                event.preventDefault();
+                return;
+            }
             console.warn("Unhandled Promise Rejection:", event.reason);
         });
     </script>

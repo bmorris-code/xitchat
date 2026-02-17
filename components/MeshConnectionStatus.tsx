@@ -6,7 +6,7 @@ import { bluetoothMesh } from '../services/bluetoothMesh';
 import { geohashChannels } from '../services/geohashChannels';
 
 const MeshConnectionStatus: React.FC = () => {
-  const [connectionType, setConnectionType] = useState<MeshConnectionType>('simulation');
+  const [connectionType, setConnectionType] = useState<MeshConnectionType>('broadcast');
   const [isConnected, setIsConnected] = useState(false);
   const [peerCount, setPeerCount] = useState(0);
   const [deviceInfo, setDeviceInfo] = useState<any>(null);
@@ -23,14 +23,13 @@ const MeshConnectionStatus: React.FC = () => {
 
       // Determine primary connection type from active services
       const activeServices = info.activeServices;
-      let primaryType: MeshConnectionType = 'simulation';
+      let primaryType: MeshConnectionType = 'broadcast';
       
       if (activeServices.bluetooth) primaryType = 'bluetooth';
       else if (activeServices.webrtc) primaryType = 'webrtc';
       else if (activeServices.wifi) primaryType = 'wifi';
       else if (activeServices.nostr) primaryType = 'nostr';
       else if (activeServices.broadcast) primaryType = 'broadcast';
-      else if (activeServices.local) primaryType = 'local';
 
       setConnectionType(primaryType);
       setIsConnected(hybridMesh.isConnectedToMesh());
@@ -40,7 +39,10 @@ const MeshConnectionStatus: React.FC = () => {
         connected: nostrService.isConnected(),
         relays: nostrService.getConnectionInfo().relayCount
       });
-      setSignalFidelity(Math.floor(Math.random() * 10 + 70)); // Simulated fidelity for now
+      const computedFidelity = !hybridMesh.isConnectedToMesh()
+        ? 0
+        : Math.min(100, 60 + (info.peerCount * 8) + (nostrService.isConnected() ? 12 : 0));
+      setSignalFidelity(computedFidelity);
       if (location) setCurrentGeohash(location.geohash);
     };
 
@@ -88,7 +90,6 @@ const MeshConnectionStatus: React.FC = () => {
       case 'wifi': return '📶';
       case 'nostr': return '🌐';
       case 'broadcast': return '📡';
-      case 'local': return '🏠';
       default: return '📱';
     }
   };
@@ -101,7 +102,6 @@ const MeshConnectionStatus: React.FC = () => {
       case 'wifi': return 'text-green-400';
       case 'nostr': return 'text-purple-400';
       case 'broadcast': return 'text-orange-400';
-      case 'local': return 'text-blue-400';
       default: return 'text-yellow-500';
     }
   };
@@ -114,8 +114,7 @@ const MeshConnectionStatus: React.FC = () => {
       case 'wifi': return 'WIFI P2P';
       case 'nostr': return 'NOSTR MESH';
       case 'broadcast': return 'BROADCAST MESH';
-      case 'local': return 'LOCAL MESH';
-      default: return 'SIMULATION MODE';
+      default: return 'REALTIME MESH';
     }
   };
 

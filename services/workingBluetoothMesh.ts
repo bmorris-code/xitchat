@@ -1,9 +1,7 @@
 // Working Bluetooth Mesh Implementation for XitChat
-// Scans for nearby Bluetooth devices with Simulation Fallback
+// Real hardware transport only (no simulation paths)
 import { networkStateManager, NetworkService } from './networkStateManager';
 
-
-// --- Type Definitions for Web Bluetooth API ---
 interface BluetoothDevice {
   id: string;
   name?: string;
@@ -16,28 +14,17 @@ interface BluetoothRemoteGATTServer {
   connected: boolean;
   connect(): Promise<BluetoothRemoteGATTServer>;
   disconnect(): void;
-  getPrimaryService(service: string | number): Promise<BluetoothRemoteGATTService>;
-}
-
-interface BluetoothRemoteGATTService {
-  getCharacteristic(characteristic: string | number): Promise<BluetoothRemoteGATTCharacteristic>;
-}
-
-interface BluetoothRemoteGATTCharacteristic {
-  writeValue(value: BufferSource): Promise<void>;
 }
 
 interface NavigatorBluetooth {
   bluetooth: {
     requestDevice(options: any): Promise<BluetoothDevice>;
-    requestLEScan?(options: any): Promise<any>;
     getAvailability(): Promise<boolean>;
   };
 }
 
-// Extend global navigator
 declare global {
-  interface Navigator extends NavigatorBluetooth { }
+  interface Navigator extends NavigatorBluetooth {}
 }
 
 export interface WorkingMeshNode {
@@ -46,7 +33,7 @@ export interface WorkingMeshNode {
   handle: string;
   device: BluetoothDevice | null;
   distance: number;
-  lastSeen: number; // Changed to number (timestamp) for easier serialization
+  lastSeen: number;
   signalStrength: number;
 }
 
@@ -65,95 +52,90 @@ class WorkingBluetoothMeshService {
     maxReconnectAttempts: 3,
     reconnectDelay: 5000
   };
+  private nativeListenersRegistered = false;
+  private nativeBluetoothPlugin: any = null;
 
+  private registerWithNetworkManager(): void {
+    this.serviceInfo.healthCheck = () => this.performHealthCheck();
+    this.serviceInfo.reconnect = () => this.initialize();
+    networkStateManager.registerService(this.serviceInfo);
+  }
+
+  private setupNativePluginListeners(BluetoothMesh: any): void {
+    if (this.nativeListenersRegistered) return;
+    this.nativeListenersRegistered = true;
+
+    BluetoothMesh.addListener('deviceDiscovered', (event: any) => {
+      this.handleNativeDiscoveredDevice(event);
+    }).catch(() => {});
+
+    BluetoothMesh.addListener('messageReceived', (event: any) => {
+      this.emit('messageReceived', {
+        id: `bt-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        from: event.deviceId,
+        to: 'me',
+        content: event.message,
+        timestamp: Date.now()
+      });
+    }).catch(() => {});
+  }
+
+  private failUnavailable(context: string): boolean {
+    console.warn(`Bluetooth unavailable (${context}) - real hardware required`);
+    this.peers.clear();
+    this.isConnected = false;
+    this.serviceInfo.isConnected = false;
+    this.serviceInfo.isHealthy = false;
+    networkStateManager.updateServiceStatus('bluetoothMesh', false, false);
+    return false;
+  }
 
   async initialize(): Promise<boolean> {
     try {
-      console.log('� Initializing SERVERLESS Bluetooth Mesh...');
+      this.registerWithNetworkManager();
+      console.log('Initializing Bluetooth mesh (real transport only)...');
 
-      // ANDROID SERVERLESS: Skip native plugins (they don't exist)
-      // Use Web Bluetooth API with simulation fallback for true P2P
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
 
       if (isNativeAndroid) {
-        console.log('📱 Android: Using Web Bluetooth API in Capacitor WebView');
-        console.log('� Direct P2P Bluetooth - no native plugins needed');
-
-        // Try Web Bluetooth API in Android WebView
         if (typeof navigator !== 'undefined' && navigator.bluetooth) {
           try {
             const available = await navigator.bluetooth.getAvailability();
             if (available) {
-              console.log('✅ Web Bluetooth API available in Android WebView');
+              this.isConnected = true;
               this.serviceInfo.isConnected = true;
               this.serviceInfo.isHealthy = true;
               networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
               return true;
             }
           } catch (error) {
-            console.warn('Web Bluetooth not available, will use simulation:', error);
+            console.warn('Web Bluetooth unavailable on Android WebView:', error);
           }
         }
-
-        // Fallback to simulation for demo purposes
-        console.log('📱 Android: Using Bluetooth simulation for demo');
-        this.startSimulation();
-        this.serviceInfo.isConnected = true;
-        this.serviceInfo.isHealthy = true;
-        networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
-        return true;
+        return this.failUnavailable('android-no-web-bluetooth');
       }
 
-      // Web/Desktop: Use Web Bluetooth API
       if (typeof navigator === 'undefined' || !navigator.bluetooth) {
-        console.debug('ℹ️ Web Bluetooth API not available - using simulation');
-        this.startSimulation();
-        return true;
+        return this.failUnavailable('web-no-bluetooth-api');
       }
 
       const available = await navigator.bluetooth.getAvailability();
       if (!available) {
-        console.debug('ℹ️ Bluetooth hardware not available - using simulation');
-        this.startSimulation();
-        return true;
+        return this.failUnavailable('web-bluetooth-unavailable');
       }
 
+      this.isConnected = true;
       this.serviceInfo.isConnected = true;
       this.serviceInfo.isHealthy = true;
       networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
       return true;
-
     } catch (error) {
-      console.debug('ℹ️ Bluetooth initialization failed, using simulation:', error);
-      this.startSimulation();
-      return true; // Always succeed with simulation
+      console.warn('Bluetooth initialization failed:', error);
+      return this.failUnavailable('initialize-error');
     }
   }
 
-  private startSimulation(): void {
-    console.log('🎭 Starting Bluetooth mesh simulation for demo...');
-
-    // Simulate discovering some demo devices
-    setTimeout(() => {
-      const demoDevices = [
-        { id: 'demo-bt-001', name: 'XitChat-Alpha', rssi: -60 },
-        { id: 'demo-bt-002', name: 'XitChat-Beta', rssi: -75 },
-        { id: 'demo-bt-003', name: 'XitChat-Gamma', rssi: -85 }
-      ];
-
-      demoDevices.forEach((demo, index) => {
-        setTimeout(() => {
-          this.handleNativeDiscoveredDevice({
-            deviceId: demo.id,
-            deviceName: demo.name,
-            rssi: demo.rssi
-          });
-        }, index * 1000);
-      });
-    }, 2000);
-  }
-
-  private handleNativeDiscoveredDevice(device: any) {
+  private handleNativeDiscoveredDevice(device: any): void {
     const deviceId = device.deviceId;
     const existingPeer = this.peers.get(deviceId);
 
@@ -165,8 +147,8 @@ class WorkingBluetoothMeshService {
         id: deviceId,
         name: device.deviceName || `Device ${deviceId.substring(0, 4)}`,
         handle: `@${(device.deviceName || 'node').replace(/\s+/g, '').toLowerCase()}`,
-        device: null, // Native handles its own device objects
-        distance: distance,
+        device: null,
+        distance,
         lastSeen: Date.now(),
         signalStrength: signal
       };
@@ -182,38 +164,34 @@ class WorkingBluetoothMeshService {
   }
 
   async startScanning(): Promise<boolean> {
-    // 1. Native Branch
     if ((window as any).Capacitor?.isNativePlatform()) {
       try {
         const { registerPlugin } = await import('@capacitor/core');
         const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
+        this.nativeBluetoothPlugin = BluetoothMesh;
+        this.setupNativePluginListeners(BluetoothMesh);
 
         await BluetoothMesh.startScanning();
         await BluetoothMesh.startAdvertising({
-          deviceName: "XitChat-" + Math.random().toString(36).substr(2, 4),
-          deviceId: this.myDevice ? (this.myDevice as any).id : "anon"
+          deviceName: 'XitChat-' + Math.random().toString(36).substr(2, 4),
+          deviceId: this.myDevice ? (this.myDevice as any).id : 'anon'
         });
 
-        console.log('📡 Native scanning and advertising started');
+        console.log('Native Bluetooth scan/advertise started');
         return true;
       } catch (e) {
-        console.error('❌ Failed to start native Bluetooth scan:', e);
+        console.error('Failed to start native Bluetooth scan:', e);
         return false;
       }
     }
 
-    // 2. Web Fallback
     if (!navigator.bluetooth) {
-      console.debug('ℹ️ Bluetooth not available - scanning disabled');
+      console.debug('Bluetooth not available - scanning disabled');
       return false;
     }
 
     try {
-      console.log('📱 Requesting Bluetooth Device...');
-
-      // Request Device - This triggers the browser popup
       const device = await navigator.bluetooth.requestDevice({
-        // standard services for broader compatibility
         acceptAllDevices: true,
         optionalServices: ['battery_service', 'device_information']
       });
@@ -223,32 +201,26 @@ class WorkingBluetoothMeshService {
         return true;
       }
       return false;
-
     } catch (error: any) {
-      // Handle "User cancelled" specifically to avoid red console errors
       if (error.name === 'NotFoundError' || error.message.includes('cancelled')) {
-        console.log('ℹ️ Bluetooth scan cancelled by user.');
+        console.log('Bluetooth scan cancelled by user');
         return false;
       }
-      console.debug('ℹ️ Bluetooth scan failed - scanning disabled:', error);
-      return false; // Graceful fallback instead of throwing error
+      console.debug('Bluetooth scan failed:', error);
+      return false;
     }
   }
 
-  private handleConnection(device: BluetoothDevice) {
-    console.log(`✅ Connected to: ${device.name || 'Unknown Device'}`);
+  private handleConnection(device: BluetoothDevice): void {
     this.myDevice = device;
     this.isConnected = true;
 
-    // Handle disconnection
     device.addEventListener('gattserverdisconnected', () => {
-      console.log('❌ Device disconnected');
       this.isConnected = false;
       this.emit('disconnected', {});
     });
 
-    // Add as a peer immediately
-    this.handleDiscoveredDevice(device, -50); // Assume close proximity on connect
+    this.handleDiscoveredDevice(device, -50);
     this.emit('connected', { deviceName: device.name });
   }
 
@@ -258,7 +230,6 @@ class WorkingBluetoothMeshService {
     const deviceId = device.id;
     const existingPeer = this.peers.get(deviceId);
 
-    // Calculate metrics
     const distance = this.calculateDistance(rssi);
     const signal = this.calculateSignalStrength(rssi);
 
@@ -267,14 +238,13 @@ class WorkingBluetoothMeshService {
         id: deviceId,
         name: device.name || `Unknown Device ${this.peers.size + 1}`,
         handle: `@${(device.name || 'user').replace(/\s+/g, '').toLowerCase().substring(0, 8)}`,
-        device: device,
-        distance: distance,
+        device,
+        distance,
         lastSeen: Date.now(),
         signalStrength: signal
       };
 
       this.peers.set(deviceId, peer);
-      console.log(`👋 Found device: ${peer.name}`);
       this.emit('peersUpdated', Array.from(this.peers.values()));
     } else {
       existingPeer.lastSeen = Date.now();
@@ -305,45 +275,34 @@ class WorkingBluetoothMeshService {
     const peer = this.peers.get(peerId);
     if (!peer) return false;
 
-    console.log(`📤 Attempting Bluetooth send to ${peer.name}`);
-
-    // 1. Native Branch - Try native plugin if available
     if ((window as any).Capacitor?.isNativePlatform()) {
       try {
-        const { registerPlugin } = await import('@capacitor/core');
-        const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
+        const BluetoothMesh = this.nativeBluetoothPlugin || (await import('@capacitor/core')).registerPlugin<any>('BluetoothMesh');
+        this.nativeBluetoothPlugin = BluetoothMesh;
 
         await BluetoothMesh.sendMessage({
           deviceId: peerId,
           message: content
         });
 
-        console.log(`✅ Bluetooth message sent via native plugin to ${peer.name}`);
         return true;
       } catch (e) {
-        // Silently fail - native plugin not available or not connected
-        // This is expected when native plugins aren't implemented yet
-        console.debug('Bluetooth native plugin not available, will use fallback networks');
+        console.debug('Bluetooth native plugin send failed:', e);
         return false;
       }
     }
 
-    // 2. Web Bluetooth Transmission (GATT)
     if (!peer.device || !peer.device.gatt) {
-      throw new Error('Real Bluetooth device connection required');
+      return false;
     }
 
-    // Real logic (if connected)
     try {
       if (peer.device.gatt.connected) {
-        // GATT logic...
         return true;
       }
       return false;
-    } catch (e) {
-      console.warn("Message send failed (using fallback):", e);
-      this.emit('messageSent', { to: peerId, content, timestamp: new Date() }); // Optimistic UI
-      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -386,11 +345,9 @@ class WorkingBluetoothMeshService {
     this.peers.clear();
     this.emit('disconnected', {});
     networkStateManager.updateServiceStatus('bluetoothMesh', false, false);
-    console.log('🔌 Bluetooth mesh disconnected');
   }
 
   private async performHealthCheck(): Promise<boolean> {
-    // Healthy if we are connected or have peers
     return this.isConnected || this.peers.size > 0;
   }
 }

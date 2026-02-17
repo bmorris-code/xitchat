@@ -130,19 +130,27 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 
     // 2. Sync to Nostr for cross-device real-time updates
     const syncToNostr = async () => {
-      await nostrService.updateProfile({
-        name: myHandle,
-        picture: myAvatar,
-        about: myMood.text,
-        custom_fields: {
-          emoji: myMood.emoji,
-          theme: theme,
-          uplinkCore: uplinkCore
-        }
-      });
+      try {
+        await nostrService.updateProfile({
+          name: myHandle,
+          picture: myAvatar,
+          about: myMood.text,
+          custom_fields: {
+            emoji: myMood.emoji,
+            theme: theme,
+            uplinkCore: uplinkCore
+          }
+        });
+      } catch (error) {
+        console.debug('Profile sync to Nostr skipped:', error);
+      }
     };
 
-    const timeoutId = setTimeout(syncToNostr, 2000); // Debounce Nostr updates
+    const timeoutId = setTimeout(() => {
+      syncToNostr().catch((error) => {
+        console.debug('Debounced profile sync failed:', error);
+      });
+    }, 2000); // Debounce Nostr updates
     return () => clearTimeout(timeoutId);
   }, [myHandle, myAvatar, myMood, theme, uplinkCore]);
 

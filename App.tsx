@@ -14,6 +14,8 @@ import { realPowService } from './services/realPowService';
 import { realMarketplaceService } from './services/realMarketplaceService';
 import { nostrService, NostrPeer } from './services/nostrService';
 import { geohashChannels } from './services/geohashChannels';
+import { messageACKService } from './services/messageACKService';
+import { mobileLifecycle } from './services/mobileLifecycle';
 import Sidebar from './components/Sidebar';
 import ChatList from './components/ChatList';
 import ChatWindow from './components/ChatWindow';
@@ -58,11 +60,30 @@ const App: React.FC = () => {
   const [radarPeers, setRadarPeers] = useState<RadarPeer[]>([]);
   const [showQRDiscovery, setShowQRDiscovery] = useState(false);
   const [isRealMode, setIsRealMode] = useState(true);
+  const [realTransportGuard, setRealTransportGuard] = useState<{ blocked: boolean; reason: string }>({
+    blocked: false,
+    reason: ''
+  });
   const botRequestCounterRef = useRef(0);
   const [botStreamState, setBotStreamState] = useState<{ active: boolean; provider: string }>({
     active: false,
     provider: 'auto'
   });
+
+  const mapTransportForAck = (connectionType?: string): 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' => {
+    switch (connectionType) {
+      case 'webrtc':
+        return 'webrtc';
+      case 'nostr':
+        return 'nostr';
+      case 'bluetooth':
+        return 'bluetooth';
+      case 'wifi':
+        return 'wifi';
+      default:
+        return 'relay';
+    }
+  };
 
   console.log('App state initialized');
 
@@ -199,7 +220,7 @@ const App: React.FC = () => {
           }));
 
         } else {
-          console.log('⚠️ Real-time radar unavailable, using simulation mode');
+          console.log('⚠️ Real-time radar unavailable');
           setIsRealMode(false);
         }
 
@@ -265,6 +286,18 @@ const App: React.FC = () => {
         const initializedTypes = await hybridMesh.initialize();
         console.log('Hybrid mesh initialized with:', initializedTypes);
 
+        const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+        const hasRealLocalTransport = initializedTypes.includes('bluetooth') || initializedTypes.includes('wifi');
+
+        if (isNativeAndroid && !hasRealLocalTransport) {
+          setRealTransportGuard({
+            blocked: true,
+            reason: 'Bluetooth/WiFi mesh transport unavailable. Enable Nearby Devices, Location, Bluetooth, and WiFi.'
+          });
+        } else {
+          setRealTransportGuard({ blocked: false, reason: '' });
+        }
+
         // Start handshake persistence background maintenance
         handshakePersistence.startBackgroundMaintenance();
 
@@ -276,6 +309,15 @@ const App: React.FC = () => {
           const senderId = message.from || message.senderId;
 
           if (senderId && senderId !== 'me') {
+            if (message.id) {
+              messageACKService.receiveMessage(
+                message.id,
+                senderId,
+                message.content,
+                mapTransportForAck(message.connectionType)
+              ).catch(() => { });
+            }
+
             // Record handshake for new peers
             let handshakeType: 'bluetooth' | 'wifi' | 'global' = 'global';
             if (message.connectionType === 'bluetooth') handshakeType = 'bluetooth';
@@ -353,6 +395,15 @@ const App: React.FC = () => {
           }
         });
 
+        hybridMesh.subscribe('ackReceived', (ack: any) => {
+          if (!ack?.messageId) return;
+          messageACKService.markMessageDelivered(
+            ack.messageId,
+            ack.from || 'unknown',
+            mapTransportForAck(ack.connectionType)
+          );
+        });
+
         hybridMesh.subscribe('peersUpdated', (peers) => {
           console.log('Mesh peers updated:', peers);
 
@@ -363,12 +414,85 @@ const App: React.FC = () => {
         });
       } catch (error) {
         console.error('Failed to initialize hybrid mesh:', error);
+        const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+        if (isNativeAndroid) {
+          setRealTransportGuard({
+            blocked: true,
+            reason: 'Mesh initialization failed. Verify Bluetooth/WiFi permissions and restart app.'
+          });
+        }
       }
     };
 
     initializeMesh();
   }, []);
 
+  // Wire Message ACK retry events to active transports
+  useEffect(() => {
+    const unsubSend = messageACKService.subscribe('sendMessage', async (event) => {
+      try {
+        if (!event?.to || !event?.content) return;
+
+        if (event.transportLayer === 'nostr' && (/^[0-9a-f]{64}$/i.test(event.to) || event.to.startsWith('npub'))) {
+          const success = await nostrService.sendDirectMessage(event.to, event.content);
+          if (success && event.messageId) {
+            messageACKService.markMessageDelivered(event.messageId, event.to, 'nostr');
+          }
+          return;
+        }
+
+        await hybridMesh.sendMessage(event.content, event.to, undefined, event.messageId);
+      } catch (error) {
+        console.error('ACK retry transport send failed:', error);
+      }
+    });
+
+    const unsubAck = messageACKService.subscribe('sendACK', async (event) => {
+      try {
+        const ack = event?.ack;
+        if (!ack?.to || !ack?.messageId) return;
+
+        const payload = JSON.stringify({
+          type: 'ack',
+          messageId: ack.messageId,
+          timestamp: ack.timestamp
+        });
+
+        if ((/^[0-9a-f]{64}$/i.test(ack.to) || ack.to.startsWith('npub')) && nostrConnected) {
+          await nostrService.sendDirectMessage(ack.to, payload);
+        } else {
+          await hybridMesh.sendMessage(payload, ack.to);
+        }
+      } catch (error) {
+        console.error('ACK send failed:', error);
+      }
+    });
+
+    return () => {
+      unsubSend();
+      unsubAck();
+    };
+  }, [nostrConnected]);
+
+  // Android/PWA lifecycle mesh tuning: re-scan on wake/resume and network restoration.
+  useEffect(() => {
+    const unsubState = mobileLifecycle.on('state_change', async (event: any) => {
+      if (event?.data?.action === 'resume_mesh' || event?.data?.newState === 'active') {
+        await hybridMesh.refreshLocalMeshConnectivity();
+      }
+    });
+
+    const unsubNetwork = mobileLifecycle.on('network_change', async (event: any) => {
+      if (event?.data?.state === 'online') {
+        await hybridMesh.refreshLocalMeshConnectivity();
+      }
+    });
+
+    return () => {
+      unsubState();
+      unsubNetwork();
+    };
+  }, []);
   // Initialize Real TOR and POW Services
   useEffect(() => {
     const initializeSecurityServices = async () => {
@@ -444,7 +568,22 @@ const App: React.FC = () => {
 
           // Subscribe to Nostr events
           const unsubMsg = nostrService.subscribe('messageReceived', (message) => {
-            console.log('📨 Nostr message received:', message);
+            if (typeof message.content === 'string' && message.content.startsWith('{')) {
+              try {
+                const control = JSON.parse(message.content);
+                if (control.type === 'ack' && control.messageId) {
+                  messageACKService.markMessageDelivered(control.messageId, message.from, 'nostr');
+                  return;
+                }
+              } catch {
+                // Ignore parse failures; regular message flow below.
+              }
+            }
+
+            if (message.id && message.from) {
+              messageACKService.receiveMessage(message.id, message.from, message.content, 'nostr').catch(() => { });
+            }
+
             // Convert Nostr message to app format and add to chats
             setChats(prev => {
               const nostrChat = prev.find(c => c.participant.id === `nostr-${message.from}`);
@@ -890,8 +1029,10 @@ const App: React.FC = () => {
     // Send via Nostr if recipient is a Nostr user
     if (options?.nostrRecipient && nostrConnected) {
       try {
+        messageACKService.trackOutgoingMessage(newMessage.id, options.nostrRecipient, text, 'nostr', true);
         const success = await nostrService.sendDirectMessage(options.nostrRecipient, text);
         if (success) {
+          messageACKService.markMessageDelivered(newMessage.id, options.nostrRecipient, 'nostr');
           console.log('📤 Message sent via Nostr to:', options.nostrRecipient);
         }
       } catch (error) {
@@ -922,7 +1063,10 @@ const App: React.FC = () => {
           meshTargetId = meshTargetId.replace('node-', '');
         }
 
-        await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData);
+        if (meshTargetId) {
+          messageACKService.trackOutgoingMessage(newMessage.id, meshTargetId, text, 'relay', true);
+        }
+        await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData, newMessage.id);
         console.log('Message sent via hybrid mesh:', { text, targetId: meshTargetId, encrypted: !!options?.encryptedData });
       } catch (error) {
         console.error('Failed to send via hybrid mesh:', error);
@@ -1486,6 +1630,33 @@ const App: React.FC = () => {
         minHeight: '100dvh',
         WebkitOverflowScrolling: 'touch',
       }}>
+      {realTransportGuard.blocked && (
+        <div className="fixed inset-0 z-[250] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="max-w-xl w-full border-2 border-red-500 bg-[#050505] p-8 text-red-200">
+            <h2 className="text-2xl font-black uppercase tracking-wide mb-3 text-red-400">Real Mesh Required</h2>
+            <p className="text-sm leading-relaxed mb-6">
+              {realTransportGuard.reason}
+            </p>
+            <div className="text-xs opacity-80 mb-6">
+              Required for XitChat offline promise: Bluetooth Mesh and/or WiFi P2P must be active on Android.
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 border border-red-400 text-red-300 hover:bg-red-500/10"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => setView('settings')}
+                className="px-4 py-2 border border-current border-opacity-40 hover:bg-white/5"
+              >
+                Open Settings
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <Sidebar currentView={view} setView={setView} userAvatar={myAvatar} />
       <div className="flex-1 flex overflow-hidden relative md:pt-0 mobile-content-padding">
 
@@ -1625,3 +1796,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

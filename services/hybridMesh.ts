@@ -5,7 +5,6 @@ import { workingBluetoothMesh, WorkingMeshNode } from './workingBluetoothMesh';
 import { wifiP2P, WiFiPeer } from './wifiP2P';
 import { nostrService, NostrPeer } from './nostrService';
 import { broadcastMesh, BroadcastPeer } from './broadcastMesh';
-import { localTestMesh, LocalMeshNode } from './localTestMesh';
 import { realtimeRadar } from './realtimeRadar';
 import { realTorService } from './realTorService';
 import { realPowService } from './realPowService';
@@ -13,7 +12,7 @@ import { ablyWebRTC } from './ablyWebRTC';
 import { networkStateManager } from './networkStateManager';
 import { androidPermissions } from './androidPermissions';
 
-export type MeshConnectionType = 'bluetooth' | 'webrtc' | 'broadcast' | 'local' | 'simulation' | 'wifi' | 'nostr';
+export type MeshConnectionType = 'bluetooth' | 'webrtc' | 'broadcast' | 'wifi' | 'nostr';
 
 export interface HybridMeshPeer {
   id: string;
@@ -58,6 +57,11 @@ class HybridMeshService {
   private isBridgeEnabled = true;
   getDeviceCompatibility: any;
 
+  private isLikelyNostrId(id?: string): boolean {
+    if (!id) return false;
+    return /^[0-9a-f]{64}$/i.test(id) || id.startsWith('npub');
+  }
+
   async initialize(): Promise<MeshConnectionType[]> {
     console.log('--- HYBRID MESH INITIALIZE CALLED ---');
     try {
@@ -72,7 +76,7 @@ class HybridMeshService {
         console.log('🔐 Requesting Android hardware permissions for direct P2P...');
         await androidPermissions.requestAllCriticalPermissions();
       } else {
-        console.log('🌐 Web: Using mesh simulation + Nostr');
+        console.log('🌐 Web: Using real mesh transports available in browser + Nostr');
       }
 
       const initializedTypes: MeshConnectionType[] = [];
@@ -102,8 +106,8 @@ class HybridMeshService {
         // NO WEBRTC ON ANDROID - It requires servers
         console.log('� Skipping WebRTC on Android (requires server - using true P2P instead)');
       } else {
-        // Web-only: Use WebRTC simulation
-        console.log('🌐 Web: Using WebRTC simulation...');
+        // Web-only: Use WebRTC if configured
+        console.log('🌐 Web: Using WebRTC when configured...');
         const webrtcSuccess = await this.startWebRTC();
         if (webrtcSuccess) initializedTypes.push('webrtc');
       }
@@ -114,7 +118,7 @@ class HybridMeshService {
       return initializedTypes;
     } catch (error) {
       console.error('Serverless mesh initialization failed:', error);
-      return ['local'];
+      return [];
     }
   }
 
@@ -243,13 +247,13 @@ class HybridMeshService {
     console.log(`🔗 External peer added to hybrid mesh: ${hybridPeer.handle} via ${connectionType}`);
   }
 
-  private handleChatMessage(content: string, from: string, connectionType: MeshConnectionType) {
+  private handleChatMessage(content: string, from: string, connectionType: MeshConnectionType, metadata?: { messageId?: string; timestamp?: number }) {
     const hybridMessage: HybridMeshMessage = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: metadata?.messageId || Math.random().toString(36).substr(2, 9),
       from: from,
       to: 'me',
       content: content,
-      timestamp: Date.now(),
+      timestamp: metadata?.timestamp || Date.now(),
       connectionType: connectionType,
       encrypted: false,
       isBridged: false
@@ -329,7 +333,16 @@ class HybridMeshService {
             }
             if (inner.type === 'chat_message') {
               // Handle chat messages from radar peers
-              this.handleChatMessage(inner.data, message.from, connectionType);
+              this.handleChatMessage(inner.data, message.from, connectionType, metadata);
+              return;
+            }
+            if (inner.type === 'ack' && inner.messageId) {
+              this.notifyListeners('ackReceived', {
+                messageId: inner.messageId,
+                from: message.from,
+                timestamp: inner.timestamp || Date.now(),
+                connectionType
+              });
               return;
             }
           }
@@ -337,7 +350,7 @@ class HybridMeshService {
       }
 
       // Handle regular chat messages
-      this.handleChatMessage(content, message.from, connectionType);
+      this.handleChatMessage(content, message.from, connectionType, metadata);
 
     } catch (error) {
       console.error('Failed to parse hybrid mesh message:', error, content);
@@ -353,7 +366,9 @@ class HybridMeshService {
     if (isLocalSource && this.activeServices.nostr) {
       console.log(`📡 Bridging message from ${message.from} to Nostr layer`);
       this.bridgeStats.bridgedOut++;
-      nostrService.broadcastMessage(JSON.stringify({ ...message, isBridged: true }));
+      void nostrService.broadcastMessage(JSON.stringify({ ...message, isBridged: true })).catch((error) => {
+        console.debug('Bridge to Nostr skipped:', error);
+      });
     }
 
     if (message.connectionType === 'nostr' && (this.activeServices.bluetooth || this.activeServices.wifi)) {
@@ -366,12 +381,14 @@ class HybridMeshService {
           .forEach(p => workingBluetoothMesh.sendMessage(p.serviceId!, bridged).catch(() => { }));
       }
       if (this.activeServices.wifi) {
-        wifiP2P.sendMessage('broadcast', bridged).catch(() => { });
+        Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'wifi' && !!p.serviceId)
+          .forEach(p => wifiP2P.sendMessage(p.serviceId!, bridged).catch(() => { }));
       }
     }
   }
 
-  async sendMessage(content: string, targetId?: string, encryptedData?: any): Promise<void> {
+  async sendMessage(content: string, targetId?: string, encryptedData?: any, messageId?: string): Promise<void> {
     try {
       let torEnabled = realTorService.getStatus().connected;
       let powSolution = undefined;
@@ -382,7 +399,7 @@ class HybridMeshService {
         tor: torEnabled,
         pow: powSolution,
         timestamp: Date.now(),
-        messageId: Math.random().toString(36).substr(2, 9)
+        messageId: messageId || Math.random().toString(36).substr(2, 9)
       });
 
       console.log('📨 Sending message:', { targetId, content: content.substring(0, 50), networks: this.getActiveServices() });
@@ -427,9 +444,10 @@ class HybridMeshService {
             console.log(`⚠️ Primary network ${peer.connectionType} failed for ${peer.handle}, trying fallback networks...`);
 
             // Try Nostr as universal fallback
-            if (this.activeServices.nostr && peer.connectionType !== 'nostr') {
+            if (this.activeServices.nostr && peer.connectionType !== 'nostr' && this.isLikelyNostrId(peer.serviceId || peer.id || targetId)) {
               console.log('🔄 Trying Nostr fallback...');
-              const nostrSuccess = await nostrService.sendDirectMessage(peer.serviceId!, payload).catch(() => false);
+              const nostrTarget = peer.serviceId || peer.id || targetId!;
+              const nostrSuccess = await nostrService.sendDirectMessage(nostrTarget, payload).catch(() => false);
               if (nostrSuccess) console.log(`✅ Message sent via Nostr fallback to ${peer.handle}`);
             }
 
@@ -443,7 +461,7 @@ class HybridMeshService {
           return;
         } else {
           // Fallback: If peer not found in mesh map, but looks like a valid ID and Nostr is active, try Nostr
-          if (this.activeServices.nostr) {
+          if (this.activeServices.nostr && this.isLikelyNostrId(targetId)) {
             console.log(`⚠️ Peer ${targetId} not found in mesh map, falling back to direct Nostr send`);
             nostrService.sendDirectMessage(targetId, payload).catch(e => console.error('Fallback Nostr send failed:', e));
             return;
@@ -459,7 +477,11 @@ class HybridMeshService {
         broadcastPromises.push(broadcastMesh.broadcastMessage(payload).catch(e => console.log('Broadcast failed:', e)));
       }
       if (this.activeServices.wifi) {
-        broadcastPromises.push(wifiP2P.sendMessage('broadcast', payload).catch(e => console.log('WiFi P2P failed:', e)));
+        const wifiPeers = Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'wifi' && !!p.serviceId);
+        wifiPeers.forEach(p => {
+          broadcastPromises.push(wifiP2P.sendMessage(p.serviceId!, payload).catch(e => console.log('WiFi P2P failed:', e)));
+        });
       }
       if (this.activeServices.nostr) {
         broadcastPromises.push(nostrService.broadcastMessage(payload).catch(e => console.log('Nostr broadcast failed:', e)));
@@ -507,6 +529,24 @@ class HybridMeshService {
   setBridgeEnabled(enabled: boolean) { this.isBridgeEnabled = enabled; }
   isConnectedToMesh() {
     return networkStateManager.hasAnyConnection() || Object.values(this.activeServices).some(s => s);
+  }
+
+  async refreshLocalMeshConnectivity(): Promise<void> {
+    try {
+      if (this.activeServices.wifi) {
+        await wifiP2P.startDiscovery();
+      }
+    } catch (error) {
+      console.debug('WiFi refresh skipped:', error);
+    }
+
+    try {
+      if (this.activeServices.bluetooth) {
+        await workingBluetoothMesh.startScanning();
+      }
+    } catch (error) {
+      console.debug('Bluetooth refresh skipped:', error);
+    }
   }
 
   subscribe(event: string, callback: (data: any) => void): () => void {

@@ -61,22 +61,19 @@ class BluetoothMeshService {
     try {
       // Check if Bluetooth Web API is available
       if (!('bluetooth' in navigator)) {
-        console.debug('Bluetooth Web API not available - using enhanced simulation mode');
-        
-        // Register with network state manager even in simulation mode
+        console.warn('Bluetooth Web API not available - real hardware required');
+
+        // Register with network state manager
         this.serviceInfo.healthCheck = () => this.performHealthCheck();
         this.serviceInfo.reconnect = () => this.reconnect();
         networkStateManager.registerService(this.serviceInfo);
-        
-        this.isConnected = true;
-        this.serviceInfo.isConnected = true;
-        this.serviceInfo.isHealthy = true;
+
+        this.isConnected = false;
+        this.serviceInfo.isConnected = false;
+        this.serviceInfo.isHealthy = false;
         this.serviceInfo.lastCheck = Date.now();
-        networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
-        
-        this.startDiscovery();
-        this.startMeshRouting();
-        return true;
+        networkStateManager.updateServiceStatus('bluetoothMesh', false, false);
+        return false;
       }
 
       // Request Bluetooth device with proper permissions
@@ -101,22 +98,19 @@ class BluetoothMeshService {
       this.startMeshRouting();
       return true;
     } catch (error) {
-      console.warn('Bluetooth initialization failed, falling back to enhanced simulation:', error);
-      
-      // Enhanced fallback with network state manager integration
+      console.warn('Bluetooth initialization failed:', error);
+
+      // Keep status accurate on initialization failures
       this.serviceInfo.healthCheck = () => this.performHealthCheck();
       this.serviceInfo.reconnect = () => this.reconnect();
       networkStateManager.registerService(this.serviceInfo);
-      
-      this.isConnected = true;
-      this.serviceInfo.isConnected = true;
-      this.serviceInfo.isHealthy = true;
+
+      this.isConnected = false;
+      this.serviceInfo.isConnected = false;
+      this.serviceInfo.isHealthy = false;
       this.serviceInfo.lastCheck = Date.now();
-      networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
-      
-      this.startDiscovery();
-      this.startMeshRouting();
-      return true;
+      networkStateManager.updateServiceStatus('bluetoothMesh', false, false);
+      return false;
     }
   }
 
@@ -163,22 +157,9 @@ class BluetoothMeshService {
   }
 
   private async startDiscovery(): Promise<void> {
-    try {
-      // Simulate peer discovery for now
-      // In real implementation, this would scan for nearby devices
-      setInterval(() => {
-        this.simulatePeerDiscovery();
-      }, 30000);
-    } catch (error) {
-      console.error('Discovery failed:', error);
-    }
-  }
-
-  private simulatePeerDiscovery(): void {
-    // Pure Mesh Mode - NO SIMULATION
-    // In a real environment, this would be replaced by actual device discovery events
-    // For now, we simply do nothing if real Bluetooth is not available.
-    console.log('Bluetooth Mesh scanning... (Real hardware required)');
+    // Real discovery requires native plugin or browser BLE scan integration.
+    // No simulation path.
+    return;
   }
 
   private cleanupOldPeers(): void {
@@ -195,20 +176,9 @@ class BluetoothMeshService {
 
   async sendMessage(peerId: string, content: string): Promise<boolean> {
     try {
-      // Handle special case for broadcast messages when no peers are available
-      if (peerId === 'broadcast' || this.peers.size === 0) {
-        console.log('📡 Broadcast message - no peers available, storing locally');
-        this.emit('messageSent', {
-          id: this.generateMessageId(),
-          from: 'local',
-          to: 'broadcast',
-          content: content,
-          timestamp: new Date(),
-          type: 'broadcast',
-          hops: 0,
-          encrypted: false
-        });
-        return true;
+      if (this.peers.size === 0) {
+        console.warn('No Bluetooth peers connected');
+        return false;
       }
 
       const peer = this.peers.get(peerId);
@@ -251,7 +221,7 @@ class BluetoothMeshService {
       isRealConnection: this.isConnected,
       peerCount: this.peers.size,
       type: 'bluetooth',
-      deviceId: 'simulation'
+      deviceId: this.isConnected ? 'bluetooth-active' : 'bluetooth-unavailable'
     };
   }
 
@@ -260,7 +230,7 @@ class BluetoothMeshService {
       totalNodes: this.peers.size + 1, // +1 for self
       activeNodes: this.peers.size,
       totalMessages: this.messageStats.totalMessages,
-      averageLatency: Math.random() * 100 + 50, // 50-150ms
+      averageLatency: 0,
       networkDiameter: Math.max(1, Math.floor(Math.sqrt(this.peers.size))),
       relayNodes: Array.from(this.peers.values()).filter(p => p.isRelay).length
     };
@@ -309,11 +279,6 @@ class BluetoothMeshService {
       const recentActivity = Array.from(this.peers.values()).some(
         peer => now - peer.lastSeen.getTime() < 60000 // Activity within last minute
       );
-
-      // Even if no recent activity, if we're in simulation mode we consider it healthy
-      if (!('bluetooth' in navigator)) {
-        return this.isConnected;
-      }
 
       return this.isConnected && (recentActivity || this.peers.size === 0);
     } catch (error) {

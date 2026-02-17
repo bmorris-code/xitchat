@@ -23,8 +23,13 @@ if (process.env.NODE_ENV === 'development') {
     const message = event.reason?.message || event.reason || '';
 
     // Handle Nostr rate limit errors gracefully
-    if (message.includes('rate-limited') || message.includes('slow down')) {
-      console.debug('🕊️ Nostr rate limit detected, handling gracefully');
+    if (
+      message.includes('rate-limited') ||
+      message.includes('slow down') ||
+      message.includes('connection timed out') ||
+      message.includes('publish timed out') ||
+      message.includes('timeout')
+    ) {
       event.preventDefault(); // Prevent the error from showing in console
       return;
     }
@@ -66,7 +71,14 @@ window.addEventListener('error', (event) => {
 window.addEventListener('unhandledrejection', (event) => {
   const reason = event.reason ? (event.reason.message || event.reason.toString()) : '';
 
-  if (reason.includes('rate-limited') || reason.includes('slow down') || reason.includes('noting too much') || reason.includes('publish timed out')) {
+  if (
+    reason.includes('rate-limited') ||
+    reason.includes('slow down') ||
+    reason.includes('noting too much') ||
+    reason.includes('publish timed out') ||
+    reason.includes('connection timed out') ||
+    reason.includes('timeout')
+  ) {
     // Silence these specific errors as they are expected during high load
     event.preventDefault();
     console.debug('ℹ️ Suppressed rate-limit/timeout error:', reason);

@@ -48,7 +48,7 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
             id: peer.id,
             name: peer.name,
             handle: peer.handle,
-            distance: Math.random() * 100, // Real distance would come from radar
+            distance: Number.isFinite((peer as any).distance) ? (peer as any).distance : 0,
             lastSeen: new Date(peer.lastSeen),
             capabilities: peer.capabilities,
             isRelay: peer.capabilities.includes('relay'),
@@ -58,7 +58,7 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
             id: node.id,
             name: node.name || 'Unknown Device',
             handle: node.handle || `@${node.id.substring(0, 8)}`,
-            distance: node.distance || Math.random() * 50,
+            distance: node.distance || 0,
             lastSeen: node.lastSeen,
             capabilities: node.capabilities || ['chat'],
             isRelay: node.isRelay || false,
