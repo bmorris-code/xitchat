@@ -964,9 +964,11 @@ class NostrService {
         return; // Skip malformed presence events
       }
 
-      // TTL check - ignore expired events
+      // TTL check - ignore expired events.
+      // Presence TTL is stored in seconds by presenceBeacon, convert to ms here.
       const now = Date.now();
-      if (now - presenceData.timestamp > presenceData.ttl) {
+      const ttlMs = presenceData.ttl > 1000 ? presenceData.ttl : presenceData.ttl * 1000;
+      if (now - presenceData.timestamp > ttlMs) {
         return; // Expired presence event
       }
 
