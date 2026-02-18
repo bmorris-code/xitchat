@@ -57,6 +57,18 @@ class HybridMeshService {
   private isBridgeEnabled = true;
   getDeviceCompatibility: any;
 
+  private fallbackHandle(id?: string): string {
+    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const shortId = source.slice(0, 8) || 'peer';
+    return `@${shortId}`;
+  }
+
+  private fallbackName(id?: string): string {
+    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '');
+    const shortId = source.slice(0, 8) || 'peer';
+    return `Peer ${shortId}`;
+  }
+
   private isLikelyNostrId(id?: string): boolean {
     if (!id) return false;
     return /^[0-9a-f]{64}$/i.test(id) || id.startsWith('npub');
@@ -215,10 +227,11 @@ class HybridMeshService {
   }
 
   private updateSinglePeer(peer: any, type: MeshConnectionType) {
+    const peerId = peer.id || 'peer';
     const hybridPeer: HybridMeshPeer = {
-      id: peer.id,
-      name: peer.name || 'Unknown',
-      handle: peer.handle || '@unknown',
+      id: peerId,
+      name: peer.name || this.fallbackName(peerId),
+      handle: peer.handle || this.fallbackHandle(peerId),
       connectionType: type,
       isConnected: peer.isConnected !== undefined ? peer.isConnected : true,
       lastSeen: peer.lastSeen instanceof Date ? peer.lastSeen.getTime() : (peer.lastSeen || Date.now()),
@@ -226,15 +239,16 @@ class HybridMeshService {
       capabilities: peer.capabilities || ['chat'],
       serviceId: peer.id
     };
-    this.peers.set(peer.id, hybridPeer);
+    this.peers.set(peerId, hybridPeer);
   }
 
   // Public method to add external peers (from radar, etc.)
   public addExternalPeer(peer: Partial<HybridMeshPeer>, connectionType: MeshConnectionType) {
+    const peerId = peer.id || 'peer';
     const hybridPeer: HybridMeshPeer = {
-      id: peer.id || 'unknown',
-      name: peer.name || 'Unknown',
-      handle: peer.handle || '@unknown',
+      id: peerId,
+      name: peer.name || this.fallbackName(peerId),
+      handle: peer.handle || this.fallbackHandle(peerId),
       connectionType: connectionType,
       isConnected: peer.isConnected !== undefined ? peer.isConnected : true,
       lastSeen: peer.lastSeen || Date.now(),

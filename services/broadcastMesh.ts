@@ -38,6 +38,16 @@ class BroadcastMeshService {
   private isConnected = false;
   private nostrPrefix = 'xitchat-broadcast-v1-';
 
+  private fallbackHandle(id: string): string {
+    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    return `@${(source.slice(0, 8) || 'peer')}`;
+  }
+
+  private fallbackName(id: string): string {
+    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '');
+    return `Peer ${(source.slice(0, 8) || 'peer')}`;
+  }
+
   constructor() {
     this.myId = `broadcast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     this.myName = 'XitChat User';
@@ -119,8 +129,8 @@ class BroadcastMeshService {
 
       const peer: BroadcastPeer = {
         id: message.from,
-        name: peerData.name || 'Unknown Device',
-        handle: peerData.handle || '@unknown',
+        name: peerData.name || this.fallbackName(message.from),
+        handle: peerData.handle || this.fallbackHandle(message.from),
         connectionType: 'broadcast',
         isConnected: true,
         lastSeen: Date.now(),

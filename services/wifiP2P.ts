@@ -45,6 +45,16 @@ class WiFiP2PService {
   private isInitialized = false;
   private WiFiDirectPlugin: any = null;
 
+  private fallbackHandle(id: string): string {
+    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    return `@${(source.slice(0, 8) || 'peer')}`;
+  }
+
+  private fallbackName(id: string): string {
+    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '');
+    return `Peer ${(source.slice(0, 8) || 'peer')}`;
+  }
+
   constructor() {
     this.myPeerId = this.generatePeerId();
     this.broadcastChannel = new BroadcastChannel('xitchat-wifi');
@@ -116,8 +126,8 @@ class WiFiP2PService {
       const peerData = JSON.parse(message.content);
       const peer: WiFiPeer = {
         id: message.from,
-        name: peerData.name || 'Unknown',
-        handle: peerData.handle || '@unknown',
+        name: peerData.name || this.fallbackName(message.from),
+        handle: peerData.handle || this.fallbackHandle(message.from),
         isConnected: false,
         lastSeen: new Date()
       };

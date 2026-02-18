@@ -326,7 +326,7 @@ const App: React.FC = () => {
             const handshakeNode = handshakePersistence.recordHandshake({
               id: senderId,
               name: message.senderName || 'Unknown Node',
-              handle: message.senderHandle || '@unknown',
+              handle: message.senderHandle || `@${String(senderId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`,
               avatar: `https://picsum.photos/seed/${senderId}/200`,
               connectionType: handshakeType
             });
@@ -940,7 +940,7 @@ const App: React.FC = () => {
       const incomingMessage: Message = {
         id: geoMessage.id || `room-msg-${Date.now()}`,
         senderId: geoMessage.nodeId || 'unknown',
-        senderHandle: geoMessage.nodeHandle || '@unknown',
+        senderHandle: geoMessage.nodeHandle || `@${String(geoMessage.nodeId || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`,
         text: geoMessage.content || '',
         timestamp: geoMessage.timestamp || Date.now()
       };
@@ -1573,7 +1573,7 @@ const App: React.FC = () => {
       const mappedHistory: Message[] = roomHistory.map((m: any) => ({
         id: m.id,
         senderId: m.nodeId || 'unknown',
-        senderHandle: m.nodeHandle || '@unknown',
+        senderHandle: m.nodeHandle || `@${String(m.nodeId || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`,
         text: m.content || '',
         timestamp: m.timestamp || Date.now()
       }));
