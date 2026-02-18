@@ -564,13 +564,13 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               Download the native Android app to unlock high-performance Bluetooth & WiFi Direct mesh networking.
             </p>
             <a
-              href="/xitchat.apk"
-              download
+              href="/xitchat-v1.apk"
+              download="xitchat-v1.apk"
               className="w-full bg-current text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:opacity-90 transition-all flex items-center justify-center gap-2 no-underline"
               style={{ backgroundColor: theme === 'green' ? '#00ff41' : theme === 'amber' ? '#ffb000' : theme === 'cyan' ? '#00ffff' : '#ff3131' }}
             >
               <i className="fa-brands fa-android text-base"></i>
-              Download Android APK
+              Download Android APK v1.0
             </a>
           </div>
 

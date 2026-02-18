@@ -154,8 +154,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                     For true serverless mesh networking (Bluetooth & WiFi Direct), download the Android app v1.0.
                   </p>
                   <a
-                    href="/xitchat-serverless-v3.apk"
-                    download="xitchat-serverless-v3.apk"
+                    href="/xitchat-v1.apk"
+                    download="xitchat-v1.apk"
                     className="inline-flex items-center gap-2 bg-[#00ff41]/10 border border-[#00ff41] text-[#00ff41] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#00ff41]/20 transition-colors"
                   >
                     <i className="fa-solid fa-download"></i>

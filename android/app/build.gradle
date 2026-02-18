@@ -3,6 +3,10 @@ apply plugin: 'com.android.application'
 android {
     namespace = "com.xitchat.app"
     compileSdk = rootProject.ext.compileSdkVersion
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
     defaultConfig {
         applicationId "com.xitchat.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -69,6 +73,14 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// Force Java 17 for local/CI compatibility even if capacitor.build.gradle sets 21
+android {
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
 
 try {
     def servicesJSON = file('google-services.json')
