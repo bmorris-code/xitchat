@@ -44,6 +44,7 @@ class WiFiP2PService {
   };
   private isInitialized = false;
   private WiFiDirectPlugin: any = null;
+  private nativeListenersRegistered = false;
 
   private fallbackHandle(id: string): string {
     const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -89,6 +90,55 @@ class WiFiP2PService {
         console.error('Failed to parse Nostr channel signal:', error);
       }
     });
+  }
+
+  private setupNativeWiFiDirectListeners(WiFiDirect: any): void {
+    if (this.nativeListenersRegistered) return;
+    this.nativeListenersRegistered = true;
+
+    WiFiDirect.addListener('peersChanged', (event: any) => {
+      const peers = Array.isArray(event?.peers) ? event.peers : [];
+
+      peers.forEach((nativePeer: any) => {
+        const peerId = nativePeer.deviceAddress || nativePeer.deviceName || `wifi-${Math.random().toString(36).substr(2, 6)}`;
+        const existing = this.peers.get(peerId);
+        const mappedPeer: WiFiPeer = {
+          id: peerId,
+          name: nativePeer.deviceName || this.fallbackName(peerId),
+          handle: this.fallbackHandle(peerId),
+          isConnected: existing?.isConnected || false,
+          lastSeen: new Date()
+        };
+
+        if (!existing) {
+          this.peers.set(peerId, mappedPeer);
+          this.emit('peerFound', mappedPeer);
+        } else {
+          this.peers.set(peerId, { ...existing, ...mappedPeer, isConnected: existing.isConnected });
+        }
+      });
+
+      this.emit('peersUpdated', Array.from(this.peers.values()));
+    }).catch(() => {});
+
+    WiFiDirect.addListener('connectionChanged', (event: any) => {
+      const connected = !!event?.connected;
+      this.peers.forEach(peer => {
+        peer.isConnected = connected;
+        peer.lastSeen = new Date();
+      });
+      this.emit('peersUpdated', Array.from(this.peers.values()));
+    }).catch(() => {});
+
+    WiFiDirect.addListener('messageReceived', (event: any) => {
+      this.emit('messageReceived', {
+        id: Math.random().toString(36).substr(2, 9),
+        from: event?.from || 'wifi-direct',
+        to: this.myPeerId,
+        content: event?.message || '',
+        timestamp: new Date()
+      });
+    }).catch(() => {});
   }
 
   private handleIncomingMessage(message: WiFiMessage, source: 'local' | 'nostr'): void {
@@ -313,14 +363,18 @@ class WiFiP2PService {
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
       
       if (isNativeAndroid) {
-        console.log('📱 Android: Using WebRTC + Nostr for serverless WiFi P2P');
-        console.log('🔥 Direct P2P connections - no native plugins needed');
+        console.log('📱 Android: Using native WiFi Direct plugin for local P2P discovery');
+        const { registerPlugin } = await import('@capacitor/core');
+        const WiFiDirect = registerPlugin<any>('WiFiDirect');
+        this.WiFiDirectPlugin = WiFiDirect;
+        await WiFiDirect.initialize();
+        this.setupNativeWiFiDirectListeners(WiFiDirect);
       } else {
         console.log('🌐 Web: Using WebRTC + Nostr for WiFi P2P');
       }
 
       // Web fallback - use WebRTC with Nostr signaling
-      if (!('RTCPeerConnection' in window)) {
+      if (!isNativeAndroid && !('RTCPeerConnection' in window)) {
         console.warn('WebRTC not supported - WiFi P2P disabled');
         return false;
       }
@@ -346,7 +400,20 @@ class WiFiP2PService {
   async startDiscovery(): Promise<void> {
     if (this.isDiscovering) return;
 
-    // ANDROID SERVERLESS: Use WebRTC + Nostr signaling only
+    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+    if (isNativeAndroid && this.WiFiDirectPlugin) {
+      console.log('🔍 Starting native WiFi Direct discovery...');
+      this.isDiscovering = true;
+      await this.WiFiDirectPlugin.startDiscovery();
+      try {
+        await this.WiFiDirectPlugin.startServer();
+      } catch (error) {
+        console.debug('WiFi Direct server start skipped:', error);
+      }
+      this.emit('discoveryStarted');
+      return;
+    }
+
     console.log('🔍 Starting serverless WiFi P2P discovery (WebRTC + Nostr)...');
     
     this.isDiscovering = true;
@@ -371,6 +438,10 @@ class WiFiP2PService {
 
   stopDiscovery(): void {
     this.isDiscovering = false;
+    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+    if (isNativeAndroid && this.WiFiDirectPlugin) {
+      this.WiFiDirectPlugin.stopDiscovery().catch(() => {});
+    }
     if (this.announceInterval) {
       clearInterval(this.announceInterval);
       this.announceInterval = null;
@@ -379,6 +450,24 @@ class WiFiP2PService {
   }
 
   async sendMessage(peerId: string, content: string): Promise<void> {
+    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+
+    if (isNativeAndroid && this.WiFiDirectPlugin) {
+      await this.WiFiDirectPlugin.sendMessage({
+        message: content,
+        targetAddress: peerId
+      });
+      this.emit('messageSent', {
+        id: Math.random().toString(36).substr(2, 9),
+        from: this.myPeerId,
+        to: peerId,
+        content,
+        timestamp: new Date(),
+        type: 'chat'
+      });
+      return;
+    }
+
     const peer = this.peers.get(peerId);
     if (!peer) {
       console.warn(`Peer ${peerId} not found`);

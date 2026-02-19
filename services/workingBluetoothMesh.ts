@@ -98,21 +98,22 @@ class WorkingBluetoothMeshService {
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
 
       if (isNativeAndroid) {
-        if (typeof navigator !== 'undefined' && navigator.bluetooth) {
-          try {
-            const available = await navigator.bluetooth.getAvailability();
-            if (available) {
-              this.isConnected = true;
-              this.serviceInfo.isConnected = true;
-              this.serviceInfo.isHealthy = true;
-              networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
-              return true;
-            }
-          } catch (error) {
-            console.warn('Web Bluetooth unavailable on Android WebView:', error);
-          }
+        try {
+          const { registerPlugin } = await import('@capacitor/core');
+          const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
+          this.nativeBluetoothPlugin = BluetoothMesh;
+          this.setupNativePluginListeners(BluetoothMesh);
+          await BluetoothMesh.initialize();
+
+          this.isConnected = true;
+          this.serviceInfo.isConnected = true;
+          this.serviceInfo.isHealthy = true;
+          networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
+          return true;
+        } catch (error) {
+          console.warn('Native Bluetooth plugin unavailable on Android:', error);
+          return this.failUnavailable('android-native-plugin-unavailable');
         }
-        return this.failUnavailable('android-no-web-bluetooth');
       }
 
       if (typeof navigator === 'undefined' || !navigator.bluetooth) {
