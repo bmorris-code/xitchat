@@ -687,6 +687,28 @@ class PresenceBeaconService {
     return Array.from(this.peers.values());
   }
 
+  // CRITICAL: Allow external services (hybrid mesh) to add discovered peers
+  addExternalPeer(peer: PresenceBeaconPeer): void {
+    // Validate peer
+    if (!peer.pubkey || !peer.lastSeen || !peer.ttl) {
+      console.warn('Invalid peer data for addExternalPeer:', peer);
+      return;
+    }
+
+    // Check TTL - don't add expired peers
+    const now = Date.now();
+    if (peer.lastSeen + peer.ttl * 1000 < now) {
+      console.debug('Skipping expired peer:', peer.pubkey);
+      return;
+    }
+
+    // Add to local cache
+    this.peers.set(peer.pubkey, peer);
+    this.notifyListeners('peersUpdated', this.getPeers());
+    
+    console.log(`🗼 Added external peer to presence beacon: ${peer.pubkey.substring(0, 8)}... via ${peer.caps.join(',')}`);
+  }
+
   getMyPresence(): PresenceBeaconPeer | null {
     return this.myPresence;
   }

@@ -64,6 +64,8 @@ const App: React.FC = () => {
     blocked: false,
     reason: ''
   });
+  const radarPeersRef = useRef<RadarPeer[]>([]);
+  const activeChatIdRef = useRef<string | null>(null);
   const botRequestCounterRef = useRef(0);
   const [botStreamState, setBotStreamState] = useState<{ active: boolean; provider: string }>({
     active: false,
@@ -86,6 +88,14 @@ const App: React.FC = () => {
   };
 
   console.log('App state initialized');
+
+  useEffect(() => {
+    radarPeersRef.current = radarPeers;
+  }, [radarPeers]);
+
+  useEffect(() => {
+    activeChatIdRef.current = activeChatId;
+  }, [activeChatId]);
 
   // Initialize XC economy
   useEffect(() => {
@@ -331,41 +341,60 @@ const App: React.FC = () => {
               connectionType: handshakeType
             });
 
-            // Find or create chat for this peer
-            let targetChat = chats.find(c => c.participant.id === senderId);
+            const normalizeToken = (value?: string) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-            // If no chat exists, create one for radar peers
-            if (!targetChat) {
-              const radarPeer = radarPeers.find(p => p.id === senderId);
-              if (radarPeer) {
+            setChats(prev => {
+              const nextChats = [...prev];
+              const incomingHandle = normalizeToken(message.senderHandle);
+              let targetIndex = nextChats.findIndex(c => c.participant.id === senderId);
+
+              if (targetIndex === -1 && incomingHandle) {
+                targetIndex = nextChats.findIndex(c => normalizeToken(c.participant.handle) === incomingHandle);
+              }
+
+              if (targetIndex === -1) {
+                const radarPeer = radarPeersRef.current.find(p =>
+                  p.id === senderId || (incomingHandle && normalizeToken(p.handle) === incomingHandle)
+                );
+                const meshPeer = hybridMesh.getPeers().find(p =>
+                  p.id === senderId || (incomingHandle && normalizeToken(p.handle) === incomingHandle)
+                );
+                const participantId = radarPeer?.id || meshPeer?.id || senderId;
+                const participantHandle =
+                  message.senderHandle ||
+                  radarPeer?.handle ||
+                  meshPeer?.handle ||
+                  `@${String(senderId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`;
+                const participantName =
+                  message.senderName ||
+                  radarPeer?.name ||
+                  meshPeer?.name ||
+                  'Unknown Node';
+
                 const newChat: Chat = {
                   id: Math.random().toString(36).substr(2, 9),
                   type: 'private',
                   participant: {
-                    id: radarPeer.id,
-                    name: radarPeer.name,
-                    handle: radarPeer.handle,
-                    avatar: radarPeer.avatar || `https://picsum.photos/seed/${radarPeer.id}/200`,
-                    status: radarPeer.isOnline ? 'Online' : 'Away',
-                    mood: 'Connected via radar',
-                    moodEmoji: '📡',
+                    id: participantId,
+                    name: participantName,
+                    handle: participantHandle,
+                    avatar: radarPeer?.avatar || `https://picsum.photos/seed/${participantId}/200`,
+                    status: radarPeer?.isOnline ? 'Online' : 'Away',
+                    mood: 'Connected via mesh',
+                    moodEmoji: 'RAD',
                     reputation: 800,
-                    distance: radarPeer.distance || 0
+                    distance: radarPeer?.distance || 0
                   },
                   messages: [],
                   lastMessage: '',
                   unreadCount: 0
                 };
-
-                setChats(prev => [...prev, newChat]);
-                targetChat = newChat;
-
-                console.log(`🆕 Created chat for radar peer: ${radarPeer.handle}`);
+                nextChats.unshift(newChat);
+                targetIndex = 0;
+                console.log(`Created chat for peer message route: ${participantHandle}`);
               }
-            }
 
-            // Add message to chat if we have one
-            if (targetChat) {
+              const targetChat = nextChats[targetIndex];
               const newMessage: Message = {
                 id: message.id || Math.random().toString(36).substr(2, 9),
                 senderId: senderId,
@@ -375,14 +404,26 @@ const App: React.FC = () => {
                 encryptedData: message.encryptedData
               };
 
-              setChats(prev => prev.map(c =>
-                c.id === targetChat.id
-                  ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
-                  : c
-              ));
+              if (targetChat.messages.some(m => m.id === newMessage.id)) {
+                return nextChats;
+              }
 
-              console.log(`💬 Added message to chat ${targetChat.participant.handle}: ${message.content.substring(0, 30)}...`);
-            }
+              nextChats[targetIndex] = {
+                ...targetChat,
+                participant: {
+                  ...targetChat.participant,
+                  id: senderId || targetChat.participant.id,
+                  name: message.senderName || targetChat.participant.name,
+                  handle: message.senderHandle || targetChat.participant.handle
+                },
+                messages: [...targetChat.messages, newMessage],
+                lastMessage: message.content,
+                unreadCount: activeChatIdRef.current === targetChat.id ? targetChat.unreadCount : targetChat.unreadCount + 1
+              };
+
+              console.log(`Added message to chat ${nextChats[targetIndex].participant.handle}: ${String(message.content).substring(0, 30)}...`);
+              return nextChats;
+            });
 
             // Trigger transmission toast for new connections
             const event = new CustomEvent('newTransmission', {
@@ -987,11 +1028,25 @@ const App: React.FC = () => {
   }, [activeChatId]);
 
   const activeChat = chats.find(c => c.id === activeChatId) || null;
+  const normalizePeerToken = (value?: string) =>
+    (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   const handleOpenChat = (user: User) => {
     setSelectedUser(null);
-    const existing = chats.find(c => c.participant.id === user.id);
+    const targetHandle = normalizePeerToken(user.handle);
+    const existingById = chats.find(c => c.participant.id === user.id);
+    const existingByHandle = chats.find(c => normalizePeerToken(c.participant.handle) === targetHandle);
+    const existing = existingById || existingByHandle;
+
     if (existing) {
+      // Refresh participant mapping when radar shows a new live ID for same peer handle.
+      if (existing.participant.id !== user.id) {
+        setChats(prev => prev.map(c =>
+          c.id === existing.id
+            ? { ...c, participant: { ...c.participant, id: user.id, name: user.name, handle: user.handle } }
+            : c
+        ));
+      }
       setActiveChatId(existing.id);
     } else {
       const newChat: Chat = {
@@ -1052,6 +1107,61 @@ const App: React.FC = () => {
       try {
         // Strip prefixes to get the raw mesh ID
         let meshTargetId = activeChat?.participant?.id;
+        const activePeers = hybridMesh.getPeers().filter(peer => peer.isConnected);
+        const participantHandle = normalizePeerToken(activeChat?.participant?.handle);
+
+        // Prefer current live peer by handle first; this avoids replying to stale IDs.
+        if (participantHandle) {
+          const livePeerByHandle = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
+          if (livePeerByHandle && meshTargetId !== livePeerByHandle.id) {
+            meshTargetId = livePeerByHandle.id;
+            setChats(prev => prev.map(c =>
+              c.id === activeChatId
+                ? {
+                  ...c,
+                  participant: {
+                    ...c.participant,
+                    id: livePeerByHandle.id,
+                    name: livePeerByHandle.name || c.participant.name,
+                    handle: livePeerByHandle.handle || c.participant.handle
+                  }
+                }
+                : c
+            ));
+            console.log(`Remapped chat target by handle to live peer ${livePeerByHandle.handle} (${livePeerByHandle.id})`);
+          }
+        }
+
+        // If chat still points to a stale ID, remap to current live peer with same handle.
+        if (meshTargetId) {
+          const targetToken = normalizePeerToken(meshTargetId);
+          const hasLiveTarget = activePeers.some(peer =>
+            normalizePeerToken(peer.id) === targetToken ||
+            normalizePeerToken(peer.serviceId) === targetToken
+          );
+
+          if (!hasLiveTarget && participantHandle) {
+            const remappedPeer = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
+            if (remappedPeer) {
+              meshTargetId = remappedPeer.id;
+              setChats(prev => prev.map(c =>
+                c.id === activeChatId
+                  ? {
+                    ...c,
+                    participant: {
+                      ...c.participant,
+                      id: remappedPeer.id,
+                      name: remappedPeer.name || c.participant.name,
+                      handle: remappedPeer.handle || c.participant.handle
+                    }
+                  }
+                  : c
+              ));
+              console.log(`Remapped stale chat target to live peer ${remappedPeer.handle} (${remappedPeer.id})`);
+            }
+          }
+        }
+
         if (meshTargetId?.startsWith('nostr-')) {
           // For Nostr peers, we need to use the actual public key
           const nostrPeerId = meshTargetId.replace('nostr-', '');
@@ -1073,11 +1183,27 @@ const App: React.FC = () => {
       }
     }
 
-    // Sync message to mesh network
+    // Sync a compact chat payload to avoid BLE packet truncation.
+    const compactMessage = {
+      id: newMessage.id,
+      senderId: newMessage.senderId,
+      senderHandle: newMessage.senderHandle,
+      text: newMessage.text,
+      timestamp: newMessage.timestamp,
+      replyTo: newMessage.replyTo,
+      imageUrl: newMessage.imageUrl,
+      videoUrl: newMessage.videoUrl
+    };
+    const compactParticipant = activeChat?.participant ? {
+      id: activeChat.participant.id,
+      name: activeChat.participant.name,
+      handle: activeChat.participant.handle
+    } : undefined;
+
     await meshDataSync.syncChatMessage({
       chatId: activeChatId,
-      message: newMessage,
-      participant: activeChat?.participant
+      message: compactMessage,
+      participant: compactParticipant
     });
 
     if (activeChat?.participant.id === 'xit-bot' && !options?.imageUrl && !options?.videoUrl) {

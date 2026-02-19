@@ -57,6 +57,9 @@ public class WiFiDirectPlugin extends Plugin {
     private boolean isDiscovering = false;
     private ServerSocket serverSocket;
     private Socket clientSocket;
+    private String currentGroupOwnerAddress;
+    private String lastClientAddress;
+    private boolean isGroupOwner = false;
 
     @Override
     public void load() {
@@ -123,6 +126,14 @@ public class WiFiDirectPlugin extends Plugin {
             return;
         }
 
+        if (isDiscovering) {
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("discovering", true);
+            call.resolve(ret);
+            return;
+        }
+
         // Re-check hardware if null
         if (wifiP2pManager == null || channel == null) {
             try {
@@ -155,7 +166,11 @@ public class WiFiDirectPlugin extends Plugin {
             @Override
             public void onFailure(int reasonCode) {
                 Log.e(TAG, "Peer discovery failed: " + reasonCode);
-                call.reject("Discovery failed with code: " + reasonCode);
+                JSObject ret = new JSObject();
+                ret.put("success", false);
+                ret.put("discovering", false);
+                ret.put("reasonCode", reasonCode);
+                call.resolve(ret);
             }
         });
     }
@@ -230,10 +245,24 @@ public class WiFiDirectPlugin extends Plugin {
         
         new Thread(() -> {
             try {
+                String resolvedTarget = targetAddress;
+                if (resolvedTarget == null || !isLikelyIpAddress(resolvedTarget)) {
+                    if (isGroupOwner && lastClientAddress != null) {
+                        resolvedTarget = lastClientAddress;
+                    } else if (currentGroupOwnerAddress != null) {
+                        resolvedTarget = currentGroupOwnerAddress;
+                    }
+                }
+
+                if (resolvedTarget == null || !isLikelyIpAddress(resolvedTarget)) {
+                    call.reject("No connected peer IP available");
+                    return;
+                }
+
                 if (clientSocket == null || !clientSocket.isConnected()) {
                     // Connect to peer
                     clientSocket = new Socket();
-                    clientSocket.connect(new InetSocketAddress(targetAddress, SERVER_PORT), 5000);
+                    clientSocket.connect(new InetSocketAddress(resolvedTarget, SERVER_PORT), 5000);
                 }
                 
                 OutputStream outputStream = clientSocket.getOutputStream();
@@ -251,8 +280,21 @@ public class WiFiDirectPlugin extends Plugin {
         }).start();
     }
 
+    private boolean isLikelyIpAddress(String value) {
+        if (value == null) return false;
+        return value.matches("\\d{1,3}(\\.\\d{1,3}){3}");
+    }
+
     @PluginMethod
     public void startServer(PluginCall call) {
+        if (serverSocket != null && !serverSocket.isClosed()) {
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("port", SERVER_PORT);
+            call.resolve(ret);
+            return;
+        }
+
         new Thread(() -> {
             try {
                 serverSocket = new ServerSocket(SERVER_PORT);
@@ -295,6 +337,9 @@ public class WiFiDirectPlugin extends Plugin {
     private void handleClient(Socket client) {
         new Thread(() -> {
             try {
+                if (client.getInetAddress() != null) {
+                    lastClientAddress = client.getInetAddress().getHostAddress();
+                }
                 InputStream inputStream = client.getInputStream();
                 byte[] buffer = new byte[1024];
                 int bytesRead;
@@ -362,14 +407,21 @@ public class WiFiDirectPlugin extends Plugin {
             } else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION.equals(action)) {
                 wifiP2pManager.requestConnectionInfo(channel, info -> {
                     if (info.groupFormed) {
+                        isGroupOwner = info.isGroupOwner;
+                        currentGroupOwnerAddress = info.groupOwnerAddress != null ?
+                                info.groupOwnerAddress.getHostAddress() : null;
+
                         JSObject ret = new JSObject();
                         ret.put("connected", true);
                         ret.put("isGroupOwner", info.isGroupOwner);
-                        ret.put("groupOwnerAddress", info.groupOwnerAddress != null ? 
-                                info.groupOwnerAddress.getHostAddress() : null);
+                        ret.put("groupOwnerAddress", currentGroupOwnerAddress);
                         notifyListeners("connectionChanged", ret);
                         
                         Log.d(TAG, "Connection established. Group owner: " + info.isGroupOwner);
+                    } else {
+                        JSObject ret = new JSObject();
+                        ret.put("connected", false);
+                        notifyListeners("connectionChanged", ret);
                     }
                 });
             }

@@ -45,6 +45,7 @@ class MeshDataSyncService {
   private isSyncing = false;
   private syncInterval: any = null;
   private dataVersion = 1;
+  private readonly PROFILE_PACKET_ID = 'user_profile_me';
 
   constructor() {
     this.initializeMeshSync();
@@ -80,6 +81,7 @@ class MeshDataSyncService {
         packets.forEach(packet => {
           this.dataStore.set(packet.id, packet);
         });
+        this.pruneStoredPackets();
       }
 
       const savedStatuses = localStorage.getItem('mesh_node_statuses');
@@ -107,13 +109,18 @@ class MeshDataSyncService {
   }
 
   async broadcastData(type: MeshDataPacket['type'], data: any, priority: MeshDataPacket['priority'] = 'normal'): Promise<string> {
+    const isProfile = type === 'user_profile';
+    const packetId = isProfile
+      ? this.PROFILE_PACKET_ID
+      : `${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const existing = isProfile ? this.dataStore.get(packetId) : undefined;
     const packet: MeshDataPacket = {
-      id: `${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: packetId,
       type,
       nodeId: 'me',
       timestamp: Date.now(),
       data,
-      version: this.dataVersion++,
+      version: existing ? existing.version + 1 : this.dataVersion++,
       priority,
       ttl: this.getTTLForType(type)
     };
@@ -259,15 +266,30 @@ class MeshDataSyncService {
     this.notifyListeners('nodeStatusesUpdated', Array.from(this.nodeStatuses.values()));
   }
 
-  private performBackgroundSync() {
+  private async performBackgroundSync() {
     if (this.isSyncing) return;
     this.isSyncing = true;
-    const highPriorityPackets = Array.from(this.dataStore.values())
-      .filter(packet => packet.priority === 'high' || packet.priority === 'critical')
-      .slice(0, 10);
-    highPriorityPackets.forEach(packet => this.broadcastPacket(packet));
-    this.requestDataSync();
-    this.isSyncing = false;
+    try {
+      // Avoid periodic rebroadcast storms when no peers are connected.
+      const peers = hybridMesh.getPeers().filter(peer => peer.isConnected);
+      if (peers.length === 0) return;
+
+      const now = Date.now();
+      const recentHighPriorityPacket = Array.from(this.dataStore.values())
+        .filter(packet =>
+          (packet.priority === 'high' || packet.priority === 'critical') &&
+          (now - packet.timestamp) < 120000
+        )
+        .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+      if (recentHighPriorityPacket) {
+        await this.broadcastPacket(recentHighPriorityPacket);
+      }
+
+      await this.requestDataSync();
+    } finally {
+      this.isSyncing = false;
+    }
   }
 
   private async requestDataSync() {
@@ -288,6 +310,23 @@ class MeshDataSyncService {
       this.saveLocalData();
       this.notifyListeners('dataCleanedUp', expiredPackets);
     }
+  }
+
+  private pruneStoredPackets(): void {
+    const now = Date.now();
+    const packets = Array.from(this.dataStore.values());
+    const latestProfile = packets
+      .filter(packet => packet.type === 'user_profile')
+      .sort((a, b) => b.timestamp - a.timestamp)[0];
+
+    const pruned = packets.filter(packet => {
+      if (packet.ttl && (now - packet.timestamp) > packet.ttl) return false;
+      if (packet.type === 'user_profile' && latestProfile) return packet.id === latestProfile.id;
+      return true;
+    });
+
+    this.dataStore = new Map(pruned.map(packet => [packet.id, packet]));
+    this.saveLocalData();
   }
 
   private getTTLForType(type: MeshDataPacket['type']): number {

@@ -54,6 +54,7 @@ class WorkingBluetoothMeshService {
   };
   private nativeListenersRegistered = false;
   private nativeBluetoothPlugin: any = null;
+  private nativeTransportStarted = false;
 
   private registerWithNetworkManager(): void {
     this.serviceInfo.healthCheck = () => this.performHealthCheck();
@@ -165,6 +166,10 @@ class WorkingBluetoothMeshService {
   }
 
   async startScanning(): Promise<boolean> {
+    if ((window as any).Capacitor?.isNativePlatform() && this.nativeTransportStarted) {
+      return true;
+    }
+
     if ((window as any).Capacitor?.isNativePlatform()) {
       try {
         const { registerPlugin } = await import('@capacitor/core');
@@ -178,10 +183,12 @@ class WorkingBluetoothMeshService {
           deviceId: this.myDevice ? (this.myDevice as any).id : 'anon'
         });
 
+        this.nativeTransportStarted = true;
         console.log('Native Bluetooth scan/advertise started');
         return true;
       } catch (e) {
         console.error('Failed to start native Bluetooth scan:', e);
+        this.nativeTransportStarted = false;
         return false;
       }
     }
@@ -343,6 +350,7 @@ class WorkingBluetoothMeshService {
     }
 
     this.isConnected = false;
+    this.nativeTransportStarted = false;
     this.peers.clear();
     this.emit('disconnected', {});
     networkStateManager.updateServiceStatus('bluetoothMesh', false, false);

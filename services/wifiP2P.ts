@@ -45,6 +45,7 @@ class WiFiP2PService {
   private isInitialized = false;
   private WiFiDirectPlugin: any = null;
   private nativeListenersRegistered = false;
+  private nativeConnectAttempts = new Set<string>();
 
   private fallbackHandle(id: string): string {
     const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -106,7 +107,7 @@ class WiFiP2PService {
           id: peerId,
           name: nativePeer.deviceName || this.fallbackName(peerId),
           handle: this.fallbackHandle(peerId),
-          isConnected: existing?.isConnected || false,
+          isConnected: nativePeer.status === 0 || existing?.isConnected || false,
           lastSeen: new Date()
         };
 
@@ -115,6 +116,14 @@ class WiFiP2PService {
           this.emit('peerFound', mappedPeer);
         } else {
           this.peers.set(peerId, { ...existing, ...mappedPeer, isConnected: existing.isConnected });
+        }
+
+        if (nativePeer.status === 3 && this.WiFiDirectPlugin && !this.nativeConnectAttempts.has(peerId)) {
+          this.nativeConnectAttempts.add(peerId);
+          this.WiFiDirectPlugin.connectToPeer({ deviceAddress: peerId }).catch((error: any) => {
+            console.debug(`WiFi Direct connect failed for ${peerId}:`, error);
+            this.nativeConnectAttempts.delete(peerId);
+          });
         }
       });
 
@@ -404,7 +413,10 @@ class WiFiP2PService {
     if (isNativeAndroid && this.WiFiDirectPlugin) {
       console.log('🔍 Starting native WiFi Direct discovery...');
       this.isDiscovering = true;
-      await this.WiFiDirectPlugin.startDiscovery();
+      const discoveryResult = await this.WiFiDirectPlugin.startDiscovery();
+      if (discoveryResult && discoveryResult.success === false) {
+        console.warn('WiFi Direct discovery did not start:', discoveryResult);
+      }
       try {
         await this.WiFiDirectPlugin.startServer();
       } catch (error) {
@@ -453,19 +465,23 @@ class WiFiP2PService {
     const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
 
     if (isNativeAndroid && this.WiFiDirectPlugin) {
-      await this.WiFiDirectPlugin.sendMessage({
-        message: content,
-        targetAddress: peerId
-      });
-      this.emit('messageSent', {
-        id: Math.random().toString(36).substr(2, 9),
-        from: this.myPeerId,
-        to: peerId,
-        content,
-        timestamp: new Date(),
-        type: 'chat'
-      });
-      return;
+      try {
+        await this.WiFiDirectPlugin.sendMessage({
+          message: content,
+          targetAddress: peerId
+        });
+        this.emit('messageSent', {
+          id: Math.random().toString(36).substr(2, 9),
+          from: this.myPeerId,
+          to: peerId,
+          content,
+          timestamp: new Date(),
+          type: 'chat'
+        });
+        return;
+      } catch (error) {
+        console.warn('Native WiFi Direct send failed, falling back to signaling:', error);
+      }
     }
 
     const peer = this.peers.get(peerId);

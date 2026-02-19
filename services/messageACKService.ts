@@ -38,7 +38,8 @@ class MessageACKService {
   private readonly RETRY_INTERVAL = 5000; // 5 seconds
   private readonly MAX_RETRIES = 3;
   private readonly MESSAGE_EXPIRY = 300000; // 5 minutes
-  private readonly ACK_TIMEOUT = 10000; // 10 seconds for ACK
+  private readonly ACK_TIMEOUT = 10000; // Base timeout for ACK retries
+  private readonly MAX_RETRY_DELAY = 60000; // 60 seconds cap
 
   constructor() {
     this.setupRetryMechanism();
@@ -239,6 +240,7 @@ class MessageACKService {
   // Retry pending messages
   private async retryPendingMessages(): Promise<void> {
     if (!this.isOnline) return;
+    if (document.hidden) return;
 
     const now = Date.now();
     const messagesToRetry: PendingMessage[] = [];
@@ -247,7 +249,8 @@ class MessageACKService {
       if (message.acknowledged) return;
 
       const timeSinceLastRetry = now - message.lastRetry;
-      const shouldRetry = timeSinceLastRetry >= this.ACK_TIMEOUT;
+      const retryDelay = this.getRetryDelay(message.retryCount);
+      const shouldRetry = timeSinceLastRetry >= retryDelay;
 
       if (shouldRetry && message.retryCount < message.maxRetries) {
         messagesToRetry.push(message);
@@ -268,28 +271,23 @@ class MessageACKService {
 
     console.log(`🔄 Retrying message ${message.id} (attempt ${message.retryCount}/${message.maxRetries})`);
 
-    // Try different transport layers on retry
+    // Retry using one transport per attempt to avoid multi-layer send storms
     const fallbackLayers = this.getFallbackTransportLayers(message.transportLayer);
-    
-    for (const transportLayer of fallbackLayers) {
-      try {
-        this.notifyListeners('sendMessage', {
-          messageId: message.id,
-          content: message.content,
-          to: message.to,
-          transportLayer,
-          requiresAck: true,
-          isRetry: true,
-          retryCount: message.retryCount
-        });
+    const transportIndex = Math.min(message.retryCount - 1, fallbackLayers.length - 1);
+    const transportLayer = fallbackLayers[transportIndex];
 
-        // If this is the last fallback layer, wait a bit before continuing
-        if (transportLayer === fallbackLayers[fallbackLayers.length - 1]) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      } catch (error) {
-        console.warn(`Retry failed for message ${message.id} via ${transportLayer}:`, error);
-      }
+    try {
+      this.notifyListeners('sendMessage', {
+        messageId: message.id,
+        content: message.content,
+        to: message.to,
+        transportLayer,
+        requiresAck: true,
+        isRetry: true,
+        retryCount: message.retryCount
+      });
+    } catch (error) {
+      console.warn(`Retry failed for message ${message.id} via ${transportLayer}:`, error);
     }
 
     this.saveToStorage();
@@ -303,6 +301,11 @@ class MessageACKService {
         error: 'Max retries exceeded'
       });
     }
+  }
+
+  private getRetryDelay(retryCount: number): number {
+    const exp = Math.max(0, retryCount);
+    return Math.min(this.ACK_TIMEOUT * Math.pow(2, exp), this.MAX_RETRY_DELAY);
   }
 
   // Get fallback transport layers
@@ -385,9 +388,23 @@ class MessageACKService {
       const data = localStorage.getItem('xitchat_message_ack');
       if (data) {
         const parsed = JSON.parse(data);
-        this.pendingMessages = new Map(parsed.pendingMessages || []);
+        const now = Date.now();
+        const rawPending: Array<[string, PendingMessage]> = Array.isArray(parsed.pendingMessages) ? parsed.pendingMessages : [];
+        const filteredPending = rawPending
+          .filter(([, msg]) => {
+            if (!msg || typeof msg !== 'object') return false;
+            if (msg.acknowledged) return false;
+            if (typeof msg.timestamp !== 'number' || now - msg.timestamp > 60000) return false;
+            if (typeof msg.retryCount === 'number' && msg.retryCount >= this.MAX_RETRIES) return false;
+            return true;
+          })
+          .sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0))
+          .slice(0, 10);
+
+        this.pendingMessages = new Map(filteredPending);
         this.receivedACKs = new Map(parsed.receivedACKs || []);
         this.lastSeenTimestamp = parsed.lastSeenTimestamp || Date.now();
+        this.saveToStorage();
         
         console.log(`📂 Loaded ${this.pendingMessages.size} pending messages from storage`);
       }

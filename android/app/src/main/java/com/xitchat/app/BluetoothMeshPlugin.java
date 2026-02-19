@@ -34,9 +34,11 @@ import com.getcapacitor.annotation.Permission;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @CapacitorPlugin(
@@ -65,6 +67,7 @@ public class BluetoothMeshPlugin extends Plugin {
     
     private Map<String, BluetoothGatt> connectedDevices = new HashMap<>();
     private List<BluetoothDevice> discoveredDevices = new ArrayList<>();
+    private Set<String> connectingDevices = new HashSet<>();
     
     private boolean isScanning = false;
     private boolean isAdvertising = false;
@@ -112,6 +115,14 @@ public class BluetoothMeshPlugin extends Plugin {
     public void startAdvertising(PluginCall call) {
         if (!checkPermissions()) {
             call.reject("Missing Bluetooth permissions");
+            return;
+        }
+
+        if (isAdvertising) {
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("advertising", true);
+            call.resolve(ret);
             return;
         }
 
@@ -189,6 +200,14 @@ public class BluetoothMeshPlugin extends Plugin {
             return;
         }
 
+        if (isScanning) {
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("scanning", true);
+            call.resolve(ret);
+            return;
+        }
+
         // Re-check hardware if null (e.g. if permissions were granted after load)
         if (bluetoothLeScanner == null || bluetoothLeAdvertiser == null) {
             if (bluetoothAdapter == null) {
@@ -234,6 +253,27 @@ public class BluetoothMeshPlugin extends Plugin {
         ret.put("success", true);
         ret.put("scanning", false);
         call.resolve(ret);
+    }
+
+    private void connectToDiscoveredDevice(BluetoothDevice device) {
+        if (device == null) return;
+        final String address = device.getAddress();
+        if (address == null) return;
+        if (connectedDevices.containsKey(address) || connectingDevices.contains(address)) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+
+        try {
+            connectingDevices.add(address);
+            device.connectGatt(getContext(), false, clientGattCallback);
+            Log.d(TAG, "Attempting GATT connection to " + address);
+        } catch (Exception e) {
+            connectingDevices.remove(address);
+            Log.e(TAG, "Failed to connect GATT to " + address, e);
+        }
     }
 
     @PluginMethod
@@ -343,6 +383,7 @@ public class BluetoothMeshPlugin extends Plugin {
                 
                 notifyListeners("deviceDiscovered", ret);
                 Log.d(TAG, "Discovered device: " + device.getName() + " (" + device.getAddress() + ")");
+                connectToDiscoveredDevice(device);
             }
         }
 
@@ -352,6 +393,40 @@ public class BluetoothMeshPlugin extends Plugin {
             JSObject ret = new JSObject();
             ret.put("errorCode", errorCode);
             notifyListeners("scanFailed", ret);
+        }
+    };
+
+    private final BluetoothGattCallback clientGattCallback = new BluetoothGattCallback() {
+        @Override
+        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+            if (gatt == null || gatt.getDevice() == null) return;
+            String deviceId = gatt.getDevice().getAddress();
+            connectingDevices.remove(deviceId);
+
+            if (newState == BluetoothGatt.STATE_CONNECTED) {
+                connectedDevices.put(deviceId, gatt);
+                try {
+                    gatt.discoverServices();
+                } catch (Exception ignored) {}
+
+                JSObject ret = new JSObject();
+                ret.put("deviceId", deviceId);
+                ret.put("deviceName", gatt.getDevice().getName() != null ? gatt.getDevice().getName() : "Unknown");
+                ret.put("connected", true);
+                notifyListeners("deviceConnected", ret);
+                Log.d(TAG, "Client GATT connected: " + deviceId);
+            } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
+                connectedDevices.remove(deviceId);
+                try {
+                    gatt.close();
+                } catch (Exception ignored) {}
+
+                JSObject ret = new JSObject();
+                ret.put("deviceId", deviceId);
+                ret.put("connected", false);
+                notifyListeners("deviceDisconnected", ret);
+                Log.d(TAG, "Client GATT disconnected: " + deviceId);
+            }
         }
     };
 

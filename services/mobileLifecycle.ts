@@ -28,6 +28,8 @@ class MobileLifecycleManager {
   private currentHeartbeatInterval: number = 15000;
   private isMonitoring = false;
   private monitoringIntervals: any[] = [];
+  private lastTransitionAt = 0;
+  private readonly MIN_TRANSITION_INTERVAL_MS = 1500;
 
   constructor(config?: Partial<LifecycleConfig>) {
     this.config = {
@@ -55,6 +57,15 @@ class MobileLifecycleManager {
     this.emitEvent('state_change', { state: this.currentState, network: this.networkState });
   }
 
+  private isNativeAndroid(): boolean {
+    try {
+      const capacitor = (window as any).Capacitor;
+      return !!capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === 'android';
+    } catch {
+      return false;
+    }
+  }
+
   private setupAppStateMonitoring(): void {
     // Page Visibility API
     document.addEventListener('visibilitychange', () => {
@@ -67,7 +78,10 @@ class MobileLifecycleManager {
     });
 
     window.addEventListener('blur', () => {
-      this.handleAppBlur();
+      // Android WebView often fires blur while app is still foreground.
+      if (!this.isNativeAndroid()) {
+        this.handleAppBlur();
+      }
     });
 
     // Page show/hide for PWA
@@ -76,7 +90,10 @@ class MobileLifecycleManager {
     });
 
     window.addEventListener('pagehide', (event) => {
-      this.handlePageHide(event);
+      // On Android this can fire during in-app transitions and cause false backgrounding.
+      if (!this.isNativeAndroid()) {
+        this.handlePageHide(event);
+      }
     });
 
     // Before unload
@@ -265,6 +282,11 @@ class MobileLifecycleManager {
     const oldState = this.currentState;
     
     if (oldState === newState) return;
+    const now = Date.now();
+    if (now - this.lastTransitionAt < this.MIN_TRANSITION_INTERVAL_MS) {
+      return;
+    }
+    this.lastTransitionAt = now;
 
     console.log(`📱 App state transition: ${oldState} → ${newState}`);
 
@@ -325,8 +347,8 @@ class MobileLifecycleManager {
     // Slow down heartbeat significantly
     this.currentHeartbeatInterval = this.heartbeatBaseInterval * this.config.heartbeatMultiplier;
     
-    // Pause non-essential mesh connections
-    this.pauseMeshConnections();
+    // Keep mesh active during background for test reliability (A/B messaging).
+    // this.pauseMeshConnections();
     
     // Schedule background cleanup
     if (this.config.maxBackgroundTime > 0) {

@@ -6,8 +6,35 @@ import './index.css';
 // Import global JSON setup to handle BigInt serialization
 import './utils/globalJsonSetup';
 
+class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; message: string }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, message: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error?.message || 'Unknown render error' };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Root render error:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '20px', color: '#ff3131', fontFamily: 'monospace', backgroundColor: 'black', minHeight: '100vh' }}>
+          <h1 style={{ marginBottom: '8px' }}>XitChat startup error</h1>
+          <p style={{ margin: 0 }}>{this.state.message}</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Reduce console noise in development
-if (process.env.NODE_ENV === 'development') {
+if (import.meta.env.DEV) {
   // Filter out Ably transport warnings
   const originalWarn = console.warn;
   console.warn = (...args) => {
@@ -130,10 +157,25 @@ try {
 
   console.log('Rendering app...');
   root.render(
-    <App />
+    <RootErrorBoundary>
+      <App />
+    </RootErrorBoundary>
   );
   console.log('App rendered successfully');
 } catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
   console.error('Failed to render React app:', error);
-  rootElement.innerHTML = `<div style="color: #ff3131; padding: 20px; font-family: monospace;">React Error: ${error.message}</div>`;
+  rootElement.innerHTML = `<div style="color: #ff3131; padding: 20px; font-family: monospace;">React Error: ${message}</div>`;
 }
+
+// Register service worker for PWA functionality
+const updateSW = registerSW({
+  onNeedRefresh() {
+    // Optional: Show update available notification
+    console.log('New content available, please refresh.');
+  },
+  onOfflineReady() {
+    // Optional: Show offline ready notification
+    console.log('App ready to work offline.');
+  },
+});

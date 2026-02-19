@@ -11,6 +11,7 @@ import { realPowService } from './realPowService';
 import { ablyWebRTC } from './ablyWebRTC';
 import { networkStateManager } from './networkStateManager';
 import { androidPermissions } from './androidPermissions';
+import { presenceBeacon } from './presenceBeacon';
 
 export type MeshConnectionType = 'bluetooth' | 'webrtc' | 'broadcast' | 'wifi' | 'nostr';
 
@@ -37,6 +38,8 @@ export interface HybridMeshMessage {
   isBridged?: boolean;
   tor?: boolean;
   pow?: any;
+  senderHandle?: string;
+  senderName?: string;
 }
 
 class HybridMeshService {
@@ -72,6 +75,70 @@ class HybridMeshService {
   private isLikelyNostrId(id?: string): boolean {
     if (!id) return false;
     return /^[0-9a-f]{64}$/i.test(id) || id.startsWith('npub');
+  }
+
+  private isLikelyLocalNetworkAddress(id?: string): boolean {
+    if (!id) return false;
+    const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const mac = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i;
+    return ipv4.test(id) || mac.test(id);
+  }
+
+  private getConnectedWifiServiceIds(): string[] {
+    return Array.from(this.peers.values())
+      .filter(p => p.connectionType === 'wifi' && p.isConnected && !!p.serviceId)
+      .map(p => p.serviceId!);
+  }
+
+  private normalizePeerName(name: any, id: string): string {
+    const text = typeof name === 'string' ? name.trim() : '';
+    if (!text || /^unknown$/i.test(text) || /^null$/i.test(text)) {
+      return this.fallbackName(id);
+    }
+    return text;
+  }
+
+  private normalizePeerHandle(handle: any, id: string): string {
+    const text = typeof handle === 'string' ? handle.trim() : '';
+    if (!text || /^@?unknown$/i.test(text) || /^@?null$/i.test(text)) {
+      return this.fallbackHandle(id);
+    }
+    return text.startsWith('@') ? text : `@${text}`;
+  }
+
+  private updatePeerIdentityFromMessage(
+    fromId: string,
+    serviceId: string | undefined,
+    senderHandle?: string,
+    senderName?: string
+  ): void {
+    if (!fromId) return;
+    const current = this.peers.get(fromId);
+    const normalizedHandle = senderHandle ? this.normalizePeerHandle(senderHandle, fromId) : undefined;
+    const normalizedName = senderName ? this.normalizePeerName(senderName, fromId) : undefined;
+
+    if (current) {
+      const nextHandle = normalizedHandle || current.handle;
+      const nextName = normalizedName || current.name;
+      if (nextHandle !== current.handle || nextName !== current.name) {
+        this.peers.set(fromId, { ...current, handle: nextHandle, name: nextName, lastSeen: Date.now() });
+        this.notifyPeersUpdated();
+      }
+      return;
+    }
+
+    if (!normalizedHandle && !normalizedName) return;
+    this.peers.set(fromId, {
+      id: fromId,
+      name: normalizedName || this.fallbackName(fromId),
+      handle: normalizedHandle || this.fallbackHandle(fromId),
+      connectionType: 'bluetooth',
+      isConnected: true,
+      lastSeen: Date.now(),
+      capabilities: ['chat'],
+      serviceId: serviceId || fromId
+    });
+    this.notifyPeersUpdated();
   }
 
   async initialize(): Promise<MeshConnectionType[]> {
@@ -230,8 +297,8 @@ class HybridMeshService {
     const peerId = peer.id || 'peer';
     const hybridPeer: HybridMeshPeer = {
       id: peerId,
-      name: peer.name || this.fallbackName(peerId),
-      handle: peer.handle || this.fallbackHandle(peerId),
+      name: this.normalizePeerName(peer.name, peerId),
+      handle: this.normalizePeerHandle(peer.handle, peerId),
       connectionType: type,
       isConnected: peer.isConnected !== undefined ? peer.isConnected : true,
       lastSeen: peer.lastSeen instanceof Date ? peer.lastSeen.getTime() : (peer.lastSeen || Date.now()),
@@ -240,6 +307,36 @@ class HybridMeshService {
       serviceId: peer.id
     };
     this.peers.set(peerId, hybridPeer);
+
+    // CRITICAL: Add discovered peer to presence beacon for radar visibility
+    this.addPeerToPresenceBeacon(hybridPeer, type);
+  }
+
+  private addPeerToPresenceBeacon(peer: HybridMeshPeer, connectionType: MeshConnectionType): void {
+    try {
+      // Convert hybrid mesh peer to presence beacon format
+      const presencePeer = {
+        pubkey: peer.id,
+        device: 'mobile' as const,
+        role: 'edge' as const,
+        caps: [...(connectionType === 'bluetooth' ? ['bluetooth'] as const : 
+              connectionType === 'wifi' ? ['wifi'] as const :
+              connectionType === 'nostr' ? ['nostr'] as const :
+              ['broadcast'] as const)],
+        rooms: ['global'],
+        lastSeen: peer.lastSeen,
+        ttl: 45, // 45 seconds TTL for mobile peers
+        signalStrength: peer.signalStrength,
+        geohash: '11001', // Default geohash for testing
+        timestamp: Date.now()
+      };
+
+      // Add to presence beacon - this will trigger radar updates
+      presenceBeacon.addExternalPeer(presencePeer);
+      console.log(`🔗 Added ${peer.handle} to presence beacon via ${connectionType}`);
+    } catch (error) {
+      console.debug('Failed to add peer to presence beacon:', error);
+    }
   }
 
   // Public method to add external peers (from radar, etc.)
@@ -247,8 +344,8 @@ class HybridMeshService {
     const peerId = peer.id || 'peer';
     const hybridPeer: HybridMeshPeer = {
       id: peerId,
-      name: peer.name || this.fallbackName(peerId),
-      handle: peer.handle || this.fallbackHandle(peerId),
+      name: this.normalizePeerName(peer.name, peerId),
+      handle: this.normalizePeerHandle(peer.handle, peerId),
       connectionType: connectionType,
       isConnected: peer.isConnected !== undefined ? peer.isConnected : true,
       lastSeen: peer.lastSeen || Date.now(),
@@ -261,7 +358,12 @@ class HybridMeshService {
     console.log(`🔗 External peer added to hybrid mesh: ${hybridPeer.handle} via ${connectionType}`);
   }
 
-  private handleChatMessage(content: string, from: string, connectionType: MeshConnectionType, metadata?: { messageId?: string; timestamp?: number }) {
+  private handleChatMessage(
+    content: string,
+    from: string,
+    connectionType: MeshConnectionType,
+    metadata?: { messageId?: string; timestamp?: number; senderHandle?: string; senderName?: string }
+  ) {
     const hybridMessage: HybridMeshMessage = {
       id: metadata?.messageId || Math.random().toString(36).substr(2, 9),
       from: from,
@@ -270,7 +372,9 @@ class HybridMeshService {
       timestamp: metadata?.timestamp || Date.now(),
       connectionType: connectionType,
       encrypted: false,
-      isBridged: false
+      isBridged: false,
+      senderHandle: metadata?.senderHandle,
+      senderName: metadata?.senderName
     };
 
     // Emit message for chat system to handle
@@ -284,16 +388,51 @@ class HybridMeshService {
     console.log(`💬 Chat message received from ${from} via ${connectionType}: ${content.substring(0, 50)}...`);
   }
 
+  private tryParseJsonWithRecovery(raw: string): any | null {
+    const text = (raw || '').trim();
+    if (!text) return null;
+
+    try {
+      return JSON.parse(text);
+    } catch {
+      // Some BLE packets arrive missing a trailing brace.
+      if (text.startsWith('{') && !text.endsWith('}')) {
+        try {
+          return JSON.parse(`${text}}`);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+  }
+
+  private extractWrappedContentFallback(raw: string): { content: string; metadata: any } | null {
+    const match = raw.match(/"content":"((?:\\.|[^"\\])*)"/);
+    if (!match) return null;
+
+    try {
+      const content = JSON.parse(`"${match[1]}"`);
+      const metadata: any = {};
+      const tsMatch = raw.match(/"timestamp":(\d+)/);
+      const idMatch = raw.match(/"messageId":"([^"]+)"/);
+      if (tsMatch) metadata.timestamp = Number(tsMatch[1]);
+      if (idMatch) metadata.messageId = idMatch[1];
+      return { content, metadata };
+    } catch {
+      return null;
+    }
+  }
+
   private handleMessage(connectionType: MeshConnectionType, message: any) {
     let content = message.content;
     let metadata: any = {};
 
     try {
       if (content.startsWith('{')) {
-        const parsed = JSON.parse(content);
+        const parsed = this.tryParseJsonWithRecovery(content);
 
-        // Check if this is a wrapped payload from sendMessage
-        if (parsed.content !== undefined && parsed.timestamp !== undefined) {
+        if (parsed && parsed.content !== undefined && parsed.timestamp !== undefined) {
           content = parsed.content;
           metadata = {
             tor: parsed.tor,
@@ -301,64 +440,123 @@ class HybridMeshService {
             timestamp: parsed.timestamp,
             messageId: parsed.messageId
           };
+        } else if (!parsed) {
+          const recovered = this.extractWrappedContentFallback(content);
+          if (recovered) {
+            content = recovered.content;
+            metadata = recovered.metadata;
+          }
+        }
 
-          // Re-parse the inner content if it's JSON
-          if (content.startsWith('{')) {
-            const inner = JSON.parse(content);
+        // Re-parse the inner content if it's JSON
+        if (content.startsWith('{')) {
+          const inner = this.tryParseJsonWithRecovery(content);
+          if (!inner) throw new Error('Invalid inner mesh JSON payload');
 
-            if (inner.type === 'mesh_data') {
-              window.dispatchEvent(new CustomEvent('meshDataReceived', {
-                detail: { ...message, content: inner }
-              }));
-              return;
+          if (inner.type === 'mesh_data') {
+            const payload = inner.payload;
+            const meshType = payload?.type;
+            const chatData = payload?.data;
+            const chatMessage = chatData?.message ?? chatData;
+            const senderHandle = chatMessage?.senderHandle || chatData?.participant?.handle;
+            const senderName = chatData?.participant?.name;
+
+            if (meshType === 'chat_message') {
+              if (senderHandle || senderName) {
+                this.updatePeerIdentityFromMessage(message.from, message.from, senderHandle, senderName);
+              }
+
+              const chatText =
+                (typeof chatMessage?.text === 'string' && chatMessage.text) ||
+                (typeof chatData?.text === 'string' && chatData.text) ||
+                '';
+
+              if (chatText) {
+                this.handleChatMessage(chatText, message.from, connectionType, {
+                  messageId: chatMessage?.id || payload?.id || metadata?.messageId,
+                  timestamp: chatMessage?.timestamp || payload?.timestamp || metadata?.timestamp || Date.now(),
+                  senderHandle,
+                  senderName
+                });
+              }
             }
 
-            if (inner.type === 'location_update') {
-              realtimeRadar.handleMeshLocationUpdate(inner.data);
-              return;
+            window.dispatchEvent(new CustomEvent('meshDataReceived', {
+              detail: { ...message, content: inner }
+            }));
+            return;
+          }
+
+          if (inner.type === 'location_update') {
+            realtimeRadar.handleMeshLocationUpdate(inner.data);
+            return;
+          }
+          if (inner.type === 'ai_request') {
+            window.dispatchEvent(new CustomEvent('meshAIRequest', { detail: { ...inner.data, fromNode: message.from } }));
+            return;
+          }
+          if (inner.type === 'ai_response') {
+            window.dispatchEvent(new CustomEvent('meshAIResponse', { detail: inner.data }));
+            return;
+          }
+          if (inner.type === 'payment_request') {
+            window.dispatchEvent(new CustomEvent('meshPaymentRequest', { detail: { ...inner.data, fromNode: message.from } }));
+            return;
+          }
+          if (inner.type === 'payment_response') {
+            window.dispatchEvent(new CustomEvent('meshPaymentResponse', { detail: inner.data }));
+            return;
+          }
+          if (inner.type === 'marketplace_listing') {
+            window.dispatchEvent(new CustomEvent('meshMarketplaceListing', { detail: inner.data }));
+            return;
+          }
+          if (inner.type === 'trade_request') {
+            window.dispatchEvent(new CustomEvent('meshTradeRequest', { detail: { ...inner.data, fromNode: message.from } }));
+            return;
+          }
+          if (inner.type === 'trade_response') {
+            window.dispatchEvent(new CustomEvent('meshTradeResponse', { detail: inner.data }));
+            return;
+          }
+          if (inner.type === 'chat_message') {
+            const text =
+              (typeof inner.data === 'string' && inner.data) ||
+              (typeof inner.data?.text === 'string' && inner.data.text) ||
+              '';
+            const senderHandle =
+              (typeof inner.data?.senderHandle === 'string' && inner.data.senderHandle) ||
+              (typeof inner.senderHandle === 'string' && inner.senderHandle) ||
+              undefined;
+            const senderName =
+              (typeof inner.data?.senderName === 'string' && inner.data.senderName) ||
+              (typeof inner.senderName === 'string' && inner.senderName) ||
+              undefined;
+
+            if (senderHandle || senderName) {
+              this.updatePeerIdentityFromMessage(message.from, message.from, senderHandle, senderName);
             }
-            if (inner.type === 'ai_request') {
-              window.dispatchEvent(new CustomEvent('meshAIRequest', { detail: { ...inner.data, fromNode: message.from } }));
-              return;
-            }
-            if (inner.type === 'ai_response') {
-              window.dispatchEvent(new CustomEvent('meshAIResponse', { detail: inner.data }));
-              return;
-            }
-            if (inner.type === 'payment_request') {
-              window.dispatchEvent(new CustomEvent('meshPaymentRequest', { detail: { ...inner.data, fromNode: message.from } }));
-              return;
-            }
-            if (inner.type === 'payment_response') {
-              window.dispatchEvent(new CustomEvent('meshPaymentResponse', { detail: inner.data }));
-              return;
-            }
-            if (inner.type === 'marketplace_listing') {
-              window.dispatchEvent(new CustomEvent('meshMarketplaceListing', { detail: inner.data }));
-              return;
-            }
-            if (inner.type === 'trade_request') {
-              window.dispatchEvent(new CustomEvent('meshTradeRequest', { detail: { ...inner.data, fromNode: message.from } }));
-              return;
-            }
-            if (inner.type === 'trade_response') {
-              window.dispatchEvent(new CustomEvent('meshTradeResponse', { detail: inner.data }));
-              return;
-            }
-            if (inner.type === 'chat_message') {
-              // Handle chat messages from radar peers
-              this.handleChatMessage(inner.data, message.from, connectionType, metadata);
-              return;
-            }
-            if (inner.type === 'ack' && inner.messageId) {
-              this.notifyListeners('ackReceived', {
-                messageId: inner.messageId,
-                from: message.from,
-                timestamp: inner.timestamp || Date.now(),
-                connectionType
-              });
-              return;
-            }
+
+            if (!text) return;
+            this.handleChatMessage(text, message.from, connectionType, {
+              ...metadata,
+              senderHandle,
+              senderName
+            });
+            return;
+          }
+          if (inner.type === 'ack' && inner.messageId) {
+            this.notifyListeners('ackReceived', {
+              messageId: inner.messageId,
+              from: message.from,
+              timestamp: inner.timestamp || Date.now(),
+              connectionType
+            });
+            return;
+          }
+          if (typeof inner.type === 'string') {
+            // Do not treat control packets as user chat messages.
+            return;
           }
         }
       }
@@ -404,8 +602,8 @@ class HybridMeshService {
 
   async sendMessage(content: string, targetId?: string, encryptedData?: any, messageId?: string): Promise<void> {
     try {
-      let torEnabled = realTorService.getStatus().connected;
-      let powSolution = undefined;
+      const torEnabled = realTorService.getStatus().connected;
+      const powSolution = undefined;
 
       const payload = JSON.stringify({
         content,
@@ -427,19 +625,27 @@ class HybridMeshService {
           let success = false;
           switch (peer.connectionType) {
             case 'bluetooth':
-              success = await workingBluetoothMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              success = peer.serviceId
+                ? await workingBluetoothMesh.sendMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                : false;
               if (success) console.log(`✅ Message sent via Bluetooth to ${peer.handle}`);
               break;
             case 'wifi':
-              success = await wifiP2P.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              success = peer.serviceId
+                ? await wifiP2P.sendMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                : false;
               if (success) console.log(`✅ Message sent via WiFi P2P to ${peer.handle}`);
               break;
             case 'nostr':
-              success = await nostrService.sendDirectMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              success = peer.serviceId
+                ? await nostrService.sendDirectMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                : false;
               if (success) console.log(`✅ Message sent via Nostr to ${peer.handle}`);
               break;
             case 'broadcast':
-              success = await broadcastMesh.sendMessage(peer.serviceId!, payload).then(() => true).catch(e => false);
+              success = peer.serviceId
+                ? await broadcastMesh.sendMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                : false;
               if (success) console.log(`✅ Message sent via Broadcast to ${peer.handle}`);
               break;
             case 'webrtc':
@@ -457,23 +663,76 @@ class HybridMeshService {
           if (!success) {
             console.log(`⚠️ Primary network ${peer.connectionType} failed for ${peer.handle}, trying fallback networks...`);
 
+            if (this.activeServices.wifi && peer.connectionType !== 'wifi') {
+              const wifiTargets = new Set<string>();
+              if (peer.serviceId) wifiTargets.add(peer.serviceId);
+              if (targetId && this.isLikelyLocalNetworkAddress(targetId)) wifiTargets.add(targetId);
+              this.getConnectedWifiServiceIds().forEach(id => wifiTargets.add(id));
+
+              for (const wifiTarget of wifiTargets) {
+                const wifiSuccess = await wifiP2P.sendMessage(wifiTarget, payload).then(() => true).catch(() => false);
+                if (wifiSuccess) {
+                  success = true;
+                  console.log(`Message sent via WiFi fallback to ${peer.handle} (${wifiTarget})`);
+                  break;
+                }
+              }
+            }
+
             // Try Nostr as universal fallback
-            if (this.activeServices.nostr && peer.connectionType !== 'nostr' && this.isLikelyNostrId(peer.serviceId || peer.id || targetId)) {
+            if (!success && this.activeServices.nostr && peer.connectionType !== 'nostr' && this.isLikelyNostrId(peer.serviceId || peer.id || targetId)) {
               console.log('🔄 Trying Nostr fallback...');
               const nostrTarget = peer.serviceId || peer.id || targetId!;
               const nostrSuccess = await nostrService.sendDirectMessage(nostrTarget, payload).catch(() => false);
-              if (nostrSuccess) console.log(`✅ Message sent via Nostr fallback to ${peer.handle}`);
+              if (nostrSuccess) {
+                success = true;
+                console.log(`✅ Message sent via Nostr fallback to ${peer.handle}`);
+              }
             }
 
             // Try Broadcast as another fallback
-            if (this.activeServices.broadcast && peer.connectionType !== 'broadcast') {
+            if (!success && this.activeServices.broadcast && peer.connectionType !== 'broadcast' && !!peer.serviceId) {
               console.log('🔄 Trying Broadcast fallback...');
               const broadcastSuccess = await broadcastMesh.sendMessage(peer.serviceId!, payload).catch(() => false);
-              if (broadcastSuccess) console.log(`✅ Message sent via Broadcast fallback to ${peer.handle}`);
+              if (broadcastSuccess) {
+                success = true;
+                console.log(`✅ Message sent via Broadcast fallback to ${peer.handle}`);
+              }
+            }
+
+            if (!success) {
+              console.warn(`Targeted send failed for ${peer.handle}; using best-effort broadcast fallback`);
+              const finalFallbackPromises: Promise<any>[] = [];
+
+              if (this.activeServices.wifi) {
+                const wifiPeers = Array.from(this.peers.values())
+                  .filter(p => p.connectionType === 'wifi' && p.isConnected && !!p.serviceId);
+                wifiPeers.forEach(p => finalFallbackPromises.push(wifiP2P.sendMessage(p.serviceId!, payload).catch(() => false)));
+              }
+              if (this.activeServices.bluetooth) {
+                const btPeers = Array.from(this.peers.values())
+                  .filter(p => p.connectionType === 'bluetooth' && p.isConnected && !!p.serviceId);
+                btPeers.forEach(p => finalFallbackPromises.push(workingBluetoothMesh.sendMessage(p.serviceId!, payload).catch(() => false)));
+              }
+              if (this.activeServices.nostr) {
+                finalFallbackPromises.push(nostrService.broadcastMessage(payload).catch(() => false));
+              }
+
+              if (finalFallbackPromises.length) {
+                await Promise.allSettled(finalFallbackPromises);
+              }
             }
           }
           return;
         } else {
+          if (this.activeServices.wifi && this.isLikelyLocalNetworkAddress(targetId)) {
+            const wifiDirectSuccess = await wifiP2P.sendMessage(targetId, payload).then(() => true).catch(() => false);
+            if (wifiDirectSuccess) {
+              console.log(`✅ Direct WiFi send succeeded for ${targetId}`);
+              return;
+            }
+          }
+
           // Fallback: If peer not found in mesh map, but looks like a valid ID and Nostr is active, try Nostr
           if (this.activeServices.nostr && this.isLikelyNostrId(targetId)) {
             console.log(`⚠️ Peer ${targetId} not found in mesh map, falling back to direct Nostr send`);
@@ -492,7 +751,7 @@ class HybridMeshService {
       }
       if (this.activeServices.wifi) {
         const wifiPeers = Array.from(this.peers.values())
-          .filter(p => p.connectionType === 'wifi' && !!p.serviceId);
+          .filter(p => p.connectionType === 'wifi' && p.isConnected && !!p.serviceId);
         wifiPeers.forEach(p => {
           broadcastPromises.push(wifiP2P.sendMessage(p.serviceId!, payload).catch(e => console.log('WiFi P2P failed:', e)));
         });
@@ -502,7 +761,7 @@ class HybridMeshService {
       }
       if (this.activeServices.bluetooth) {
         const bluetoothPeers = Array.from(this.peers.values())
-          .filter(p => p.connectionType === 'bluetooth');
+          .filter(p => p.connectionType === 'bluetooth' && p.isConnected && !!p.serviceId);
         bluetoothPeers.forEach(p => {
           broadcastPromises.push(workingBluetoothMesh.sendMessage(p.serviceId!, payload).catch(e => console.log('Bluetooth failed:', e)));
         });
