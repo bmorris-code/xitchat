@@ -478,7 +478,7 @@ private setupDiscovery(): void {
     this.handleNostrPresenceEvent(presenceData);
   });
 }
-
+TTL
   // Public API methods
   async initialize(serverUrl?: string): Promise<boolean> {
     try {
