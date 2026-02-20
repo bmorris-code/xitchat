@@ -8,7 +8,7 @@ import { broadcastMesh, BroadcastPeer } from './broadcastMesh';
 import { realtimeRadar } from './realtimeRadar';
 import { realTorService } from './realTorService';
 import { realPowService } from './realPowService';
-import { ablyWebRTC } from './ablyWebRTC';
+import { hybridMeshWebRTC as ablyWebRTC } from './ablyWebRTC';
 import { networkStateManager } from './networkStateManager';
 import { androidPermissions } from './androidPermissions';
 import { presenceBeacon } from './presenceBeacon';

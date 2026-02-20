@@ -25,7 +25,7 @@ export class HybridMeshWebRTC {
   reconnectAttempts: any;
   maxReconnectAttempts: any;
 
-  async initialize(): Promise<boolean> {
+  async initialize(apiKey: any): Promise<boolean> {
     if (!('RTCPeerConnection' in window)) {
       console.warn('WebRTC not supported in this browser.');
       return false;
@@ -288,4 +288,4 @@ export class HybridMeshWebRTC {
   }
 }
 
-export const hybridMeshWebRTC = new HybridMeshWebRTC('<YOUR_ABLY_API_KEY>');
+export const hybridMeshWebRTC = new HybridMeshWebRTC();
