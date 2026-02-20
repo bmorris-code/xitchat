@@ -21,6 +21,9 @@ export class HybridMeshWebRTC {
   private myPeerId: string | null = null;
   private listeners: { [key: string]: ((data?: any) => void)[] } = {};
   private currentRoom: string = 'xitchat-mesh';
+  apiKey: Ably.ClientOptions<Ably.CorePlugins>;
+  reconnectAttempts: any;
+  maxReconnectAttempts: any;
 
   async initialize(): Promise<boolean> {
     if (!('RTCPeerConnection' in window)) {
@@ -52,6 +55,12 @@ export class HybridMeshWebRTC {
       console.warn('⚠️ Ably WebRTC initialization skipped (Offline Mode):', error);
       return false;
     }
+  }
+  generatePeerId(): string {
+    throw new Error('Method not implemented.');
+  }
+  createLocalPeer() {
+    throw new Error('Method not implemented.');
   }
 
   private async handlePeerJoined(data: any) {
@@ -220,6 +229,9 @@ export class HybridMeshWebRTC {
         peer.dataChannel.send(JSON.stringify(message));
       }
     });
+  }
+  generateMessageId() {
+    throw new Error('Method not implemented.');
   }
 
   private addPeer(peerId: string, connection: RTCPeerConnection, dataChannel: RTCDataChannel) {
