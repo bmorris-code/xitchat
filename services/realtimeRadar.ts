@@ -439,6 +439,47 @@ class RealtimeRadarService {
     }
   }
 
+  private addOrUpdatePeer(peerData: any, transport: RadarPeer['connectionType']) {
+  const id = peerData.pubkey || peerData.id;
+
+  const radarPeer: RadarPeer = {
+    id,
+    pubkey: id,
+    name: peerData.name || `User ${id.substring(0, 8)}`,
+    handle: peerData.handle || `@${id.substring(0, 6)}`,
+    device: peerData.device || 'mobile',
+    role: peerData.role || 'edge',
+    capabilities: peerData.caps || [],
+    lastSeen: Date.now(),
+    ttl: 60, // keep peer for 60 seconds by default
+    isOnline: true,
+    connectionType: transport,
+    signalStrength: peerData.signalStrength || 0,
+    location: peerData.geohash ? { lat: 0, lng: 0, geohash: peerData.geohash } : undefined
+  };
+
+  this.peers.set(id, radarPeer);
+  this.updateGeohashZones();
+  this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
+}
+
+private setupDiscovery(): void {
+  // Bluetooth scanning
+  mobileLifecycle.on('bluetooth_scan', (devices: any[]) => {
+    devices.forEach(d => this.addOrUpdatePeer(d, 'bluetooth'));
+  });
+
+  // WiFi P2P scanning
+  mobileLifecycle.on('wifi_p2p_scan', (devices: any[]) => {
+    devices.forEach(d => this.addOrUpdatePeer(d, 'wifi'));
+  });
+
+  // WebRTC peers (real P2P)
+  nostrService.subscribe('presenceEvent', (presenceData: any) => {
+    this.handleNostrPresenceEvent(presenceData);
+  });
+}
+  
   // Public API methods
   async initialize(serverUrl?: string): Promise<boolean> {
     try {

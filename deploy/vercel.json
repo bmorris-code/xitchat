@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "name": "xitchat-p2p",
+  "version": 1,
+  "name": "xitchat",
   "builds": [
     {
       "src": "server/signaling-server.js",

@@ -177,7 +177,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }
 
   return (
-    <div className={`flex-1 flex flex-col ${getChatBackgroundClass()} relative pt-safe ${className} no-scrollbar`}>
+    <div className={`flex-1 flex flex-col ${getChatBackgroundClass()} relative pt-safe ${className}`}>
+      {/* Hidden inputs for media */}
       <input type="file" accept="image/*" className="hidden" ref={imageInputRef} onChange={(e) => handleFileChange(e, 'image')} />
       <input type="file" accept="video/*" className="hidden" ref={videoInputRef} onChange={(e) => handleFileChange(e, 'video')} />
 
