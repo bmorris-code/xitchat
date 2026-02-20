@@ -35,6 +35,7 @@ import GalleryView from './components/GalleryView';
 import NativeFeaturesView from './components/NativeFeaturesView';
 import TransmissionToast from './components/TransmissionToast';
 import { handshakePersistence, HandshakeNode } from './services/handshakePersistence';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 const App: React.FC = () => {
   console.log('App component initializing...');
@@ -1917,9 +1918,9 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+      <SpeedInsights />
     </div>
   );
 };
 
 export default App;
-
