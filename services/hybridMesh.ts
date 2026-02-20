@@ -314,6 +314,9 @@ class HybridMeshService {
 
   private addPeerToPresenceBeacon(peer: HybridMeshPeer, connectionType: MeshConnectionType): void {
     try {
+      // Ignore same-device BroadcastChannel peers for radar; they are not real nearby devices.
+      if (connectionType === 'broadcast') return;
+
       // Convert hybrid mesh peer to presence beacon format
       const presencePeer = {
         pubkey: peer.id,

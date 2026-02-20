@@ -210,6 +210,27 @@ const App: React.FC = () => {
           radarUnsubscribers.push(realtimeRadar.subscribe('peersUpdated', (peers) => {
             console.log('📡 Radar peers updated:', peers);
             setRadarPeers(peers);
+
+            // Mirror radar peers into hybrid mesh so map/chat flows can target
+            // presence-discovered desktop/mobile nodes.
+            peers.forEach((peer: any) => {
+              const mappedType =
+                peer.connectionType === 'bluetooth' ? 'bluetooth' :
+                peer.connectionType === 'wifi' ? 'wifi' :
+                peer.connectionType === 'webrtc' ? 'webrtc' :
+                'nostr';
+
+              hybridMesh.addExternalPeer({
+                id: peer.id,
+                name: peer.name,
+                handle: peer.handle,
+                isConnected: !!peer.isOnline,
+                lastSeen: peer.lastSeen,
+                signalStrength: peer.signalStrength,
+                capabilities: Array.isArray(peer.capabilities) ? peer.capabilities : ['chat'],
+                serviceId: peer.pubkey || peer.id
+              }, mappedType as any);
+            });
           }));
 
           radarUnsubscribers.push(realtimeRadar.subscribe('peerJoined', (peer) => {

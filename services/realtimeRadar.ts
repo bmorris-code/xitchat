@@ -96,6 +96,10 @@ class RealtimeRadarService {
   }
 
   private handleNostrPresenceEvent(presenceData: any): void {
+    if (this.isSimulatedPeerId(presenceData?.pubkey)) {
+      return;
+    }
+
     // Convert Nostr presence data to radar peer format
     const radarPeer: RadarPeer = {
       id: presenceData.pubkey,
@@ -138,6 +142,7 @@ class RealtimeRadarService {
     presencePeers.forEach(presencePeer => {
       // Skip self
       if (myPubkey && presencePeer.pubkey === myPubkey) return;
+      if (this.isSimulatedPeerId(presencePeer.pubkey)) return;
 
       // TTL-based visibility check (CRITICAL for mobile)
       const isVisible = now - presencePeer.lastSeen < (presencePeer.ttl * 1000);
@@ -227,25 +232,21 @@ class RealtimeRadarService {
   }
 
   private extractNameFromPubkey(pubkey: string): string {
-    // Extract name from pubkey or use default
-    const nameMap: { [key: string]: string } = {
-      'npub1anchor001': 'Anchor Node',
-      'npub1mobile001': 'Mobile User',
-      'sim_desktop_001': 'Desktop User',
-      'sim_mobile_001': 'Mobile User'
-    };
-    return nameMap[pubkey] || `User ${pubkey.substring(0, 8)}...`;
+    return `User ${pubkey.substring(0, 8)}...`;
   }
 
   private extractHandleFromPubkey(pubkey: string): string {
-    // Extract handle from pubkey or generate
-    const handleMap: { [key: string]: string } = {
-      'npub1anchor001': '@anchor',
-      'npub1mobile001': '@mobile',
-      'sim_desktop_001': '@desktop',
-      'sim_mobile_001': '@mobile'
-    };
-    return handleMap[pubkey] || `@${pubkey.substring(0, 6)}`;
+    return `@${pubkey.substring(0, 6)}`;
+  }
+
+  private isSimulatedPeerId(id?: string): boolean {
+    if (!id) return true;
+    const normalized = id.toLowerCase();
+    return normalized.startsWith('sim_') ||
+      normalized.startsWith('sim-') ||
+      normalized.startsWith('simulated-') ||
+      normalized.includes('mock') ||
+      normalized.includes('test-');
   }
 
   private handleLifecycleEvent(event: any): void {
