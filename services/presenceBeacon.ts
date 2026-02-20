@@ -340,6 +340,8 @@ class PresenceBeaconService {
 
   private getDeviceCapabilities(): ('webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'broadcast')[] {
     const caps: ('webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'broadcast')[] = [];
+    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform?.() &&
+      (window as any).Capacitor?.getPlatform?.() === 'android';
     
     // WebRTC capability
     if ('RTCPeerConnection' in window) caps.push('webrtc');
@@ -347,11 +349,16 @@ class PresenceBeaconService {
     // Nostr capability comes from service connectivity.
     if (nostrService.isConnected()) caps.push('nostr');
     
-    // Bluetooth capability (mobile only)
-    if (this.config.isMobile && 'bluetooth' in navigator) caps.push('bluetooth');
+    // Native Android exposes Bluetooth/WiFi via Capacitor plugins (not navigator.bluetooth).
+    if (isNativeAndroid) {
+      caps.push('bluetooth');
+      caps.push('wifi');
+    } else if (this.config.isMobile && 'bluetooth' in navigator) {
+      caps.push('bluetooth');
+    }
     
     // WiFi P2P capability (heuristic)
-    if (!this.config.isMobile && 'connection' in navigator) {
+    if (!isNativeAndroid && !this.config.isMobile && 'connection' in navigator) {
       const connection = (navigator as any).connection;
       if (connection?.type === 'wifi') caps.push('wifi');
     }

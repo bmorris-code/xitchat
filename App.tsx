@@ -214,10 +214,12 @@ const App: React.FC = () => {
             // Mirror radar peers into hybrid mesh so map/chat flows can target
             // presence-discovered desktop/mobile nodes.
             peers.forEach((peer: any) => {
+              const isNativeAndroid = (window as any).Capacitor?.isNativePlatform?.() &&
+                (window as any).Capacitor?.getPlatform?.() === 'android';
               const mappedType =
                 peer.connectionType === 'bluetooth' ? 'bluetooth' :
                 peer.connectionType === 'wifi' ? 'wifi' :
-                peer.connectionType === 'webrtc' ? 'webrtc' :
+                (peer.connectionType === 'webrtc' && !isNativeAndroid) ? 'webrtc' :
                 'nostr';
 
               hybridMesh.addExternalPeer({

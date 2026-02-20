@@ -158,6 +158,15 @@ class HybridMeshService {
         console.log('🌐 Web: Using real mesh transports available in browser + Nostr');
       }
 
+      // Keep native WiFi identity aligned with app profile for peer mapping.
+      try {
+        const handle = localStorage.getItem('xitchat_handle') || 'anon';
+        const name = localStorage.getItem('xitchat_name') || handle || 'Anonymous';
+        wifiP2P.setUserInfo(name, handle.startsWith('@') ? handle : `@${handle}`);
+      } catch {
+        // Non-fatal: discovery still works with fallback identity.
+      }
+
       const initializedTypes: MeshConnectionType[] = [];
 
       // 1. Start Nostr (global serverless mesh - works everywhere)
@@ -652,11 +661,15 @@ class HybridMeshService {
               if (success) console.log(`✅ Message sent via Broadcast to ${peer.handle}`);
               break;
             case 'webrtc':
-              try {
-                await ablyWebRTC.sendMessage(payload);
-                success = true;
-                console.log(`✅ Message sent via WebRTC to ${peer.handle}`);
-              } catch (e) {
+              if (this.activeServices.webrtc) {
+                try {
+                  await ablyWebRTC.sendMessage(payload);
+                  success = true;
+                  console.log(`Message sent via WebRTC to ${peer.handle}`);
+                } catch (e) {
+                  success = false;
+                }
+              } else {
                 success = false;
               }
               break;
@@ -843,3 +856,4 @@ class HybridMeshService {
 }
 
 export const hybridMesh = new HybridMeshService();
+
