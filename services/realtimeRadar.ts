@@ -462,6 +462,23 @@ class RealtimeRadarService {
   this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
 }
 
+private setupDiscovery(): void {
+  // Bluetooth scanning
+  mobileLifecycle.on('bluetooth_scan', (devices: any[]) => {
+    devices.forEach(d => this.addOrUpdatePeer(d, 'bluetooth'));
+  });
+
+  // WiFi P2P scanning
+  mobileLifecycle.on('wifi_p2p_scan', (devices: any[]) => {
+    devices.forEach(d => this.addOrUpdatePeer(d, 'wifi'));
+  });
+
+  // WebRTC peers (real P2P)
+  nostrService.subscribe('presenceEvent', (presenceData: any) => {
+    this.handleNostrPresenceEvent(presenceData);
+  });
+}
+
   // Public API methods
   async initialize(serverUrl?: string): Promise<boolean> {
     try {
