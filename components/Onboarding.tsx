@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { androidPermissions } from '../services/androidPermissions';
+import { releaseInfo } from '../services/releaseInfo';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -151,15 +152,15 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 <div className="flex-1">
                   <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Get the App</h3>
                   <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed mb-3">
-                    For true serverless mesh networking (Bluetooth & WiFi Direct), download the Android app v1.0.
+                    For true serverless mesh networking (Bluetooth & WiFi Direct), download the Android app v{releaseInfo.apkVersionLabel}.
                   </p>
                   <a
-                    href="/xitchat-v1.apk"
-                    download="xitchat-v1.apk"
+                    href={releaseInfo.apkDownloadUrl}
+                    download={`xitchat-v${releaseInfo.apkVersionLabel}.apk`}
                     className="inline-flex items-center gap-2 bg-[#00ff41]/10 border border-[#00ff41] text-[#00ff41] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#00ff41]/20 transition-colors"
                   >
                     <i className="fa-solid fa-download"></i>
-                    Download Serverless APK v1.0
+                    Download Serverless APK v{releaseInfo.apkVersionLabel}
                   </a>
                 </div>
               </div>
