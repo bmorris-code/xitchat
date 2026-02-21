@@ -17,11 +17,28 @@ export interface UpdateCheckResult {
   currentVersionCode: number;
 }
 
+interface ReleaseConfig {
+  version: string;
+  versionCode: number;
+  apkUrls: {
+    production: string;
+    staging: string;
+    development: string;
+  };
+  releaseNotes: string;
+  forceUpdate: boolean;
+  apkSize: number;
+  checksum: string;
+  minSupportedVersion: string;
+  updateCheckInterval: number;
+}
+
 class AppUpdateService {
   private static instance: AppUpdateService;
   private updateCheckInterval: NodeJS.Timeout | null = null;
   private readonly UPDATE_CHECK_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
   private readonly UPDATE_API_URL = '/api/version-check';
+  private releaseConfig: ReleaseConfig | null = null;
 
   private constructor() {}
 
@@ -30,6 +47,42 @@ class AppUpdateService {
       AppUpdateService.instance = new AppUpdateService();
     }
     return AppUpdateService.instance;
+  }
+
+  /**
+   * Load release configuration
+   */
+  private async loadReleaseConfig(): Promise<ReleaseConfig> {
+    if (this.releaseConfig) {
+      return this.releaseConfig;
+    }
+
+    try {
+      const response = await fetch('/config/release.json');
+      if (!response.ok) {
+        throw new Error('Failed to load release config');
+      }
+      this.releaseConfig = await response.json();
+      return this.releaseConfig;
+    } catch (error) {
+      console.debug('Failed to load release config, using defaults:', error);
+      // Fallback config
+      return {
+        version: '1.0.1',
+        versionCode: 2,
+        apkUrls: {
+          production: 'https://releases.xitchat.com/xitchat-v1.0.1.apk',
+          staging: 'https://staging-releases.xitchat.com/xitchat-v1.0.1.apk',
+          development: '/xitchat-v1.apk'
+        },
+        releaseNotes: 'Bug fixes and performance improvements',
+        forceUpdate: false,
+        apkSize: 59105864,
+        checksum: 'sha256:a1b2c3d4e5f6...',
+        minSupportedVersion: '1.0.0',
+        updateCheckInterval: 21600000
+      };
+    }
   }
 
   /**
@@ -60,7 +113,7 @@ class AppUpdateService {
     try {
       // For development/testing, simulate update check
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return this.simulateUpdateCheck(currentVersion);
+        return await this.simulateUpdateCheck(currentVersion);
       }
 
       // Production: Check against server
@@ -86,18 +139,26 @@ class AppUpdateService {
   /**
    * Simulate update check for development
    */
-  private simulateUpdateCheck(currentVersion: { version: string; versionCode: number }): UpdateCheckResult {
-    // Check if there's a newer APK file in public directory
-    const newerApkUrl = '/xitchat-v1.apk';
+  private async simulateUpdateCheck(currentVersion: { version: string; versionCode: number }): Promise<UpdateCheckResult> {
+    const config = await this.loadReleaseConfig();
     
-    // Simulate version comparison
+    // Determine environment and get appropriate URL
+    let downloadUrl: string;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      downloadUrl = config.apkUrls.development;
+    } else if (window.location.hostname.includes('staging')) {
+      downloadUrl = config.apkUrls.staging;
+    } else {
+      downloadUrl = config.apkUrls.production;
+    }
+    
     const serverVersion: UpdateInfo = {
-      version: '1.0.1',
-      versionCode: 2,
-      downloadUrl: newerApkUrl,
-      releaseNotes: 'Bug fixes and performance improvements',
-      forceUpdate: false,
-      apkSize: 59105864 // ~59MB
+      version: config.version,
+      versionCode: config.versionCode,
+      downloadUrl,
+      releaseNotes: config.releaseNotes,
+      forceUpdate: config.forceUpdate,
+      apkSize: config.apkSize
     };
 
     return this.compareVersions(currentVersion, serverVersion);

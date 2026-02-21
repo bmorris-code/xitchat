@@ -35,6 +35,7 @@ import GalleryView from './components/GalleryView';
 import NativeFeaturesView from './components/NativeFeaturesView';
 import TransmissionToast from './components/TransmissionToast';
 import { handshakePersistence, HandshakeNode } from './services/handshakePersistence';
+import { appUpdateService } from './services/appUpdateService';
 
 const App: React.FC = () => {
   console.log('App component initializing...');
@@ -53,7 +54,7 @@ const App: React.FC = () => {
   const [balance, setBalance] = useState(1240);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [transmissions, setTransmissions] = useState<Array<{ id: string, message: string, type: 'buzz' | 'chat' | 'system', timestamp: number }>>([]);
+  const [transmissions, setTransmissions] = useState<Array<{ id: string, message: string, type: 'buzz' | 'chat' | 'system' | 'update', timestamp: number }>>([]);
   const [nostrConnected, setNostrConnected] = useState(false);
   const [nostrPeers, setNostrPeers] = useState<NostrPeer[]>([]);
   const [discoveredPeers, setDiscoveredPeers] = useState<any[]>([]);
@@ -860,8 +861,29 @@ const App: React.FC = () => {
 
     window.addEventListener('newTransmission', handleCustomTransmission as EventListener);
 
+    // Listen for app update events
+    const handleAppUpdate = (event: CustomEvent) => {
+      const updateInfo = event.detail;
+      const newTransmission = {
+        id: `update-${Date.now()}`,
+        message: `New update available: v${updateInfo.version} - ${updateInfo.releaseNotes}`,
+        type: 'update' as const,
+        timestamp: Date.now()
+      };
+
+      setTransmissions(prev => [...prev, newTransmission]);
+
+      // Auto-remove after 10 seconds for update notifications
+      setTimeout(() => {
+        setTransmissions(prev => prev.filter(t => t.id !== newTransmission.id));
+      }, 10000);
+    };
+
+    window.addEventListener('appUpdateAvailable', handleAppUpdate as EventListener);
+
     return () => {
       window.removeEventListener('newTransmission', handleCustomTransmission as EventListener);
+      window.removeEventListener('appUpdateAvailable', handleAppUpdate as EventListener);
     };
   }, []);
 
@@ -883,6 +905,7 @@ const App: React.FC = () => {
       "AUTH: validating_node_identity...",
       "GPS: locking_geohash_sector_428F...",
       "SIGNAL: decrypting_incoming_packets...",
+      "UPDATE: checking_for_new_versions...",
       "SUCCESS: xitchat_online."
     ];
     let i = 0;
@@ -895,6 +918,9 @@ const App: React.FC = () => {
         setTimeout(() => {
           setIsBooting(false);
           checkOnboardingStatus();
+          
+          // Start update checking after boot
+          appUpdateService.startPeriodicChecks();
         }, 800);
       }
     }, 120);

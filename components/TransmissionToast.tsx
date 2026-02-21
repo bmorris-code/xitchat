@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 interface Transmission {
   id: string;
   message: string;
-  type: 'buzz' | 'chat' | 'system' | 'radar' | 'mesh' | 'nostr';
+  type: 'buzz' | 'chat' | 'system' | 'radar' | 'mesh' | 'nostr' | 'update';
   timestamp: number;
 }
 
@@ -32,6 +32,7 @@ const TransmissionToast: React.FC<TransmissionToastProps> = ({
       case 'radar': return 'fa-satellite-dish';
       case 'mesh': return 'fa-network-wired';
       case 'nostr': return 'fa-globe';
+      case 'update': return 'fa-download';
       default: return 'fa-signal';
     }
   };
@@ -43,6 +44,7 @@ const TransmissionToast: React.FC<TransmissionToastProps> = ({
       case 'radar': return 'RADAR_DETECT';
       case 'mesh': return 'MESH_SIGNAL';
       case 'nostr': return 'NOSTR_RELAY';
+      case 'update': return 'UPDATE_AVAILABLE';
       default: return 'SYSTEM_SIGNAL';
     }
   };
@@ -52,6 +54,7 @@ const TransmissionToast: React.FC<TransmissionToastProps> = ({
       case 'buzz': return 'text-amber-500 border-amber-500/50 shadow-amber-500/20';
       case 'radar': return 'text-cyan-400 border-cyan-400/50 shadow-cyan-400/20';
       case 'system': return 'text-red-500 border-red-500/50 shadow-red-500/20';
+      case 'update': return 'text-blue-400 border-blue-400/50 shadow-blue-400/20';
       default: return 'text-[#00ff41] border-[#00ff41]/50 shadow-[#00ff41]/20';
     }
   };
