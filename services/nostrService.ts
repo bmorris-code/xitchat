@@ -309,19 +309,12 @@ class NostrService {
       if (privateKey) {
         this.privateKey = privateKey;
       } else {
-        // Try to load from localStorage
-        const savedKey = localStorage.getItem('nostr_private_key');
-        if (savedKey && savedKey.length === 64 && /^[0-9a-fA-F]+$/.test(savedKey)) {
-          this.privateKey = savedKey;
-          console.log('🔑 Loaded existing Nostr private key');
-        } else {
-          // Generate new key pair if none provided - use bytesToHex approach
-          const secretKey = new Uint8Array(32);
-          crypto.getRandomValues(secretKey);
-          this.privateKey = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
-          localStorage.setItem('nostr_private_key', this.privateKey);
-          console.log('🔑 Generated new Nostr private key');
-        }
+        // Security hardening: do not persist private keys in localStorage.
+        // Generate an in-memory session key unless an explicit key is provided.
+        const secretKey = new Uint8Array(32);
+        crypto.getRandomValues(secretKey);
+        this.privateKey = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
+        console.log('🔑 Generated in-memory Nostr private key for this session');
       }
 
       // Convert hex private key to public key using secp256k1
@@ -1110,10 +1103,6 @@ class NostrService {
   // GETTERS
   getPublicKey(): string | null {
     return this.publicKey;
-  }
-
-  getPrivateKey(): string | null {
-    return this.privateKey;
   }
 
   getPeers(): NostrPeer[] {

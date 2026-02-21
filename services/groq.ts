@@ -230,7 +230,12 @@ title, time, snippet, category.`
     });
 
     const content = response.choices[0]?.message?.content || '[]';
-    const result = JSON.parse(content);
+    const parsed = JSON.parse(content);
+    const result = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.items)
+        ? parsed.items
+        : getFallbackBuzz();
     buzzCache.set(cacheKey, { data: result, timestamp: now });
     return result;
   } catch (error) {

@@ -28,8 +28,8 @@ export class HybridMeshWebRTC {
     try {
       this.myPeerId = this.generatePeerId();
 
-      // Use API key from parameter or environment variable
-      const ablyKey = apiKey || process.env.NEXT_PUBLIC_ABLY_KEY;
+      // Security hardening: require explicit runtime key/token; do not read bundled env secrets.
+      const ablyKey = apiKey;
       if (!ablyKey) throw new Error('Ably API key not provided.');
 
       this.ably = new Ably.Realtime(ablyKey);

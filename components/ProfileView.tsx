@@ -52,8 +52,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   const [torStatus, setTorStatus] = useState<any>(null);
   const [powStats, setPowStats] = useState<any>(null);
   const [showNostrKeys, setShowNostrKeys] = useState(false);
-  const [nostrKeys, setNostrKeys] = useState({ pub: '', priv: '' });
-
+  const [nostrKeys, setNostrKeys] = useState({ pub: '' });
   // Load saved uplink core from localStorage
   useEffect(() => {
     const savedUplinkCore = localStorage.getItem('xitchat_uplink_core');
@@ -63,8 +62,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
 
     // Load Nostr keys
     setNostrKeys({
-      pub: nostrService.getPublicKey() || '',
-      priv: nostrService.getPrivateKey() || ''
+      pub: nostrService.getPublicKey() || ''
     });
   }, []);
 
@@ -308,16 +306,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                   </button>
                 </div>
               </div>
-              <div className="bg-[#080808] border border-red-500 border-opacity-20 p-4 space-y-2">
-                <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest text-red-500/40">private_key (nsec) - DO NOT SHARE</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-[10px] text-red-500 opacity-80 break-all flex-1">••••••••••••••••••••••••••••••••</code>
-                  <button onClick={() => copyToClipboard(nostrKeys.priv)} className="text-red-500 hover:scale-110 transition-transform">
-                    <i className="fa-solid fa-copy"></i>
-                  </button>
-                </div>
-              </div>
-              <p className="text-[9px] opacity-40 italic">Use these keys to log in to XitChat on other devices.</p>
+              <p className="text-[9px] opacity-40 italic">Public key is shareable. Private keys are intentionally not exposed in-app.</p>
             </div>
           )}
         </div>

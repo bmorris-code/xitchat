@@ -214,7 +214,12 @@ Return JSON with fields title, time, snippet, category.`,
       }
     });
 
-    const result = JSON.parse((response as any).text || '[]');
+    const parsed = JSON.parse((response as any).text || '[]');
+    const result = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed?.items)
+        ? parsed.items
+        : getFallbackBuzz();
     buzzCache.set(cacheKey, { data: result, timestamp: now });
     return result;
   } catch (error) {

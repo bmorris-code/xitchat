@@ -12,32 +12,9 @@
     <meta http-equiv="Expires" content="0">
 
     <!-- FIX 2: Security Policy (Allows Websockets for Chat & Images) -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: gap: ws: wss: blob: filesystem:;">
-
-    <script>
-        // CRITICAL POLYFILLS for Mobile/PWA
-        window.global = window;
-        window.process = window.process || { env: { NODE_ENV: 'production' }, version: '' };
-
-        // Error Logging
-        window.onerror = function (msg, url, line, col, error) {
-            console.error("Global Error:", msg, "at", line, ":", col);
-        };
-        window.addEventListener('unhandledrejection', function (event) {
-            const reason = event.reason ? (event.reason.message || event.reason.toString()) : '';
-            if (
-                reason.includes('rate-limited') ||
-                reason.includes('slow down') ||
-                reason.includes('connection timed out') ||
-                reason.includes('publish timed out') ||
-                reason.includes('timeout')
-            ) {
-                event.preventDefault();
-                return;
-            }
-            console.warn("Unhandled Promise Rejection:", event.reason);
-        });
-    </script>
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss: ws:; media-src 'self' blob: data:; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none';">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
 
     <title>XitChat</title>
     <!-- Favicon for browsers -->
@@ -250,48 +227,7 @@
     <div class="scanline"></div>
     <div id="root"></div>
 
-    <script>
-        // FIX 3: Detect if running in Capacitor (Native App) vs Browser
-        const isApp = window.Capacitor !== undefined;
-
-        // ONLY register Service Worker if on the Web (PWA)
-        // This prevents the Native App from trying to cache files incorrectly
-        if ('serviceWorker' in navigator && !isApp) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then((registration) => {
-                        console.log('PWA: Service Worker registered (Web Mode)');
-                    })
-                    .catch((error) => {
-                        console.log('PWA: Registration failed:', error);
-                    });
-            });
-        } else if (isApp) {
-            console.log('Native App Detected: Service Worker disabled to prevent conflicts');
-        }
-
-        // Fix for iOS blank screen
-        document.addEventListener('DOMContentLoaded', function () {
-            if (/(iPad|iPhone|iPod)/g.test(navigator.userAgent)) {
-                document.body.style.display = 'none';
-                setTimeout(function () {
-                    document.body.style.display = 'block';
-                }, 0);
-            }
-            document.documentElement.style.webkitTextSizeAdjust = '100%';
-            document.documentElement.style.webkitFontSmoothing = 'antialiased';
-        });
-
-        // Handle resize events
-        let resizeTimer;
-        window.addEventListener('resize', function () {
-            document.body.classList.add('resize-animation-stopper');
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(() => {
-                document.body.classList.remove('resize-animation-stopper');
-            }, 400);
-        });
-    </script>
+    <script src="/bootstrap.js"></script>
 
     <script type="module" src="./index.tsx"></script>
     <!-- Add these after your existing apple-mobile-web-app meta tags -->

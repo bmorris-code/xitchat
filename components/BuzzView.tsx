@@ -96,7 +96,12 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
   const fetchBuzz = async () => {
     setLoading(true);
     try {
-      const buzzItems = await getLatestBuzz();
+      const buzzItemsRaw = await getLatestBuzz();
+      const buzzItems = Array.isArray(buzzItemsRaw)
+        ? buzzItemsRaw
+        : Array.isArray((buzzItemsRaw as any)?.items)
+          ? (buzzItemsRaw as any).items
+          : [];
 
       const mapped: Shoutout[] = buzzItems.map((item) => ({
         ...item,
