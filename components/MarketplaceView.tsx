@@ -8,13 +8,6 @@ interface MarketplaceListing extends Listing {
   location?: string;
 }
 
-const MOCK_LISTINGS: MarketplaceListing[] = [
-  { id: 'l1', title: 'Vintage Gameboy Color', price: '450 XC', senderHandle: '@retro_king', timestamp: Date.now() - 3600000, category: 'HAVE', description: 'Purple edition, works perfectly. No scratches.' },
-  { id: 'l2', title: 'Need Math Tutor', price: 'Negotiable', senderHandle: '@student_x', timestamp: Date.now() - 7200000, category: 'WANT', description: 'Help with Calculus 2. Can pay in XC or Moola.' },
-  { id: 'l3', title: 'Bike Repair Service', price: '50 XC/hr', senderHandle: '@spoke_master', timestamp: Date.now() - 14400000, category: 'SERVICE', description: 'Available weekends for tune-ups and flat fixes.' },
-  { id: 'l4', title: 'Node Meetup: Central Park', price: 'FREE', senderHandle: '@admin_node', timestamp: Date.now() - 1800000, category: 'EVENT', description: 'Saturday @ 2PM. Come chat offline and trade skins!', location: 'Sector 428F' },
-];
-
 interface MarketplaceViewProps {
   onBack: () => void;
   onContact: (handle: string) => void;
@@ -24,6 +17,11 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
   const [filter, setFilter] = useState<'ALL' | 'HAVE' | 'WANT' | 'SERVICE' | 'EVENT'>('ALL');
   const [showPostModal, setShowPostModal] = useState(false);
   const [listings, setListings] = useState<MarketplaceListing[]>([]);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftCategory, setDraftCategory] = useState<'HAVE' | 'WANT' | 'SERVICE' | 'EVENT'>('HAVE');
+  const [draftPrice, setDraftPrice] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Load real-time listings
   useEffect(() => {
@@ -59,6 +57,38 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
   useEffect(() => {
     setListings(realMarketplaceService.getListings(filter));
   }, [filter]);
+
+  const resetDraft = () => {
+    setDraftTitle('');
+    setDraftCategory('HAVE');
+    setDraftPrice('');
+    setDraftDescription('');
+  };
+
+  const handlePublishListing = async () => {
+    if (!draftTitle.trim() || !draftDescription.trim()) return;
+    setIsPublishing(true);
+    try {
+      const savedHandle = localStorage.getItem('xitchat_handle') || 'anon';
+      const senderHandle = savedHandle.startsWith('@') ? savedHandle : `@${savedHandle}`;
+      const geohash = (window as any).realtimeRadar?.myCurrentLocation?.geohash || undefined;
+
+      realMarketplaceService.addListing({
+        title: draftTitle.trim(),
+        price: (draftPrice || 'Negotiable').trim(),
+        senderHandle,
+        category: draftCategory,
+        description: draftDescription.trim(),
+        nodeId: 'me',
+        location: geohash
+      });
+
+      setShowPostModal(false);
+      resetDraft();
+    } finally {
+      setIsPublishing(false);
+    }
+  };
 
   return (
     <div className="flex-1 p-6 overflow-y-auto bg-black text-current font-mono no-scrollbar">
@@ -130,18 +160,51 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
           <div className="max-w-md w-full border-2 border-current bg-[#050505] p-8 shadow-[0_0_50px_currentColor]">
             <h3 className="text-xl font-bold uppercase tracking-widest mb-6 glow-text text-center">broadcast_init.exe</h3>
             <div className="space-y-4">
-              <input className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" placeholder="broadcast_title" />
-              <select className="w-full bg-black border border-current p-3 text-xs text-white">
-                <option>HAVE (Trade Something)</option>
-                <option>WANT (Looking For)</option>
-                <option>SERVICE (Offer Help)</option>
-                <option>EVENT (Local Meetup)</option>
+              <input
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20"
+                placeholder="broadcast_title"
+              />
+              <select
+                value={draftCategory}
+                onChange={(e) => setDraftCategory(e.target.value as 'HAVE' | 'WANT' | 'SERVICE' | 'EVENT')}
+                className="w-full bg-black border border-current p-3 text-xs text-white"
+              >
+                <option value="HAVE">HAVE (Trade Something)</option>
+                <option value="WANT">WANT (Looking For)</option>
+                <option value="SERVICE">SERVICE (Offer Help)</option>
+                <option value="EVENT">EVENT (Local Meetup)</option>
               </select>
-              <input className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20" placeholder="reward / xc_units" />
-              <textarea className="w-full bg-black border border-current p-3 text-xs text-white min-h-[100px] placeholder-white/20" placeholder="detailed_listing_data..."></textarea>
+              <input
+                value={draftPrice}
+                onChange={(e) => setDraftPrice(e.target.value)}
+                className="w-full bg-black border border-current p-3 text-xs text-white placeholder-white/20"
+                placeholder="reward / xc_units"
+              />
+              <textarea
+                value={draftDescription}
+                onChange={(e) => setDraftDescription(e.target.value)}
+                className="w-full bg-black border border-current p-3 text-xs text-white min-h-[100px] placeholder-white/20"
+                placeholder="detailed_listing_data..."
+              ></textarea>
               <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => setShowPostModal(false)} className="terminal-btn py-3 uppercase text-[10px]">abort</button>
-                <button className="terminal-btn active py-3 uppercase text-[10px]">push_to_bbs</button>
+                <button
+                  onClick={() => {
+                    setShowPostModal(false);
+                    resetDraft();
+                  }}
+                  className="terminal-btn py-3 uppercase text-[10px]"
+                >
+                  abort
+                </button>
+                <button
+                  onClick={handlePublishListing}
+                  disabled={isPublishing || !draftTitle.trim() || !draftDescription.trim()}
+                  className="terminal-btn active py-3 uppercase text-[10px] disabled:opacity-40"
+                >
+                  {isPublishing ? 'publishing...' : 'push_to_bbs'}
+                </button>
               </div>
             </div>
           </div>

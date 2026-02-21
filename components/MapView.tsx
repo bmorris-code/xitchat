@@ -43,9 +43,22 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
       setCurrentGeohash(location.geohash);
     }
     setNearbyChannels(geohashChannels.getNearbyChannels());
+    const unsubscribeNearbyChannels = geohashChannels.subscribe('nearbyChannelsUpdated', (channels: GeohashChannel[]) => {
+      setNearbyChannels(channels);
+    });
+    const unsubscribeLocation = geohashChannels.subscribe('locationUpdated', (locationUpdate: { geohash?: string }) => {
+      if (locationUpdate?.geohash) {
+        setCurrentGeohash(locationUpdate.geohash);
+      } else {
+        const latest = geohashChannels.getCurrentLocation();
+        if (latest?.geohash) setCurrentGeohash(latest.geohash);
+      }
+    });
 
     return () => {
       unsubscribeMesh();
+      unsubscribeNearbyChannels();
+      unsubscribeLocation();
     };
   }, []);
 
