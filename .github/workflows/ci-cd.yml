@@ -41,10 +41,12 @@ jobs:
 
 
     - name: Install Vercel CLI
+      if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
       run: npm install -g vercel
 
 
     - name: Deploy to Vercel
+      if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
       run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
       env:
         VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -88,10 +90,12 @@ jobs:
 
 
     - name: Decode Keystore
+      if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       run: |
         echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > android/app/release.keystore
 
     - name: Create Keystore Properties
+      if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       run: |
         cat > android/keystore.properties << 'EOF'
         storePassword=${{ secrets.KEYSTORE_PASSWORD }}
@@ -105,19 +109,35 @@ jobs:
       run: chmod +x android/gradlew
 
 
+    - name: Build Debug APK
+      run: |
+        cd android
+        ./gradlew assembleDebug
+
+
     - name: Build Release APK
+      if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       run: |
         cd android
         ./gradlew assembleRelease
 
 
     - name: Build App Bundle
+      if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       run: |
         cd android
         ./gradlew bundleRelease
 
 
+    - name: Upload Debug APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: xitchat-apk-debug
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+
+
     - name: Upload APK
+      if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       uses: actions/upload-artifact@v4
       with:
         name: xitchat-apk
@@ -125,6 +145,7 @@ jobs:
 
 
     - name: Upload AAB
+      if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       uses: actions/upload-artifact@v4
       with:
         name: xitchat-aab
@@ -137,6 +158,7 @@ jobs:
 # =========================
 
   deploy-playstore:
+    if: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON != '' && secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
 
     runs-on: ubuntu-latest
 
@@ -175,6 +197,7 @@ jobs:
 # =========================
 
   github-release:
+    if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
 
     runs-on: ubuntu-latest
 
