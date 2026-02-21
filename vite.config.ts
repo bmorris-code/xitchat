@@ -2,7 +2,6 @@ import path from 'path';
 import { defineConfig, loadEnv, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-import legacy from '@vitejs/plugin-legacy'; // ADD THIS
 
 export default defineConfig(({ mode }: { mode: string }): UserConfig => {
   const env = loadEnv(mode, process.cwd(), '');
@@ -17,13 +16,6 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
     },
     plugins: [
       react(),
-
-      // ADD THIS - Generates legacy bundles for older browsers
-      legacy({
-        targets: ['defaults', 'iOS >= 10'],
-        modernPolyfills: true,
-        renderLegacyChunks: true
-      }),
 
       VitePWA({
         registerType: 'autoUpdate',
