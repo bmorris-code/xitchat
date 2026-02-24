@@ -425,7 +425,7 @@ class GeohashChannelsService {
   }
 
   getChannelMessages(channelId: string) {
-    return this.messages.get(channelId) || [];
+    return this.messages?.get(channelId) || [];
   }
 
   getLocalAreaChannel() {
