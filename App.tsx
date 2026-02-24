@@ -718,64 +718,78 @@ const App: React.FC = () => {
           setNostrConnected(true);
           console.log('✅ Nostr service connected');
 
-          // Subscribe to Nostr events
-          const unsubMsg = nostrService.subscribe('messageReceived', (message) => {
-            if (typeof message.content === 'string' && message.content.startsWith('{')) {
-              try {
-                const control = JSON.parse(message.content);
-                if (control.type === 'ack' && control.messageId) {
-                  messageACKService.markMessageDelivered(control.messageId, message.from, 'nostr');
-                  return;
+          // Subscribe to Nostr events with defensive check
+          let unsubMsg: (() => void) | null = null;
+          try {
+            unsubMsg = nostrService.subscribe('messageReceived', (message) => {
+              if (typeof message.content === 'string' && message.content.startsWith('{')) {
+                try {
+                  const control = JSON.parse(message.content);
+                  if (control.type === 'ack' && control.messageId) {
+                    messageACKService.markMessageDelivered(control.messageId, message.from, 'nostr');
+                    return;
+                  }
+                } catch {
+                  // Ignore parse failures; regular message flow below.
                 }
-              } catch {
-                // Ignore parse failures; regular message flow below.
               }
-            }
 
-            if (message.id && message.from) {
-              messageACKService.receiveMessage(message.id, message.from, message.content, 'nostr').catch(() => { });
-            }
-
-            // Convert Nostr message to app format and add to chats
-            setChats(prev => {
-              const nostrChat = prev.find(c => c.participant.id === `nostr-${message.from}`);
-              if (nostrChat) {
-                const newMessage: Message = {
-                  id: message.id,
-                  senderId: message.from,
-                  text: message.content,
-                  timestamp: message.timestamp.getTime(),
-                  senderHandle: `nostr-${message.from.substring(0, 8)}`
-                };
-
-                return prev.map(c =>
-                  c.id === nostrChat.id
-                    ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
-                    : c
-                );
+              if (message.id && message.from) {
+                messageACKService.receiveMessage(message.id, message.from, message.content, 'nostr').catch(() => { });
               }
-              return prev;
-            });
-          });
-          cleanupFuncs.push(unsubMsg);
 
-          const unsubPeer = nostrService.subscribe('peerUpdated', (peer: NostrPeer) => {
-            console.log('👤 Nostr peer updated:', peer);
-            setNostrPeers(prev => {
-              const filtered = prev.filter(p => p.id !== peer.id);
-              return [...filtered, peer];
-            });
-          });
-          cleanupFuncs.push(unsubPeer);
+              // Convert Nostr message to app format and add to chats
+              setChats(prev => {
+                const nostrChat = prev.find(c => c.participant.id === `nostr-${message.from}`);
+                if (nostrChat) {
+                  const newMessage: Message = {
+                    id: message.id,
+                    senderId: message.from,
+                    text: message.content,
+                    timestamp: message.timestamp.getTime(),
+                    senderHandle: `nostr-${message.from.substring(0, 8)}`
+                  };
 
-          const unsubProfile = nostrService.subscribe('profileLoaded', (profile) => {
-            console.log('👤 Nostr profile loaded:', profile);
-            if (profile.name) setMyHandle(profile.name);
-            if (profile.picture) setMyAvatar(profile.picture);
-            if (profile.about) setMyMood(prev => ({ ...prev, text: profile.about }));
-            if (profile.custom_fields?.emoji) setMyMood(prev => ({ ...prev, emoji: profile.custom_fields.emoji }));
-          });
-          cleanupFuncs.push(unsubProfile);
+                  return prev.map(c =>
+                    c.id === nostrChat.id
+                      ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
+                      : c
+                  );
+                }
+                return prev;
+              });
+            });
+            if (unsubMsg) cleanupFuncs.push(unsubMsg);
+          } catch (error) {
+            console.debug('Failed to subscribe to Nostr messageReceived:', error);
+          }
+
+          // Add defensive checks for other Nostr subscriptions
+          try {
+            const unsubPeer = nostrService.subscribe('peerUpdated', (peer: NostrPeer) => {
+              console.log('👤 Nostr peer updated:', peer);
+              setNostrPeers(prev => {
+                const filtered = prev.filter(p => p.id !== peer.id);
+                return [...filtered, peer];
+              });
+            });
+            cleanupFuncs.push(unsubPeer);
+          } catch (error) {
+            console.debug('Failed to subscribe to Nostr peerUpdated:', error);
+          }
+
+          try {
+            const unsubProfile = nostrService.subscribe('profileLoaded', (profile) => {
+              console.log('👤 Nostr profile loaded:', profile);
+              if (profile.name) setMyHandle(profile.name);
+              if (profile.picture) setMyAvatar(profile.picture);
+              if (profile.about) setMyMood(prev => ({ ...prev, text: profile.about }));
+              if (profile.custom_fields?.emoji) setMyMood(prev => ({ ...prev, emoji: profile.custom_fields.emoji }));
+            });
+            cleanupFuncs.push(unsubProfile);
+          } catch (error) {
+            console.debug('Failed to subscribe to Nostr profileLoaded:', error);
+          }
 
           // Load initial peers
           const peers = nostrService.getPeers();
