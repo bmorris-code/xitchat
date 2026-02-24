@@ -37,6 +37,27 @@ class RealMarketplaceService {
   constructor() {
     this.loadListings();
     this.startRealTimeSync();
+    this.setupMeshListeners();
+  }
+
+  private setupMeshListeners() {
+    if (typeof window === 'undefined') return;
+
+    window.addEventListener('meshMarketplaceListing', (event: any) => {
+      this.handleIncomingListing(event.detail);
+    });
+
+    window.addEventListener('meshMarketplaceListingUpdated', (event: any) => {
+      this.handleIncomingListingUpdate(event.detail);
+    });
+
+    window.addEventListener('meshMarketplaceListingRemoved', (event: any) => {
+      this.handleIncomingListingRemoval(event.detail.id);
+    });
+
+    window.addEventListener('meshMarketplaceRequest', () => {
+      this.handleListingRequest();
+    });
   }
 
   private loadListings() {

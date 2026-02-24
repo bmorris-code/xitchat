@@ -221,7 +221,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   ];
 
   return (
-    <div className="flex-1 p-6 md:p-12 flex flex-col items-center overflow-y-auto bg-black no-scrollbar animate-in fade-in zoom-in-95 duration-300">
+    <div className="flex-1 p-4 sm:p-8 md:p-12 flex flex-col items-center overflow-y-auto bg-black no-scrollbar animate-in fade-in zoom-in-95 duration-300">
       <div className="max-w-md w-full space-y-10 pb-20 relative">
 
         {/* Header with Version and Close */}
@@ -281,7 +281,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               />
             </div>
           </div>
-        </div>
+        </div >
 
         {/* Nostr Keys Section */}
         <div className="space-y-4 border-t border-current border-opacity-10 pt-10">
@@ -295,20 +295,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </button>
           </div>
 
-          {showNostrKeys && (
-            <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
-              <div className="bg-[#080808] border border-current border-opacity-20 p-4 space-y-2">
-                <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest text-white/40">public_key (npub)</p>
-                <div className="flex items-center gap-2">
-                  <code className="text-[10px] text-white opacity-80 break-all flex-1">{nostrKeys.pub}</code>
-                  <button onClick={() => copyToClipboard(nostrKeys.pub)} className="text-current hover:scale-110 transition-transform">
-                    <i className="fa-solid fa-copy"></i>
-                  </button>
+          {
+            showNostrKeys && (
+              <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                <div className="bg-[#080808] border border-current border-opacity-20 p-4 space-y-2">
+                  <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest text-white/40">public_key (npub)</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-[10px] text-white opacity-80 break-all flex-1">{nostrKeys.pub}</code>
+                    <button onClick={() => copyToClipboard(nostrKeys.pub)} className="text-current hover:scale-110 transition-transform">
+                      <i className="fa-solid fa-copy"></i>
+                    </button>
+                  </div>
                 </div>
+                <p className="text-[9px] opacity-40 italic">Public key is shareable. Private keys are intentionally not exposed in-app.</p>
               </div>
-              <p className="text-[9px] opacity-40 italic">Public key is shareable. Private keys are intentionally not exposed in-app.</p>
-            </div>
-          )}
+            )}
         </div>
 
         {/* Feature Highlights Section */}
@@ -336,7 +337,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               </p>
             </div>
           </div>
-        </div>
+        </div >
 
         {/* Uplink Core Selection */}
         <div className="space-y-4">
@@ -365,10 +366,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               </button>
             ))}
           </div>
-        </div>
+        </div >
 
         {/* Node Appearance Settings */}
-        <div className="space-y-4">
+        < div className="space-y-4" >
           <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#006600]">NODE_APPEARANCE</h4>
           <div className="grid grid-cols-2 gap-3">
             {themes.map((t) => (
@@ -392,13 +393,13 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               </button>
             ))}
           </div>
-        </div>
+        </div >
 
         {/* Other Settings Sections */}
-        <div className="space-y-10 border-t border-current border-opacity-10 pt-10">
+        < div className="space-y-10 border-t border-current border-opacity-10 pt-10" >
 
           {/* Appearance Section */}
-          <div className="space-y-4">
+          < div className="space-y-4" >
             <h4 className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] text-current">appearance</h4>
             <div className="flex gap-3">
               {(['system', 'light', 'dark'] as const).map((mode) => (
@@ -412,10 +413,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               ))}
             </div>
-          </div>
+          </div >
 
           {/* Proof of Work Section */}
-          <div className="space-y-4">
+          < div className="space-y-4" >
             <h4 className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] text-current">proof of work</h4>
             <div className="flex gap-3">
               <button
@@ -435,26 +436,28 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
 
             {/* POW Status Log */}
-            {pow && (
-              <div className="mt-6 p-4 bg-[#111111] border border-current border-opacity-10 rounded-lg font-mono text-[10px] leading-relaxed">
-                <p className="text-current opacity-80 mb-2">
-                  POW Status: <span className="text-[#00ff41]">Mining</span>
-                </p>
-                <div className="opacity-40 space-y-1">
-                  <p>Difficulty: {powStats?.currentDifficulty || 1}</p>
-                  <p>Hash Rate: {powStats?.hashRate ? (powStats.hashRate / 1000).toFixed(2) : '0.00'} KH/s</p>
-                  <p>Solved: {powStats?.solvedChallenges || 0}/{powStats?.totalChallenges || 0}</p>
-                  <p>Avg Time: {powStats?.averageSolveTime ? (powStats.averageSolveTime / 1000).toFixed(2) : '0.00'}s</p>
-                  {powStats?.lastSolution && (
-                    <p>Last: {powStats.lastSolution.hash.substring(0, 16)}...</p>
-                  )}
+            {
+              pow && (
+                <div className="mt-6 p-4 bg-[#111111] border border-current border-opacity-10 rounded-lg font-mono text-[10px] leading-relaxed">
+                  <p className="text-current opacity-80 mb-2">
+                    POW Status: <span className="text-[#00ff41]">Mining</span>
+                  </p>
+                  <div className="opacity-40 space-y-1">
+                    <p>Difficulty: {powStats?.currentDifficulty || 1}</p>
+                    <p>Hash Rate: {powStats?.hashRate ? (powStats.hashRate / 1000).toFixed(2) : '0.00'} KH/s</p>
+                    <p>Solved: {powStats?.solvedChallenges || 0}/{powStats?.totalChallenges || 0}</p>
+                    <p>Avg Time: {powStats?.averageSolveTime ? (powStats.averageSolveTime / 1000).toFixed(2) : '0.00'}s</p>
+                    {powStats?.lastSolution && (
+                      <p>Last: {powStats.lastSolution.hash.substring(0, 16)}...</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )
+            }
+          </div >
 
           {/* Network Section */}
-          <div className="space-y-4">
+          < div className="space-y-4" >
             <h4 className="text-[10px] font-bold opacity-40 uppercase tracking-[0.2em] text-current">network</h4>
             <div className="flex gap-3">
               <button
@@ -495,42 +498,46 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 )}
               </div>
             </div>
-          </div>
-        </div>
+          </div >
+        </div >
 
         {/* System Actions */}
-        <div className="pt-10 space-y-4 border-t border-current border-opacity-10">
+        < div className="pt-10 space-y-4 border-t border-current border-opacity-10" >
           {/* PWA Install Section */}
-          {!isInstalled && installPrompt && (
-            <div className="mb-6 p-4 border border-[#00ff41] border-opacity-30 bg-[#00ff41]/5 rounded-lg">
-              <div className="flex items-center gap-3 mb-3">
-                <i className="fa-solid fa-download text-[#00ff41] text-lg"></i>
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">install_node</h4>
+          {
+            !isInstalled && installPrompt && (
+              <div className="mb-6 p-4 border border-[#00ff41] border-opacity-30 bg-[#00ff41]/5 rounded-lg">
+                <div className="flex items-center gap-3 mb-3">
+                  <i className="fa-solid fa-download text-[#00ff41] text-lg"></i>
+                  <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">install_node</h4>
+                </div>
+                <p className="text-[11px] opacity-60 mb-4 text-current">
+                  Install XitChat to your home screen for instant access and a native app experience.
+                </p>
+                <button
+                  onClick={onInstallApp}
+                  className="w-full bg-[#00ff41] text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:bg-[#00cc33] transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-mobile-alt"></i>
+                  Install Node to Home Screen
+                </button>
               </div>
-              <p className="text-[11px] opacity-60 mb-4 text-current">
-                Install XitChat to your home screen for instant access and a native app experience.
-              </p>
-              <button
-                onClick={onInstallApp}
-                className="w-full bg-[#00ff41] text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:bg-[#00cc33] transition-all flex items-center justify-center gap-2"
-              >
-                <i className="fa-solid fa-mobile-alt"></i>
-                Install Node to Home Screen
-              </button>
-            </div>
-          )}
+            )
+          }
 
-          {isInstalled && (
-            <div className="mb-6 p-4 border border-current border-opacity-20 bg-[#050505] rounded-lg">
-              <div className="flex items-center gap-3 mb-2">
-                <i className="fa-solid fa-check text-[#00ff41] text-lg"></i>
-                <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">node_installed</h4>
+          {
+            isInstalled && (
+              <div className="mb-6 p-4 border border-current border-opacity-20 bg-[#050505] rounded-lg">
+                <div className="flex items-center gap-3 mb-2">
+                  <i className="fa-solid fa-check text-[#00ff41] text-lg"></i>
+                  <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">node_installed</h4>
+                </div>
+                <p className="text-[11px] opacity-60 text-current">
+                  XitChat is installed on your device. Launch from home screen for the best experience.
+                </p>
               </div>
-              <p className="text-[11px] opacity-60 text-current">
-                XitChat is installed on your device. Launch from home screen for the best experience.
-              </p>
-            </div>
-          )}
+            )
+          }
 
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="border border-current border-opacity-10 p-4 bg-[#080808]">

@@ -2,12 +2,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message } from '../types';
 import { nostrService } from '../services/nostrService';
+import { hybridMesh } from '../services/hybridMesh';
 
 interface ChatInputProps {
     onSendMessage: (text: string, options?: { replyTo?: Message['replyTo']; imageUrl?: string; videoUrl?: string, nostrRecipient?: string }) => void;
     replyingTo: Message | null;
     setReplyingTo: (msg: Message | null) => void;
     myHandle: string;
+    chatId?: string;          // NEW: chat ID for scoped typing events
     nostrRecipient?: string;
     secureMode: boolean;
     setSecureMode: (mode: boolean) => void;
@@ -26,6 +28,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
     replyingTo,
     setReplyingTo,
     myHandle,
+    chatId,
     nostrRecipient,
     secureMode,
     setSecureMode,
@@ -43,9 +46,32 @@ const ChatInput: React.FC<ChatInputProps> = ({
     const [isTyping, setIsTyping] = useState(false);
     const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Broadcast typing state over mesh + Nostr
+    const broadcastTyping = (typing: boolean) => {
+        const payload = JSON.stringify({
+            type: 'typing',
+            chatId: chatId || 'unknown',
+            handle: myHandle,
+            isTyping: typing,
+            timestamp: Date.now(),
+        });
+        try {
+            hybridMesh.sendMessage(payload);
+        } catch {
+            // Mesh not available
+        }
+    };
+
     const handleSend = (e?: React.FormEvent) => {
         e?.preventDefault();
         if (!inputText.trim()) return;
+
+        // Stop typing indicator before sending
+        if (isTyping) {
+            broadcastTyping(false);
+            setIsTyping(false);
+        }
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
         onSendMessage(inputText.trim(), {
             replyTo: replyingTo ? { id: replyingTo.id, senderHandle: replyingTo.senderHandle || '', text: replyingTo.text } : undefined,
@@ -54,25 +80,32 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
         setInputText('');
         setReplyingTo(null);
-        setIsTyping(false);
     };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setInputText(e.target.value);
 
-        // Typing indicator logic
+        // Broadcast typing start (only when transitioning from not-typing)
         if (!isTyping) {
             setIsTyping(true);
-            // In a real app, you'd broadcast this via Nostr or Mesh
-            console.log('Broadcasting typing status...');
+            broadcastTyping(true);
         }
 
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = setTimeout(() => {
             setIsTyping(false);
-            console.log('Stopped typing.');
+            broadcastTyping(false);
         }, 3000);
     };
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            if (isTyping) broadcastTyping(false);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     return (
         <div className="bg-black border-t border-[#004400] relative z-40 pb-safe">
@@ -159,10 +192,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
                     className="flex-1 bg-transparent border-none py-2 px-1 text-[16px] md:text-[14px] text-white focus:ring-0 focus:outline-none placeholder-current placeholder-opacity-20 font-mono"
                 />
 
-                <div className="flex items-center gap-1 mr-2">
-                    <button type="button" onClick={() => setSecureMode(!secureMode)} className={`p-1.5 rounded transition-all ${secureMode ? 'text-green-400 hover:bg-green-400/20' : 'text-red-400 hover:bg-red-400/20'}`} title={secureMode ? 'Secure Mode ON' : 'Secure Mode OFF'}><i className={`fas fa-shield-alt text-xs ${secureMode ? 'animate-pulse' : ''}`}></i></button>
-                    <button type="button" onClick={() => setEncryptionEnabled(!encryptionEnabled)} className={`p-1.5 rounded transition-all ${encryptionEnabled ? 'text-blue-400 hover:bg-blue-400/20' : 'text-gray-400 hover:bg-gray-400/20'}`} title={encryptionEnabled ? 'Encryption ON' : 'Encryption OFF'}><i className="fas fa-lock text-xs"></i></button>
-                    <button type="button" onClick={() => setShowChatSettings(true)} className="p-1.5 rounded hover:bg-white/10 transition-all" title="Chat Settings"><i className="fas fa-cog text-xs"></i></button>
+                <div className="flex items-center gap-0.5 sm:gap-1 mr-1 sm:mr-2">
+                    <button type="button" onClick={() => setSecureMode(!secureMode)} className={`p-1 sm:p-1.5 rounded transition-all ${secureMode ? 'text-green-400 hover:bg-green-400/20' : 'text-red-400 hover:bg-red-400/20'}`} title={secureMode ? 'Secure Mode ON' : 'Secure Mode OFF'}><i className={`fas fa-shield-alt text-[10px] sm:text-xs ${secureMode ? 'animate-pulse' : ''}`}></i></button>
+                    <button type="button" onClick={() => setEncryptionEnabled(!encryptionEnabled)} className={`p-1 sm:p-1.5 rounded transition-all ${encryptionEnabled ? 'text-blue-400 hover:bg-blue-400/20' : 'text-gray-400 hover:bg-gray-400/20'}`} title={encryptionEnabled ? 'Encryption ON' : 'Encryption OFF'}><i className="fas fa-lock text-[10px] sm:text-xs"></i></button>
+                    <button type="button" onClick={() => setShowChatSettings(true)} className="p-1 sm:p-1.5 rounded hover:bg-white/10 transition-all" title="Chat Settings"><i className="fas fa-cog text-[10px] sm:text-xs"></i></button>
                 </div>
 
                 <button type="submit" disabled={!inputText.trim()} className="terminal-btn h-9 min-h-0 px-2 disabled:opacity-20 group">

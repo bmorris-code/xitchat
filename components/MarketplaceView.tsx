@@ -91,7 +91,7 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
   };
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto bg-black text-current font-mono no-scrollbar">
+    <div className="flex-1 p-4 sm:p-6 overflow-y-auto bg-black text-current font-mono no-scrollbar">
       <div className="flex items-center gap-4 mb-8">
         <button onClick={onBack} className="terminal-btn px-2 py-0 h-8 text-[10px] uppercase">back_to_hub</button>
       </div>
@@ -128,8 +128,8 @@ const MarketplaceView: React.FC<MarketplaceViewProps> = ({ onBack, onContact }) 
             <div className="flex justify-between items-start">
               <div>
                 <span className={`text-[8px] font-bold px-2 py-0.5 border ${item.category === 'HAVE' ? 'border-green-500 text-green-500' :
-                    item.category === 'WANT' ? 'border-amber-500 text-amber-500' :
-                      item.category === 'EVENT' ? 'border-white text-white' : 'border-cyan-500 text-cyan-500'
+                  item.category === 'WANT' ? 'border-amber-500 text-amber-500' :
+                    item.category === 'EVENT' ? 'border-white text-white' : 'border-cyan-500 text-cyan-500'
                   }`}>
                   {item.category}
                 </span>

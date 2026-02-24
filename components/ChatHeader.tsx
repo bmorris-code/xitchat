@@ -6,6 +6,7 @@ import { hybridMesh } from '../services/hybridMesh';
 import { nostrService } from '../services/nostrService';
 import { bluetoothMesh } from '../services/bluetoothMesh';
 import { hybridAI } from '../services/hybridAI';
+import { encryptionService } from '../services/encryptionService';
 
 interface ChatHeaderProps {
     chat: Chat;
@@ -40,6 +41,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
     const [aiStatus, setAiStatus] = useState<any>(hybridAI.getProviderStatus());
     const [isTransmitting, setIsTransmitting] = useState(false);
     const [isPeerOnline, setIsPeerOnline] = useState(false);
+    const [hasE2EEKeys, setHasE2EEKeys] = useState(false);
 
     useEffect(() => {
         const updateStatuses = () => {
@@ -67,6 +69,10 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                 const peers = nostrService.getPeers();
                 const peer = peers.find(p => p.id === chat.participant.id || p.publicKey === chat.participant.id);
                 setIsPeerOnline(peer?.isConnected || false);
+
+                // Check for E2EE keys
+                const hasKeys = encryptionService.hasUserKeys(chat.participant.id);
+                setHasE2EEKeys(hasKeys);
             }
         };
 
@@ -131,15 +137,15 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                 {/* Security Status Indicator */}
                 <div
                     onClick={onToggleSecureMode}
-                    className={`cursor-pointer flex items-center justify-center w-6 h-6 sm:w-auto sm:px-2 sm:py-1 rounded text-[8px] font-bold uppercase tracking-widest transition-all ${secureMode && encryptionEnabled
+                    className={`cursor-pointer flex items-center justify-center w-6 h-6 sm:w-auto sm:px-2 sm:py-1 rounded text-[8px] font-bold uppercase tracking-widest transition-all ${secureMode && encryptionEnabled && hasE2EEKeys
                         ? 'bg-green-500/20 text-green-400 border border-green-500/50'
-                        : secureMode
+                        : secureMode && encryptionEnabled
                             ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
                             : 'bg-red-500/20 text-red-400 border border-red-500/50'
                         }`}
-                    title={secureMode && encryptionEnabled ? '🔒 End-to-end encrypted' : secureMode ? '⚠️ Secure mode, no encryption' : '🔓 Insecure mode'}
+                    title={secureMode && encryptionEnabled && hasE2EEKeys ? '🔒 End-to-end encrypted active' : secureMode && encryptionEnabled ? '⏳ Waiting for peer handshake...' : '🔓 Insecure mode'}
                 >
-                    {secureMode && encryptionEnabled ? '🔒' : secureMode ? '⚠️' : '🔓'}
+                    {secureMode && encryptionEnabled && hasE2EEKeys ? '🔒' : secureMode && encryptionEnabled ? '⏳' : '🔓'}
                 </div>
 
                 {/* WebRTC Mesh Status */}
@@ -166,7 +172,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                         title={torStatus?.connected ? 'TOR Connected' : 'TOR Disconnected'}
                     >
                         <i className="fa-solid fa-shield-halved text-[8px] sm:text-xs"></i>
-                        <span className="hidden sm:inline ml-1">TOR</span>
+                        <span className="hidden md:inline ml-1">TOR</span>
                     </button>
                 </div>
 
@@ -181,7 +187,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                         title={powStats?.enabled ? 'POW Mining Active' : 'POW Mining Inactive'}
                     >
                         <i className="fa-solid fa-bolt text-[8px] sm:text-xs"></i>
-                        <span className="hidden sm:inline ml-1">POW</span>
+                        <span className="hidden md:inline ml-1">POW</span>
                     </button>
                 </div>
 
@@ -198,7 +204,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                             title={aiStatus.groqHealthy ? 'AI Online (Groq)' : aiStatus.primary === 'gemini' ? 'AI Online (Gemini)' : 'AI Mesh Proxy Active'}
                         >
                             <i className="fa-solid fa-robot text-[8px] sm:text-xs"></i>
-                            <span className="hidden sm:inline ml-1">{aiStatus.groqHealthy ? 'AI:GROQ' : aiStatus.primary === 'gemini' ? 'AI:GEMINI' : 'AI:MESH'}</span>
+                            <span className="hidden md:inline ml-1">{aiStatus.groqHealthy ? 'AI:GROQ' : aiStatus.primary === 'gemini' ? 'AI:GEMINI' : 'AI:MESH'}</span>
                         </div>
                         {aiStreaming && (
                             <div

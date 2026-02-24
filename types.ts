@@ -54,6 +54,7 @@ export interface Message {
     data: string;
     iv: string;
     salt: string;
+    timestamp: number;
   };
 }
 

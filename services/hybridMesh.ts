@@ -40,6 +40,7 @@ export interface HybridMeshMessage {
   pow?: any;
   senderHandle?: string;
   senderName?: string;
+  encryptedData?: any;
 }
 
 class HybridMeshService {
@@ -331,9 +332,9 @@ class HybridMeshService {
         pubkey: peer.id,
         device: 'mobile' as const,
         role: 'edge' as const,
-        caps: [...(connectionType === 'bluetooth' ? ['bluetooth'] as const : 
-              connectionType === 'wifi' ? ['wifi'] as const :
-              connectionType === 'nostr' ? ['nostr'] as const :
+        caps: [...(connectionType === 'bluetooth' ? ['bluetooth'] as const :
+          connectionType === 'wifi' ? ['wifi'] as const :
+            connectionType === 'nostr' ? ['nostr'] as const :
               ['broadcast'] as const)],
         rooms: ['global'],
         lastSeen: peer.lastSeen,
@@ -374,7 +375,7 @@ class HybridMeshService {
     content: string,
     from: string,
     connectionType: MeshConnectionType,
-    metadata?: { messageId?: string; timestamp?: number; senderHandle?: string; senderName?: string }
+    metadata?: { messageId?: string; timestamp?: number; senderHandle?: string; senderName?: string, encryptedData?: any }
   ) {
     const hybridMessage: HybridMeshMessage = {
       id: metadata?.messageId || Math.random().toString(36).substr(2, 9),
@@ -383,7 +384,8 @@ class HybridMeshService {
       content: content,
       timestamp: metadata?.timestamp || Date.now(),
       connectionType: connectionType,
-      encrypted: false,
+      encrypted: !!metadata?.encryptedData,
+      encryptedData: metadata?.encryptedData,
       isBridged: false,
       senderHandle: metadata?.senderHandle,
       senderName: metadata?.senderName
@@ -450,7 +452,8 @@ class HybridMeshService {
             tor: parsed.tor,
             pow: parsed.pow,
             timestamp: parsed.timestamp,
-            messageId: parsed.messageId
+            messageId: parsed.messageId,
+            encryptedData: parsed.encryptedData
           };
         } else if (!parsed) {
           const recovered = this.extractWrappedContentFallback(content);
@@ -499,6 +502,20 @@ class HybridMeshService {
             return;
           }
 
+          if (inner.type === 'public_key') {
+            window.dispatchEvent(new CustomEvent('meshPublicKey', {
+              detail: { ...inner.payload, fromNode: message.from }
+            }));
+            return;
+          }
+
+          if (inner.type === 'buzz_item') {
+            window.dispatchEvent(new CustomEvent('meshBuzzItem', {
+              detail: inner.data
+            }));
+            return;
+          }
+
           if (inner.type === 'location_update') {
             realtimeRadar.handleMeshLocationUpdate(inner.data);
             return;
@@ -521,6 +538,18 @@ class HybridMeshService {
           }
           if (inner.type === 'marketplace_listing') {
             window.dispatchEvent(new CustomEvent('meshMarketplaceListing', { detail: inner.data }));
+            return;
+          }
+          if (inner.type === 'marketplace_listing_updated') {
+            window.dispatchEvent(new CustomEvent('meshMarketplaceListingUpdated', { detail: inner.data }));
+            return;
+          }
+          if (inner.type === 'marketplace_listing_removed') {
+            window.dispatchEvent(new CustomEvent('meshMarketplaceListingRemoved', { detail: inner.data }));
+            return;
+          }
+          if (inner.type === 'marketplace_request') {
+            window.dispatchEvent(new CustomEvent('meshMarketplaceRequest', { detail: inner.data }));
             return;
           }
           if (inner.type === 'trade_request') {

@@ -257,9 +257,9 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
   }, [shoutouts, currentFilter, searchQuery]);
 
   return (
-    <div className="flex-1 flex flex-col pt-0 p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
+    <div className="flex-1 flex flex-col pt-0 p-4 sm:p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
       {/* Sticky Header Group: Title + Filters */}
-      <div className="sticky top-0 z-50 bg-black/95 backdrop-blur-md border-b border-current border-opacity-20 -mx-6 px-6 pt-6 pb-2 mb-4 shadow-lg">
+      <div className="sticky top-0 z-50 bg-black/95 backdrop-blur-md border-b border-current border-opacity-20 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-6 pb-2 mb-4 shadow-lg">
         {/* Title Row */}
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
@@ -345,7 +345,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
           </div>
         ) : (
           filteredShoutouts.map((shout) => (
-            <div key={shout.id} className="border border-current border-opacity-20 p-6 group hover:bg-white/[0.03] hover:border-white/40 transition-all cursor-pointer relative bg-[#050505]">
+            <div key={shout.id} className="border border-current border-opacity-20 p-4 sm:p-6 group hover:bg-white/[0.03] hover:border-white/40 transition-all cursor-pointer relative bg-[#050505]">
               <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 border border-current border-opacity-30 overflow-hidden shrink-0">
@@ -354,6 +354,9 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-base font-bold tracking-tight text-white">&lt;{shout.user.name}&gt;</h4>
+                      {(shout.user.distance.includes('0.') || shout.user.distance === '0.0km') && (
+                        <i className="fa-solid fa-circle-check text-[10px] text-[#00ff41]" title="Verified Location"></i>
+                      )}
                       <span className="text-[8px] font-bold border border-current border-opacity-40 px-1 uppercase tracking-widest text-white/40">
                         {shout.user.distance}
                       </span>

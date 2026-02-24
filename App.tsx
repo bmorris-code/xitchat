@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View, Chat, User, Message, Reaction } from './types';
 import { INITIAL_CHATS } from './constants';
 import { streamXitBotResponse, hybridAI } from './services/hybridAI';
@@ -19,6 +19,7 @@ import { mobileLifecycle } from './services/mobileLifecycle';
 import Sidebar from './components/Sidebar';
 import ChatList from './components/ChatList';
 import ChatWindow from './components/ChatWindow';
+import { encryptionService } from './services/encryptionService';
 import MapView from './components/MapView';
 import BuzzView from './components/BuzzView';
 import RoomsView from './components/RoomsView';
@@ -72,6 +73,7 @@ const App: React.FC = () => {
     active: false,
     provider: 'auto'
   });
+  const [myPublicKey, setMyPublicKey] = useState<string | null>(null);
 
   const mapTransportForAck = (connectionType?: string): 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' => {
     switch (connectionType) {
@@ -111,6 +113,73 @@ const App: React.FC = () => {
 
     return unsubscribe;
   }, []);
+
+  // Initialize E2EE Keys
+  useEffect(() => {
+    const initEncryption = async () => {
+      try {
+        const myId = 'me';
+        await encryptionService.initializeUser(myId);
+        const keyInfo = await encryptionService.generateKeyPair(myId);
+        setMyPublicKey(keyInfo.key);
+        console.log('🔐 E2EE Keys generated. Fingerprint:', keyInfo.fingerprint);
+      } catch (error) {
+        console.error('Failed to init E2EE:', error);
+      }
+    };
+    initEncryption();
+  }, []);
+
+  // Broadcast Public Key when mesh is ready
+  useEffect(() => {
+    if (myPublicKey && isRealMode) {
+      const broadcastKey = () => {
+        const myHandle = localStorage.getItem('xitchat_handle') || 'anon';
+        hybridMesh.sendMessage(JSON.stringify({
+          type: 'public_key',
+          payload: {
+            userId: 'me',
+            handle: myHandle,
+            publicKey: myPublicKey
+          }
+        }));
+      };
+
+      broadcastKey();
+      const interval = setInterval(broadcastKey, 60000); // Re-broadcast every minute
+      return () => clearInterval(interval);
+    }
+  }, [myPublicKey, isRealMode]);
+
+  // Listen for Peer Public Keys
+  useEffect(() => {
+    const handlePublicKey = async (event: any) => {
+      const { userId, publicKey, fromNode, handle } = event.detail;
+      if (userId === 'me') return;
+
+      try {
+        await encryptionService.importPublicKey(fromNode, publicKey);
+        console.log(`🔐 Imported public key for ${handle} (${fromNode})`);
+
+        // Trigger a transmission toast
+        window.dispatchEvent(new CustomEvent('newTransmission', {
+          detail: {
+            message: `SECURE: Handshake with ${handle} complete. E2EE active.`,
+            type: 'system'
+          }
+        }));
+      } catch (error) {
+        console.error('Failed to import public key:', error);
+      }
+    };
+
+    window.addEventListener('meshPublicKey', handlePublicKey);
+    return () => window.removeEventListener('meshPublicKey', handlePublicKey);
+  }, []);
+
+  const totalUnread = useMemo(() => {
+    return chats.reduce((acc, chat) => acc + (chat.unreadCount || 0), 0);
+  }, [chats]);
 
   // ... existing code ...
 
@@ -219,9 +288,9 @@ const App: React.FC = () => {
                 (window as any).Capacitor?.getPlatform?.() === 'android';
               const mappedType =
                 peer.connectionType === 'bluetooth' ? 'bluetooth' :
-                peer.connectionType === 'wifi' ? 'wifi' :
-                (peer.connectionType === 'webrtc' && !isNativeAndroid) ? 'webrtc' :
-                'nostr';
+                  peer.connectionType === 'wifi' ? 'wifi' :
+                    (peer.connectionType === 'webrtc' && !isNativeAndroid) ? 'webrtc' :
+                      'nostr';
 
               hybridMesh.addExternalPeer({
                 id: peer.id,
@@ -428,6 +497,24 @@ const App: React.FC = () => {
                 encryptedData: message.encryptedData
               };
 
+              // Real-time Decryption attempt
+              if (newMessage.encryptedData) {
+                encryptionService.decryptMessage(newMessage.encryptedData, senderId)
+                  .then(decrypted => {
+                    setChats(current => current.map(c => {
+                      if (c.id === targetChat.id) {
+                        return {
+                          ...c,
+                          messages: c.messages.map(m => m.id === newMessage.id ? { ...m, text: decrypted } : m),
+                          lastMessage: c.messages[c.messages.length - 1]?.id === newMessage.id ? decrypted : c.lastMessage
+                        };
+                      }
+                      return c;
+                    }));
+                  })
+                  .catch(err => console.debug('Message decryption pending public key or failed:', err));
+              }
+
               if (targetChat.messages.some(m => m.id === newMessage.id)) {
                 return nextChats;
               }
@@ -442,7 +529,7 @@ const App: React.FC = () => {
                 },
                 messages: [...targetChat.messages, newMessage],
                 lastMessage: message.content,
-                unreadCount: activeChatIdRef.current === targetChat.id ? targetChat.unreadCount : targetChat.unreadCount + 1
+                unreadCount: activeChatIdRef.current === targetChat.id || senderId === 'xit-bot' ? targetChat.unreadCount : targetChat.unreadCount + 1
               };
 
               console.log(`Added message to chat ${nextChats[targetIndex].participant.handle}: ${String(message.content).substring(0, 30)}...`);
@@ -918,7 +1005,7 @@ const App: React.FC = () => {
         setTimeout(() => {
           setIsBooting(false);
           checkOnboardingStatus();
-          
+
           // Start update checking after boot
           appUpdateService.startPeriodicChecks();
         }, 800);
@@ -1066,7 +1153,7 @@ const App: React.FC = () => {
         updated[roomChatIndex] = {
           ...existing,
           lastMessage: incomingMessage.text,
-          unreadCount: activeChatId === existing.id ? existing.unreadCount : existing.unreadCount + 1,
+          unreadCount: activeChatId === existing.id || incomingMessage.senderId === 'xit-bot' ? existing.unreadCount : existing.unreadCount + 1,
           messages: [...existing.messages, incomingMessage]
         };
         return updated;
@@ -1097,6 +1184,11 @@ const App: React.FC = () => {
         ));
       }
       setActiveChatId(existing.id);
+      
+      // Reset unread count when opening chat
+      setChats(prev => prev.map(c =>
+        c.id === existing.id ? { ...c, unreadCount: 0 } : c
+      ));
     } else {
       const newChat: Chat = {
         id: `chat-${Date.now()}`,
@@ -1832,7 +1924,7 @@ const App: React.FC = () => {
           </div>
         </div>
       )}
-      <Sidebar currentView={view} setView={setView} userAvatar={myAvatar} />
+      <Sidebar currentView={view} setView={setView} userAvatar={myAvatar} totalUnread={totalUnread} />
       <div className="flex-1 flex overflow-hidden relative md:pt-0 mobile-content-padding">
 
         {/* Transmission Toasts */}

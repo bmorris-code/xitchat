@@ -19,17 +19,24 @@
 html,
 body,
 #root {
+    height: 100%;
     height: 100dvh !important;
-    /* Dynamic Viewport Height for mobile browsers */
-    width: 100vw !important;
+    width: 100% !important;
+    max-width: 100vw !important;
     margin: 0 !important;
     padding: 0 !important;
-    overflow: hidden !important;
+    overflow-x: hidden !important;
+    overflow-y: hidden !important;
     position: fixed !important;
     /* Prevents rubber-banding */
     -webkit-overflow-scrolling: touch;
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
+    box-sizing: border-box !important;
+}
+
+*, ::before, ::after {
+    box-sizing: border-box !important;
 }
 
 /* iOS specific fixes - mostly handled by dvh now, but keeping safe areas */

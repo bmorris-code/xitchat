@@ -7,12 +7,13 @@ interface SidebarProps {
   currentView: View;
   setView: (view: View) => void;
   userAvatar?: string;
+  totalUnread?: number;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar, totalUnread = 0 }) => {
   // Reduced to 5 core Hubs for a modern, clean look
   const navItems = [
-    { id: 'chats', icon: 'fa-message', label: 'mesh' },
+    { id: 'chats', icon: 'fa-message', label: 'mesh', badge: true },
     { id: 'map', icon: 'fa-location-crosshairs', label: 'radar' },
     { id: 'rooms', icon: 'fa-user-group', label: 'rooms' },
     { id: 'apps', icon: 'fa-grip', label: 'apps' },
@@ -80,10 +81,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar }) =
               )}
 
               <div className={`
-                p-1.5 rounded-xl transition-all
+                p-1.5 rounded-xl transition-all relative
                 ${active ? 'bg-white/[0.05]' : 'group-hover:bg-white/[0.02]'}
               `}>
                 <i className={`fa-solid ${item.icon} text-xl md:text-lg ${active ? 'glow-text' : ''}`}></i>
+                {item.badge && totalUnread > 0 && (
+                  <div className="absolute -top-1 -right-2 text-[10px] font-black text-[#00ff41] animate-pulse drop-shadow-[0_0_5px_#00ff41]">
+                    [{totalUnread}]
+                  </div>
+                )}
               </div>
 
               <span className={`

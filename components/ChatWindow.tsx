@@ -20,10 +20,12 @@ interface ChatWindowProps {
   onForwardMessage: (message: Message, targetChatId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   onDeleteMessage?: (messageId: string) => void;
+  onConfirmDelete?: (messageId: string) => void; // NEW: uses TerminalModal
   onClose?: () => void;
   onClearChatHistory?: (chatId: string) => void;
   className?: string;
   nostrRecipient?: string;
+  isPeerTyping?: boolean; // NEW: driven by App.tsx listeners
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({
@@ -36,10 +38,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onForwardMessage,
   onReaction,
   onDeleteMessage,
+  onConfirmDelete,
   onClose,
   onClearChatHistory,
   className = "",
-  nostrRecipient
+  nostrRecipient,
+  isPeerTyping = false
 }) => {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showForwardTarget, setShowForwardTarget] = useState<Message | null>(null);
@@ -52,7 +56,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
-  const [isPeerTyping, setIsPeerTyping] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -64,17 +67,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-
-    // Simulate receiving typing events (in real app, this would be a Nostr/Mesh listener)
-    const handleTyping = (data: any) => {
-      if (data.chatId === chat?.id && data.senderId !== 'me') {
-        setIsPeerTyping(true);
-        setTimeout(() => setIsPeerTyping(false), 3000);
-      }
-    };
-
-    // For demo purposes, we'll just set up the logic
-    return () => { };
   }, [chat?.messages, chat?.id]);
 
   const handleSendMessage = async (text: string, options?: any) => {
@@ -90,8 +82,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         if (!encryptionService.hasUserKeys('me')) await encryptionService.initializeUser('me');
 
         if (chat.type === 'private') {
-          if (!encryptionService.hasUserKeys(chat.participant.id)) await encryptionService.generateKeyPair(chat.participant.id);
-          encryptedData = await encryptionService.encryptMessage(text, chat.participant.id);
+          const hasPeerKey = encryptionService.hasUserKeys(chat.participant.id);
+          if (hasPeerKey) {
+            encryptedData = await encryptionService.encryptMessage(text, chat.participant.id);
+          } else {
+            // No key yet, send as plain or alert user
+            console.warn('Recipient public key missing, sending unencrypted.');
+            return onSendMessage(text, options);
+          }
         } else if (chat.isEncrypted) {
           // For rooms, we use the geohash-based group encryption
           const geohash = chat.id.split('_')[0].replace('xitchat-local-', '');
@@ -205,6 +203,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         onForward={setShowForwardTarget}
         onReaction={onReaction}
         onDelete={onDeleteMessage}
+        onConfirmDelete={onConfirmDelete}
         getUserColor={getUserColor}
         reactingToMessageId={reactingToMessageId}
         setReactingToMessageId={setReactingToMessageId}
@@ -228,6 +227,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         videoInputRef={videoInputRef}
         handleFileChange={handleFileChange}
         emojis={emojis}
+        chatId={chat.id}
       />
 
       <MediaGallery

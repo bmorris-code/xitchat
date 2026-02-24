@@ -106,7 +106,7 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
                     &lt;{chat.participant.handle}&gt;
                   </span>
                   <div className="flex items-center gap-1">
-                    {chat.unreadCount > 0 && <span className="text-[10px] animate-pulse text-[#00ff41] shrink-0">[!]</span>}
+                    {chat.unreadCount > 0 && <span className="text-[10px] animate-pulse text-[#00ff41] shrink-0">[{chat.unreadCount}]</span>}
                     {isTyping && <span className="text-[8px] text-[#00ff41] animate-bounce">...</span>}
                   </div>
                 </div>

@@ -116,7 +116,7 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
   });
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
+    <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
       <div className="flex justify-between items-start mb-10 border-b border-current border-opacity-20 pb-4">
         <div>
           <h2 className="text-lg font-bold uppercase tracking-tighter glow-text">room_protocol.bin</h2>
@@ -144,7 +144,7 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
         {allRooms.map((room) => (
           <div
             key={room.id}
-            className="border border-current border-opacity-10 bg-[#050505] p-5 group hover:bg-white/[0.03] hover:border-white/40 transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer"
+            className="border border-current border-opacity-10 bg-[#050505] p-4 sm:p-5 group hover:bg-white/[0.03] hover:border-white/40 transition-all flex flex-col md:flex-row justify-between items-start md:items-center gap-4 cursor-pointer"
             onClick={() => handleConnectRequest(room)}
           >
             <div className="flex-1">

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "node server/signaling-server.js",
+    "dev:auto": "node scripts/dev-with-auto-update.cjs",
     "// BUILD COMMANDS": "------------------------------------------------",
     "build": "vite build",
     "build:mobile": "cross-env IS_MOBILE=true vite build",
@@ -14,6 +15,7 @@
     "sync:ios": "npm run build:mobile && npx cap sync ios",
     "sync:android": "npm run build:mobile && npx cap sync android",
     "android": "npx cap open android",
+    "auto-update-apk": "node scripts/auto-update-apk.cjs",
     "preview": "vite preview",
     "vercel-build": "vite build"
   },
