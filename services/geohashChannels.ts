@@ -419,9 +419,8 @@ class GeohashChannelsService {
 }
 
 // ---------------- LAZY EXPORT ----------------
-export let geohashChannels: GeohashChannelsService;
+export const geohashChannels = GeohashChannelsService.getInstance();
 
 export function getGeohashChannelsInstance(): GeohashChannelsService {
-  if (!geohashChannels) geohashChannels = GeohashChannelsService.getInstance();
   return geohashChannels;
 }
