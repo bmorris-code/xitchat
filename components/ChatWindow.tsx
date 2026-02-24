@@ -25,6 +25,7 @@ interface ChatWindowProps {
   myHandle: string;
   aiStreaming?: boolean;
   aiStreamingProvider?: string;
+  onSendMessage: (text: string, options?: { imageUrl?: string, videoUrl?: string, replyTo?: Message['replyTo'], nostrRecipient?: string, encryptedData?: any }) => void;
   onForwardMessage: (message: Message, targetChatId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   onDeleteMessage?: (messageId: string) => void;
@@ -40,6 +41,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   myHandle,
   aiStreaming = false,
   aiStreamingProvider = 'auto',
+  onSendMessage,
   onForwardMessage,
   onReaction,
   onDeleteMessage,
@@ -103,62 +105,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chatMessages]);
+  }, [chat?.messages]);
 
   // === Send Message ===
   const handleSendMessage = async (text: string, options?: { imageUrl?: string, videoUrl?: string, mediaId?: string }) => {
     if (!chat || !text) return;
 
-    let messageText = text;
-    let encryptedData = null;
+    // Call parent's onSendMessage to handle the actual message sending
+    onSendMessage(text, {
+      imageUrl: options?.imageUrl,
+      videoUrl: options?.videoUrl,
+      replyTo: replyingTo ? { senderHandle: replyingTo.senderHandle, text: replyingTo.text } : undefined,
+      nostrRecipient,
+      encryptedData: undefined // Will be handled by parent
+    });
 
-    const shouldEncrypt =
-      encryptionEnabled &&
-      secureMode &&
-      chat.participant?.id !== 'xit-bot' &&
-      (chat.type === 'private' || chat.isEncrypted);
-
-    try {
-      if (shouldEncrypt) {
-        if (chat.type === 'private') {
-          if (!encryptionService.hasUserKeys(chat.participant.id))
-            await encryptionService.generateKeyPair(chat.participant.id);
-
-          encryptedData = await encryptionService.encryptMessage(text, chat.participant.id);
-
-        } else if (chat.isEncrypted) {
-          if (!chat.id) return;
-          encryptedData = await encryptionService.encryptGroupMessage(text, chat.id);
-        }
-
-        messageText = `[ENCRYPTED] ${encryptedData?.data.substring(0, 20)}...`;
-      }
-    } catch (err) {
-      console.error('Encryption failed:', err);
-    }
-
-    // Build GeohashMessage
-    const msg: GeohashMessage = {
-      id: generateUUID(),
-      channelId: chat.id,
-      nodeId: 'me',
-      nodeHandle: myHandle,
-      content: encryptedData ? encryptedData.data : text,
-      timestamp: Date.now(),
-      type: encryptedData ? 'text' : 'text',
-    };
-
-    // Send via GeohashChannels
-    try {
-      await geohashChannels.sendMessage(chat.id, msg.content);
-      setChatMessages(prev => [...prev, msg]);
-    } catch (err) {
-      console.error('Send failed:', err);
-    }
-
-    // Store locally if encrypted
-    if (encryptedData) {
-      await localStorageService.storeEncryptedMessage(chat.id, msg.id, encryptedData);
+    // Clear reply state after sending
+    if (replyingTo) {
+      setReplyingTo(null);
     }
   };
 
@@ -253,7 +217,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       />
 
       <MessageList
-        messages={chatMessages}
+        messages={chat?.messages || []}
         chat={chat}
         myHandle={myHandle}
         scrollRef={scrollRef}

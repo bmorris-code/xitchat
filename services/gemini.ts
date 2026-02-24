@@ -52,7 +52,7 @@ export const getXitBotResponse = async (userMessage: string): Promise<string> =>
     dailyApiCount++;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',  // Updated to supported model
+      model: 'gemini-1.5-flash-001',
       contents: userMessage,
       config: {
         systemInstruction: SYSTEM_PROMPT,
@@ -96,7 +96,7 @@ export const streamXitBotResponseGemini = async (
     dailyApiCount++;
 
     const streamResult: any = await (ai.models as any).generateContentStream({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-001',
       contents: userMessage,
       config: {
         systemInstruction: SYSTEM_PROMPT,
@@ -149,7 +149,7 @@ export const getQuickReplies = async (lastMessage: string): Promise<string[]> =>
     if (!ai) return ['Rad!', 'On it.', '10-4'];
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-001',
       contents: `Suggest 3 short, snappy quick replies for this message: "${lastMessage}"`,
       config: {
         systemInstruction: `You generate quick replies for XitChat.
@@ -192,7 +192,7 @@ export const getLatestBuzz = async (): Promise<BuzzItem[]> => {
   try {
     lastApiCall = now;
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash-001',
       contents: 'Generate 5 trending news items for the XitChat mesh network buzz feed.',
       config: {
         systemInstruction: `Create 5 buzz items for XitChat.

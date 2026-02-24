@@ -176,16 +176,34 @@ export class HybridMeshWebRTC {
 
     switch (data.type) {
       case 'offer':
-        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        await this.channel.publish('signal', { type: 'answer', answer, fromPeerId: this.myPeerId, toPeerId: data.fromPeerId });
+        try {
+          if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-remote-offer') {
+            if (this.myPeerId && this.myPeerId > data.fromPeerId) {
+              console.debug(`Ignoring colliding offer from ${data.fromPeerId}`);
+              return;
+            }
+          }
+          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+          if (pc.signalingState === 'have-remote-offer' || pc.signalingState === 'have-local-pranswer') {
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            await this.channel.publish('signal', { type: 'answer', answer, fromPeerId: this.myPeerId, toPeerId: data.fromPeerId });
+          }
+        } catch (e) {
+          console.warn('WebRTC offer error:', e);
+        }
         break;
       case 'answer':
-        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        try {
+          if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-pranswer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          }
+        } catch (e) {
+          console.warn('WebRTC answer error:', e);
+        }
         break;
       case 'ice-candidate':
-        if (data.candidate) await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        if (data.candidate && pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
         break;
     }
   }

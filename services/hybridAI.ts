@@ -7,6 +7,7 @@ import {
   getQuickReplies as getQuickRepliesGemini,
   getLatestBuzz as getLatestBuzzGemini
 } from './gemini';
+
 import {
   getXitBotResponseGroq,
   streamXitBotResponseGroq,
@@ -14,6 +15,7 @@ import {
   getLatestBuzzGroq,
   checkGroqHealth
 } from './groq';
+
 import { hybridMesh, HybridMeshPeer } from './hybridMesh';
 
 export type AIProvider = 'groq' | 'gemini' | 'fallback';
@@ -43,7 +45,6 @@ class HybridAIService {
   }
 
   private initializeMeshIntegration() {
-    // Listen for mesh AI responses
     window.addEventListener('meshAIResponse', (event: any) => {
       const { requestId, response } = event.detail;
       const callback = this.pendingRequests.get(requestId);
@@ -53,14 +54,12 @@ class HybridAIService {
       }
     });
 
-    // Listen for mesh AI requests (if we are online)
     window.addEventListener('meshAIRequest', async (event: any) => {
       if (this.isOnline && this.isGroqHealthy) {
         const { requestId, userMessage, fromNode } = event.detail;
         console.log(`🤖 Mesh AI Proxy: Processing request from ${fromNode}`);
-
         try {
-          const response = await this.getXitBotResponse(userMessage, true); // true = skip mesh check to avoid loops
+          const response = await this.getXitBotResponse(userMessage, true);
           await hybridMesh.sendMessage(JSON.stringify({
             type: 'ai_response',
             data: { requestId, response }
@@ -71,10 +70,7 @@ class HybridAIService {
       }
     });
 
-    // Track peers with AI capability
     hybridMesh.subscribe('peersUpdated', (peers: HybridMeshPeer[]) => {
-      // In a real implementation, peers would advertise 'ai_proxy' capability
-      // For now, we'll assume any peer with a connectionType of 'nostr' might be online
       this.aiPeers = peers
         .filter(p => p.connectionType === 'nostr' || p.id.includes('proxy'))
         .map(p => p.id);
@@ -82,25 +78,18 @@ class HybridAIService {
   }
 
   private async initializeHealthCheck() {
-    // Initial health check
     await this.checkProviderHealth();
-
-    // Periodic health checks
-    setInterval(() => {
-      this.checkProviderHealth();
-    }, this.HEALTH_CHECK_INTERVAL);
+    setInterval(() => this.checkProviderHealth(), this.HEALTH_CHECK_INTERVAL);
   }
 
   private async checkProviderHealth(): Promise<void> {
     const now = Date.now();
     if (now - this.lastHealthCheck < this.HEALTH_CHECK_INTERVAL) return;
-
     this.lastHealthCheck = now;
 
     try {
-      // Check Groq health
       const groqHealthy = await checkGroqHealth();
-      this.isOnline = groqHealthy; // If we can reach Groq, we are online
+      this.isOnline = groqHealthy;
 
       if (groqHealthy) {
         this.isGroqHealthy = true;
@@ -109,8 +98,6 @@ class HybridAIService {
         console.log('✅ Groq is healthy - using as primary provider');
       } else {
         this.failureCount++;
-        console.debug(`Groq health check failed (${this.failureCount}/${this.MAX_FAILURES})`);
-
         if (this.failureCount >= this.MAX_FAILURES) {
           this.isGroqHealthy = false;
           this.primaryProvider = 'gemini';
@@ -122,7 +109,6 @@ class HybridAIService {
       console.error('Health check failed:', error);
       this.isOnline = false;
       this.failureCount++;
-
       if (this.failureCount >= this.MAX_FAILURES) {
         this.isGroqHealthy = false;
         this.primaryProvider = 'gemini';
@@ -139,16 +125,11 @@ class HybridAIService {
     skipMesh: boolean = false,
     userMessage?: string
   ): Promise<T> {
-    // Try primary provider first
     if (this.primaryProvider === 'groq' && this.isGroqHealthy) {
       try {
-        const result = await groqFn();
-        console.log(`✅ ${operation} completed with Groq`);
-        return result;
-      } catch (error) {
-        console.warn(`⚠️ Groq failed for ${operation}, trying Gemini:`, error);
+        return await groqFn();
+      } catch {
         this.failureCount++;
-
         if (this.failureCount >= this.MAX_FAILURES) {
           this.isGroqHealthy = false;
           this.primaryProvider = 'gemini';
@@ -156,27 +137,17 @@ class HybridAIService {
       }
     }
 
-    // Try Gemini
     try {
-      const result = await geminiFn();
-      console.log(`✅ ${operation} completed with Gemini`);
-      return result;
-    } catch (error) {
-      console.warn(`⚠️ Gemini failed for ${operation}, trying Mesh Proxy:`, error);
-    }
+      return await geminiFn();
+    } catch { }
 
-    // Try Mesh Proxy if offline and not skipping
     if (!this.isOnline && !skipMesh && this.aiPeers.length > 0 && operation === 'Chat Response' && userMessage) {
       try {
         const meshResult = await this.requestMeshAI(userMessage);
         if (meshResult) return meshResult as unknown as T;
-      } catch (error) {
-        console.warn('⚠️ Mesh AI Proxy failed:', error);
-      }
+      } catch { }
     }
 
-    // Final fallback
-    console.log(`🔄 Using fallback for ${operation}`);
     return fallbackFn();
   }
 
@@ -184,15 +155,13 @@ class HybridAIService {
     if (this.aiPeers.length === 0) return null;
 
     const requestId = `ai_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const targetPeer = this.aiPeers[0]; // Use first available proxy
-
-    console.log(`📡 Requesting AI via Mesh Peer: ${targetPeer}`);
+    const targetPeer = this.aiPeers[0];
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(requestId);
         resolve(null);
-      }, 15000); // 15s timeout for mesh AI
+      }, 15000);
 
       this.pendingRequests.set(requestId, (response) => {
         clearTimeout(timeout);
@@ -201,12 +170,12 @@ class HybridAIService {
 
       hybridMesh.sendMessage(JSON.stringify({
         type: 'ai_request',
+        data: { requestId, userMessage }
+      }), targetPeer);
+    });
   }
 
   async getXitBotResponse(userMessage: string, skipMesh: boolean = false): Promise<string> {
-    console.log('🤖 Hybrid AI: Getting response for:', userMessage);
-    console.log('🔧 Current provider:', this.primaryProvider, 'Groq healthy:', this.isGroqHealthy, 'Online:', this.isOnline);
-
     return this.executeWithFallback(
       () => getXitBotResponseGroq(userMessage),
       () => getXitBotResponseGemini(userMessage),
@@ -222,16 +191,10 @@ class HybridAIService {
     onToken: (token: string, fullText: string) => void,
     skipMesh: boolean = false
   ): Promise<string> {
-    console.log('🤖 Hybrid AI: Streaming response for:', userMessage);
-    console.log('🔧 Current provider:', this.primaryProvider, 'Groq healthy:', this.isGroqHealthy, 'Online:', this.isOnline);
-
     if (this.primaryProvider === 'groq' && this.isGroqHealthy) {
       try {
-        const result = await streamXitBotResponseGroq(userMessage, onToken);
-        console.log('✅ Chat stream completed with Groq');
-        return result;
-      } catch (error) {
-        console.warn('⚠️ Groq stream failed, trying Gemini:', error);
+        return await streamXitBotResponseGroq(userMessage, onToken);
+      } catch {
         this.failureCount++;
         if (this.failureCount >= this.MAX_FAILURES) {
           this.isGroqHealthy = false;
@@ -241,22 +204,14 @@ class HybridAIService {
     }
 
     try {
-      const result = await streamXitBotResponseGemini(userMessage, onToken);
-      console.log('✅ Chat stream completed with Gemini');
-      return result;
-    } catch (error) {
-      console.warn('⚠️ Gemini stream failed:', error);
-    }
+      return await streamXitBotResponseGemini(userMessage, onToken);
+    } catch { }
 
     if (!this.isOnline && !skipMesh && this.aiPeers.length > 0) {
-      try {
-        const meshResult = await this.requestMeshAI(userMessage);
-        if (meshResult) {
-          onToken(meshResult, meshResult);
-          return meshResult;
-        }
-      } catch (error) {
-        console.warn('⚠️ Mesh AI Proxy failed:', error);
+      const meshResult = await this.requestMeshAI(userMessage);
+      if (meshResult) {
+        onToken(meshResult, meshResult);
+        return meshResult;
       }
     }
 
@@ -274,7 +229,7 @@ class HybridAIService {
     );
   }
 
-  async getLatestBuzz(): Promise<any[]> {
+  async getLatestBuzz(): Promise<BuzzItem[]> {
     return this.executeWithFallback(
       () => getLatestBuzzGroq(),
       () => getLatestBuzzGemini(),
@@ -285,19 +240,10 @@ class HybridAIService {
 
   private getFallbackResponse(userMessage: string): string {
     const lowerMessage = userMessage.toLowerCase();
-
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-      return "Hey there! Ready to surf the digital waves? 🌊";
-    }
-    if (lowerMessage.includes('help')) {
-      return "Need assistance? I'm your mainframe buddy! What can I help you with?";
-    }
-    if (lowerMessage.includes('bug') || lowerMessage.includes('error')) {
-      return "Uh oh, digital static detected! Try refreshing or clearing your cache.";
-    }
-    if (lowerMessage.includes('xc') || lowerMessage.includes('token')) {
-      return "XC tokens are rad! Earn them by chatting and playing games in the mesh!";
-    }
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) return "Hey there! Ready to surf the digital waves? 🌊";
+    if (lowerMessage.includes('help')) return "Need assistance? I'm your mainframe buddy! What can I help you with?";
+    if (lowerMessage.includes('bug') || lowerMessage.includes('error')) return "Uh oh, digital static detected! Try refreshing or clearing your cache.";
+    if (lowerMessage.includes('xc') || lowerMessage.includes('token')) return "XC tokens are rad! Earn them by chatting and playing games in the mesh!";
 
     const fallbackResponses = [
       "Whoa, that's some heavy data! Let me process... *beep boop*",
@@ -310,7 +256,7 @@ class HybridAIService {
     return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
   }
 
-  private getFallbackBuzz() {
+  private getFallbackBuzz(): BuzzItem[] {
     return [
       { title: "Mesh Signal Strong", time: "Now", snippet: "All systems operating at peak efficiency.", category: "UPDATE" },
       { title: "Static on Channel 7", time: "5m ago", snippet: "Minor interference detected. Technicians routing around.", category: "NEWS" },
@@ -318,12 +264,7 @@ class HybridAIService {
     ];
   }
 
-  // Get current provider status
-  getProviderStatus(): {
-    primary: AIProvider;
-    groqHealthy: boolean;
-    failureCount: number;
-  } {
+  getProviderStatus() {
     return {
       primary: this.primaryProvider,
       groqHealthy: this.isGroqHealthy,
@@ -331,45 +272,23 @@ class HybridAIService {
     };
   }
 
-  // Force switch provider (for testing or manual override)
-  forceSwitchProvider(provider: AIProvider): void {
-    this.primaryProvider = provider;
-    this.isGroqHealthy = (provider === 'groq');
-    this.failureCount = 0;
-    console.log(`🔄 Manually switched to ${provider} as primary provider`);
-  }
-
-  // Reset failure count (useful after manual intervention)
-  resetFailures(): void {
-    this.failureCount = 0;
-    console.log('🔄 Reset failure count');
-  }
-
-  subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+  subscribe(event: string, callback: (data: any) => void) {
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-
     return () => {
       this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
     };
   }
 
   private notifyListeners(event: string, data: any) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
-    }
+    if (this.listeners[event]) this.listeners[event].forEach(cb => cb(data));
   }
 }
 
 export const hybridAI = new HybridAIService();
 
-// Export the hybrid functions as drop-in replacements
-export const getXitBotResponse = (userMessage: string) => hybridAI.getXitBotResponse(userMessage);
-export const streamXitBotResponse = (
-  userMessage: string,
-  onToken: (token: string, fullText: string) => void
-) => hybridAI.streamXitBotResponse(userMessage, onToken);
+// Clean exports
+export const getXitBotResponse = (userMessage: string, skipMesh?: boolean) => hybridAI.getXitBotResponse(userMessage, skipMesh);
+export const streamXitBotResponse = (userMessage: string, onToken: (token: string, fullText: string) => void, skipMesh?: boolean) => hybridAI.streamXitBotResponse(userMessage, onToken, skipMesh);
 export const getQuickReplies = (lastMessage: string) => hybridAI.getQuickReplies(lastMessage);
 export const getLatestBuzz = () => hybridAI.getLatestBuzz();

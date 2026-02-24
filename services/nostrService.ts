@@ -130,6 +130,11 @@ class NostrService {
         return;
       }
 
+      if (message.includes('CLOSING') || message.includes('CLOSED')) {
+        console.debug('⚠️ WebSocket state issue (handled):', message);
+        return;
+      }
+
       originalConsoleError.apply(console, args);
     };
   }
@@ -292,6 +297,9 @@ class NostrService {
           } else if (reason?.message?.includes('Decryption failed') || reason?.message?.includes('decryption') || reason?.message?.includes('Message decryption failed') || (reason instanceof Error && reason.name === 'OperationError')) {
             console.warn('⚠️ Message decryption failed (handled):', reason.message || reason);
             this.showUserNotification('Unable to decrypt some messages');
+            event.preventDefault();
+          } else if (reason?.name === 'InvalidStateError' || reason?.message?.includes('createAnswer')) {
+            console.debug('⚠️ WebRTC state error (handled):', reason.message);
             event.preventDefault();
           } else if (reason?.message && /Peer .* not found/.test(reason.message)) {
             console.warn('⚠️ Peer not found (handled):', reason.message);
@@ -1254,4 +1262,3 @@ class NostrService {
 }
 
 export const nostrService = new NostrService();
-
