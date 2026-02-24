@@ -4,6 +4,19 @@ import { nostrService } from './nostrService';
 import { hybridMesh } from './hybridMesh';
 import { encryptionService, EncryptedData } from './encryptionService';
 
+// -------------------- UUID GENERATOR --------------------
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  
+  // fallback for older devices
+  return 'msg-' +
+    Date.now() + '-' +
+    Math.random().toString(36).substring(2, 15) + '-' +
+    Math.random().toString(36).substring(2, 15);
+}
+
 // -------------------- TYPES --------------------
 export interface ChannelMessage {
   id: string;
@@ -118,7 +131,7 @@ class GeohashChannelsService {
         if (match && this.isNearbyGeohash(match[1])) {
           const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
           const geoMessage: GeohashMessage = {
-            id: message.id || crypto.randomUUID(),
+            id: message.id || generateUUID(),
             channelId: `${this.nostrChannelPrefix}${match[1]}`,
             nodeId: message.from,
             nodeHandle: `@${message.from?.substring(0, 8) || 'unknown'}`,
@@ -152,7 +165,7 @@ class GeohashChannelsService {
       }
 
       const geoMessage: GeohashMessage = {
-        id: message.id || crypto.randomUUID(),
+        id: message.id || generateUUID(),
         channelId: `${this.nostrChannelPrefix}${match[1]}`,
         nodeId: message.from,
         nodeHandle: message.senderHandle || `@${message.from?.substring(0, 8) || 'unknown'}`,
@@ -368,7 +381,7 @@ class GeohashChannelsService {
     if (!channel) throw new Error('Channel not found');
 
     const message: GeohashMessage = {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       channelId,
       nodeId: 'me',
       nodeHandle: this.myHandle,
