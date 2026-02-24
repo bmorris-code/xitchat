@@ -1122,61 +1122,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Sync room messages from geohash channels into chat windows in real time.
-  useEffect(() => {
-    const unsubscribeRoomMessages = geohashChannels.subscribe('messageReceived', (geoMessage: any) => {
-      const roomId = geoMessage.channelId;
-      if (!roomId) return;
-
-      const incomingMessage: Message = {
-        id: geoMessage.id || `room-msg-${Date.now()}`,
-        senderId: geoMessage.nodeId || 'unknown',
-        senderHandle: geoMessage.nodeHandle || `@${String(geoMessage.nodeId || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`,
-        text: geoMessage.content || '',
-        timestamp: geoMessage.timestamp || Date.now()
-      };
-
-      setChats(prev => {
-        const roomChatIndex = prev.findIndex(c => c.type === 'room' && c.participant.id === roomId);
-
-        if (roomChatIndex === -1) {
-          const newRoomChat: Chat = {
-            id: `chat-${Date.now()}`,
-            type: 'room',
-            participant: {
-              id: roomId,
-              name: roomId.replace('xitchat-local-', ''),
-              handle: `#${roomId.replace('xitchat-local-', '')}`,
-              avatar: '',
-              status: 'Online',
-              mood: 'Mesh room active'
-            },
-            lastMessage: incomingMessage.text,
-            unreadCount: 1,
-            messages: [incomingMessage]
-          };
-          return [newRoomChat, ...prev];
-        }
-
-        const existing = prev[roomChatIndex];
-        if (existing.messages.some(m => m.id === incomingMessage.id)) {
-          return prev;
-        }
-
-        const updated = [...prev];
-        updated[roomChatIndex] = {
-          ...existing,
-          lastMessage: incomingMessage.text,
-          unreadCount: activeChatId === existing.id || incomingMessage.senderId === 'xit-bot' ? existing.unreadCount : existing.unreadCount + 1,
-          messages: [...existing.messages, incomingMessage]
-        };
-        return updated;
-      });
-    });
-
-    return () => unsubscribeRoomMessages();
-  }, [activeChatId]);
-
   const activeChat = chats.find(c => c.id === activeChatId) || null;
   const normalizePeerToken = (value?: string) =>
     (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');

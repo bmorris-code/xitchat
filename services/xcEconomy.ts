@@ -38,45 +38,12 @@ class XCEconomyService {
     nextBonus: 10
   };
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
-  private nostrUnsubscribe: (() => void) | null = null;
 
   constructor() {
     this.loadState();
     this.initializeAchievements();
     this.checkDailyStreak();
-    this.subscribeToNostrSync();
-  }
-
-  private subscribeToNostrSync() {
-    // Listen for economy sync events from other devices
-    try {
-      const unsubscribe = nostrService.subscribe('messageReceived', (message) => {
-        if (message.content && message.content.startsWith('xitchat-economy-sync:')) {
-          try {
-            const encryptedData = message.content.replace('xitchat-economy-sync:', '');
-            // In a real app, we would decrypt this. For now, we'll assume it's JSON for the demo.
-            const data = JSON.parse(encryptedData);
-
-            if (data.timestamp > (this.transactions[0]?.timestamp || 0)) {
-              console.log('💰 Syncing economy state from Nostr...');
-              this.balance = data.balance;
-              this.transactions = data.transactions;
-              this.streak = data.streak;
-              this.saveState();
-              this.notifyListeners('balanceUpdated', this.balance);
-              this.notifyListeners('transactionAdded', null);
-            }
-          } catch (e) {
-            console.error('Failed to parse economy sync:', e);
-          }
-        }
-      });
-      
-      // Store unsubscribe function for cleanup
-      this.nostrUnsubscribe = unsubscribe;
-    } catch (error) {
-      console.debug('Failed to subscribe to Nostr sync (service may not be initialized yet):', error);
-    }
+    // Nostr sync subscription removed - not needed for basic app functionality
   }
 
   private loadState() {
@@ -377,10 +344,7 @@ class XCEconomyService {
 
   // Cleanup method for proper resource management
   destroy() {
-    if (this.nostrUnsubscribe) {
-      this.nostrUnsubscribe();
-      this.nostrUnsubscribe = null;
-    }
+    // Nostr subscription cleanup removed - no longer needed
     this.listeners = {};
   }
 
