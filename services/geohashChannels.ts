@@ -347,11 +347,20 @@ class GeohashChannelsService {
   }
   private notifyListeners(event: string, data: any) { if (this.listeners[event]) this.listeners[event].forEach(cb => cb(data)); }
 
-  // ---------------- GETTERS ----------------
-  getNearbyChannels() { return this.nearbyChannels; }
-  getChannelMessages(channelId: string) { return this.messages.get(channelId) || []; }
-  getLocalAreaChannel() { return this.currentLocation ? this.channels.get(`${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`) || null : null; }
-  getLocalAreaMessages() { const c = this.getLocalAreaChannel(); return c ? this.getChannelMessages(c.id) : []; }
+ // ---------------- GETTERS ----------------
+getNearbyChannels() { return this.nearbyChannels; }
+getChannelMessages(channelId: string) { return this.messages.get(channelId) || []; }
+getLocalAreaChannel() { 
+  return this.currentLocation 
+    ? this.channels.get(`${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`) || null 
+    : null; 
+}
+getLocalAreaMessages() { 
+  const c = this.getLocalAreaChannel(); 
+  return c ? this.getChannelMessages(c.id) : []; 
+}
+getCurrentLocation(): GeohashLocation | null {
+  return this.currentLocation;
 }
 
 export const geohashChannels = GeohashChannelsService.getInstance();
