@@ -13,6 +13,12 @@ import { getGeohashChannelsInstance, GeohashMessage } from '../services/geohashC
 // Initialize the service instance
 const geohashChannels = getGeohashChannelsInstance();
 
+// === UUID fallback for older devices ===
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'msg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 15);
+}
+
 interface ChatWindowProps {
   chat: Chat | null;
   allChats: Chat[];
@@ -76,19 +82,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     const unsubReceived = geohashChannels.subscribe('messageReceived', (msg: GeohashMessage) => {
       if (msg.channelId === chat.id) {
-        setChatMessages(prev => {
-          if (prev.some(m => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+        setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
       }
     });
 
     const unsubSent = geohashChannels.subscribe('messageSent', (msg: GeohashMessage) => {
       if (msg.channelId === chat.id) {
-        setChatMessages(prev => {
-          if (prev.some(m => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+        setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
       }
     });
 
@@ -106,7 +106,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [chatMessages]);
 
   // === Send Message ===
-  const handleSendMessage = async (text: string, options?: any) => {
+  const handleSendMessage = async (text: string, options?: { imageUrl?: string, videoUrl?: string, mediaId?: string }) => {
     if (!chat || !text) return;
 
     let messageText = text;
@@ -137,18 +137,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       console.error('Encryption failed:', err);
     }
 
-    // Send via GeohashChannelsService
-    if (chat.id) {
-      try {
-        await geohashChannels.sendMessage(chat.id, text); // TODO: Handle encrypted data      
-      } catch (err) {
-        console.error('Send failed:', err);
-      }
+    // Build GeohashMessage
+    const msg: GeohashMessage = {
+      id: generateUUID(),
+      channelId: chat.id,
+      nodeId: 'me',
+      nodeHandle: myHandle,
+      content: encryptedData ? encryptedData.data : text,
+      timestamp: Date.now(),
+      type: encryptedData ? 'text' : 'text',
+    };
+
+    // Send via GeohashChannels
+    try {
+      await geohashChannels.sendMessage(chat.id, msg.content);
+      setChatMessages(prev => [...prev, msg]);
+    } catch (err) {
+      console.error('Send failed:', err);
     }
 
     // Store locally if encrypted
     if (encryptedData) {
-      await localStorageService.storeEncryptedMessage(chat.id, `msg-${Date.now()}`, encryptedData);
+      await localStorageService.storeEncryptedMessage(chat.id, msg.id, encryptedData);
     }
   };
 
@@ -159,7 +169,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     setIsUploading(true);
     const mediaId = `media_${Date.now()}`;
-    setUploadProgress(prev => new Map(prev.set(mediaId, 0)));
+    setUploadProgress(prev => new Map(prev).set(mediaId, 0));
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -176,7 +186,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             if (width > height) { height = (height * maxDim) / width; width = maxDim; }
             else { width = (width * maxDim) / height; height = maxDim; }
           }
-          canvas.width = width; canvas.height = height;
+          canvas.width = width;
+          canvas.height = height;
           ctx?.drawImage(img, 0, 0, width, height);
           const compressed = canvas.toDataURL('image/jpeg', 0.8);
           handleSendMessage(`📎 Image: ${file.name}`, { imageUrl: compressed, mediaId });
@@ -194,7 +205,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     e.target.value = '';
   };
 
-  // === Helpers for themes, colors ===
+  // === Helpers for themes/colors ===
   const getChatBackgroundClass = () => {
     const bgMap: any = { black: 'bg-black', 'dark-gray': 'bg-gray-900', navy: 'bg-blue-950', forest: 'bg-green-950', burgundy: 'bg-red-950', charcoal: 'bg-gray-800' };
     return bgMap[chatBackground] || 'bg-black';

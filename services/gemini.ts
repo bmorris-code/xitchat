@@ -52,7 +52,7 @@ export const getXitBotResponse = async (userMessage: string): Promise<string> =>
     dailyApiCount++;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-1.5-flash',  // Updated to supported model
       contents: userMessage,
       config: {
         systemInstruction: SYSTEM_PROMPT,
