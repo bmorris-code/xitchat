@@ -79,75 +79,77 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
 const handleSendMessage = async (text: string, options?: any) => {
 
-  if (!chat || !text.trim()) return;
+ if (!chat) return;
 
-  const channelId = chat.id;
+ let messageText = text;
+ let encryptedData = null;
 
-  try {
+ const shouldEncrypt =
+   encryptionEnabled &&
+   secureMode &&
+   chat.participant?.id !== 'xit-bot' &&
+   text &&
+   (chat.type === 'private' || chat.isEncrypted);
 
-    // Join channel automatically
-    await geohashChannels.joinChannel(channelId);
+ if (shouldEncrypt) {
 
-  } catch (err) {
+   try {
 
-    console.warn("Join failed:", err);
+     if (!encryptionService.hasUserKeys('me'))
+       await encryptionService.initializeUser('me');
 
-  }
 
-  let messageContent = text;
-  let encryptedData = null;
+     if (chat.type === 'private') {
 
-  const shouldEncrypt =
-    encryptionEnabled &&
-    secureMode &&
-    chat.isEncrypted;
+       if (!encryptionService.hasUserKeys(chat.participant.id))
+         await encryptionService.generateKeyPair(chat.participant.id);
 
-  if (shouldEncrypt) {
+       encryptedData =
+         await encryptionService.encryptMessage(text, chat.participant.id);
 
-    try {
+     }
 
-      const geohash = channelId
-        .replace('xitchat-local-', '')
-        .split('_')[0];
 
-      encryptedData =
-        await encryptionService.encryptGroupMessage(
-          text,
-          geohash
-        );
+     else if (chat.isEncrypted) {
 
-      messageContent =
-        `[ENCRYPTED] ${encryptedData.data.slice(0,20)}...`;
+       const geohash = chat.geohash || chat.id;
 
-    } catch {}
+       if (!geohashChannels[geohash]) {
+         await joinGeohashChannel(geohash);
+       }
 
-  }
+       encryptedData =
+         await encryptionService.encryptGroupMessage(text, geohash);
 
-  try {
+     }
 
-    const msgId =
-      await geohashChannels.sendMessage(
-        channelId,
-        messageContent,
-        'text'
-      );
 
-    if (encryptedData) {
+     messageText =
+       `[ENCRYPTED] ${encryptedData.data.substring(0, 20)}...`;
 
-      await localStorageService
-        .storeEncryptedMessage(
-          channelId,
-          msgId,
-          encryptedData
-        );
+   }
 
-    }
+   catch (error) {
 
-  } catch (err) {
+     console.error('Encryption failed:', error);
 
-    console.error("Send failed:", err);
+   }
 
-  }
+ }
+
+
+ onSendMessage(messageText, { ...options, encryptedData });
+
+
+ if (encryptedData) {
+
+   await localStorageService.storeEncryptedMessage(
+     chat.id,
+     `msg-${Date.now()}`,
+     encryptedData
+   );
+
+ }
 
 };
 
