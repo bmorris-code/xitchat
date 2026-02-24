@@ -118,7 +118,7 @@ class GeohashChannelsService {
         if (match && this.isNearbyGeohash(match[1])) {
           const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
           const geoMessage: GeohashMessage = {
-            id: message.id || `nostr_${Date.now()}`,
+            id: message.id || crypto.randomUUID(),
             channelId: `${this.nostrChannelPrefix}${match[1]}`,
             nodeId: message.from,
             nodeHandle: `@${message.from?.substring(0, 8) || 'unknown'}`,
@@ -152,7 +152,7 @@ class GeohashChannelsService {
       }
 
       const geoMessage: GeohashMessage = {
-        id: message.id || `mesh_${Date.now()}`,
+        id: message.id || crypto.randomUUID(),
         channelId: `${this.nostrChannelPrefix}${match[1]}`,
         nodeId: message.from,
         nodeHandle: message.senderHandle || `@${message.from?.substring(0, 8) || 'unknown'}`,
@@ -165,19 +165,35 @@ class GeohashChannelsService {
     });
   }
 
-  private addReceivedMessage(message: GeohashMessage) {
-    if (message.nodeHandle === this.myHandle) return;
+ private addReceivedMessage(message: GeohashMessage) {
 
-    if (!this.messages.has(message.channelId)) this.messages.set(message.channelId, []);
+  if (!message?.id) return;
 
-    const existing = this.messages.get(message.channelId)!;
-    if (!existing.find((m) => m.id === message.id)) {
-      existing.push(message);
-      this.saveMessages();
-      this.notifyListeners('messageReceived', message);
-      console.log(`📨 Received local area message: ${message.content}`);
-    }
+  if (message.nodeHandle === this.myHandle) return;
+
+  if (!this.messages.has(message.channelId)) {
+    this.messages.set(message.channelId, []);
   }
+
+  const existing = this.messages.get(message.channelId)!;
+
+  // prevent duplicates
+  if (existing.some(m => m.id === message.id)) {
+    return;
+  }
+
+  existing.push({
+    ...message,
+    id: String(message.id)
+  });
+
+  this.saveMessages();
+
+  this.notifyListeners('messageReceived', message);
+
+  console.log(`📨 Received: ${message.content}`);
+
+}
 
   // ---------------- LOCATION ----------------
   private isNearbyGeohash(geohash: string) {
@@ -352,7 +368,7 @@ class GeohashChannelsService {
     if (!channel) throw new Error('Channel not found');
 
     const message: GeohashMessage = {
-      id: `msg_${Date.now()}`,
+      id: crypto.randomUUID(),
       channelId,
       nodeId: 'me',
       nodeHandle: this.myHandle,
@@ -372,7 +388,11 @@ class GeohashChannelsService {
     }
 
     if (!this.messages.has(channelId)) this.messages.set(channelId, []);
-    this.messages.get(channelId)!.push(message);
+    const msgs = this.messages.get(channelId)!;
+
+if (!msgs.find(m => m.id === message.id)) {
+   msgs.push(message);
+}
 
     if (channel) {
       channel.lastActivity = Date.now();

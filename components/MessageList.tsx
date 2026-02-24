@@ -40,7 +40,7 @@ const MessageList: React.FC<MessageListProps> = ({
   useEffect(() => {
     // Auto-decrypt any new encrypted messages
     messages.forEach(async (msg) => {
-      if (msg.text.startsWith('[ENCRYPTED]') && msg.encryptedData && !decryptedTexts[msg.id]) {
+      if (msg.text?.startsWith('[ENCRYPTED]') && msg.encryptedData && !decryptedTexts[msg.id]) {
         try {
           const decrypted = await encryptionService.decryptMessage(msg.encryptedData, msg.senderId);
           setDecryptedTexts(prev => ({ ...prev, [msg.id]: decrypted }));
@@ -61,7 +61,7 @@ const MessageList: React.FC<MessageListProps> = ({
         <div className="space-y-2">
           <p className="text-current break-words">{displayText}</p>
           <div className="relative group">
-            {msg.text.startsWith('[ENCRYPTED_IMAGE]') ? (
+            {msg.text?.startsWith('[ENCRYPTED_IMAGE]') ? (
               <SecureImageView
                 imageId={`img-${msg.id}`}
                 senderId={msg.senderId}

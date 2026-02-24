@@ -75,11 +75,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     loadMessages();
 
     const unsubReceived = geohashChannels.subscribe('messageReceived', (msg: GeohashMessage) => {
-      if (msg.channelId === chat.id) setChatMessages(prev => [...prev, msg]);
+      if (msg.channelId === chat.id) {
+        setChatMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      }
     });
 
     const unsubSent = geohashChannels.subscribe('messageSent', (msg: GeohashMessage) => {
-      if (msg.channelId === chat.id) setChatMessages(prev => [...prev, msg]);
+      if (msg.channelId === chat.id) {
+        setChatMessages(prev => {
+          if (prev.some(m => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      }
     });
 
     return () => {
@@ -130,7 +140,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     // Send via GeohashChannelsService
     if (chat.id) {
       try {
-        await geohashChannels.sendMessage(chat.id, text);
+        await geohashChannels.sendMessage(chat.id, text); // TODO: Handle encrypted data      
       } catch (err) {
         console.error('Send failed:', err);
       }
