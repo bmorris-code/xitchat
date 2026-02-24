@@ -313,8 +313,43 @@ class GeohashChannelsService {
     content: string,
     type: GeohashMessage['type'] = 'text'
   ): Promise<string> {
-    const channel = this.channels.get(channelId);
-    if (!channel && !channelId.startsWith(this.nostrChannelPrefix)) throw new Error('Channel not found');
+    let channel = this.channels.get(channelId);
+    
+    // If channel doesn't exist, try to create it
+    if (!channel) {
+      console.log(`🔍 Channel ${channelId} not found, attempting to create...`);
+      
+      // If it's a local area channel, ensure it exists
+      if (channelId.startsWith(this.nostrChannelPrefix)) {
+        this.ensureLocalAreaChannel();
+        channel = this.channels.get(channelId);
+      }
+      
+      // If still not found, create a basic channel
+      if (!channel) {
+        channel = {
+          id: channelId,
+          geohash: channelId.replace(this.nostrChannelPrefix, ''),
+          name: `Channel ${channelId}`,
+          description: 'Auto-created channel',
+          desc: 'Auto-created channel',
+          tags: ['auto'],
+          participants: ['me'],
+          isPublic: true,
+          requiresInvite: false,
+          createdBy: 'system',
+          createdAt: Date.now(),
+          lastActivity: Date.now(),
+          messageCount: 0,
+          isEncrypted: false,
+        };
+        this.channels.set(channelId, channel);
+        this.saveChannels();
+        console.log(`🏠 Created new channel: ${channelId}`);
+      }
+    }
+    
+    if (!channel) throw new Error('Channel not found');
 
     const message: GeohashMessage = {
       id: `msg_${Date.now()}`,
