@@ -187,6 +187,10 @@ class GeohashChannelsService {
       this.updateLocation(-26.2041, 28.0473);
       return;
     }
+    
+    // Set default location immediately to prevent null returns
+    this.updateLocation(-26.2041, 28.0473);
+    
     setTimeout(() => this.requestLocationWithUserGesture(), 1000);
   }
 
