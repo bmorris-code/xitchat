@@ -49,11 +49,14 @@ class RealTorService {
   
   private isEnabled = false;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
-  private bootstrapInterval: number | null = null;
-  private circuitRotationInterval: number | null = null;
   private knownNodes: Map<string, TorNode> = new Map();
+  private activeCircuits: Map<string, TorCircuit> = new Map();
   private signalingServer: WebSocket | null = null;
   private localPeerId: string;
+  private bootstrapInterval: number | null = null;
+  private circuitRotationInterval: number | null = null;
+  private lastDiscoveryAttempt = 0;
+  private readonly DISCOVERY_COOLDOWN = 5000; // 5 seconds cooldown between discovery attempts
 
   constructor() {
     this.localPeerId = this.generatePeerId();
@@ -294,12 +297,21 @@ class RealTorService {
     this.status.connected = false;
     this.status.bootstrapProgress = 0;
     
-    // Start bootstrap process
+    // Start bootstrap process with protection against infinite recursion
     this.bootstrapInterval = window.setInterval(() => {
+      // Prevent infinite loops - if we've been stuck at same progress for too long, force completion
+      const now = Date.now();
+      
       this.status.bootstrapProgress = Math.min(100, this.status.bootstrapProgress + Math.random() * 10);
       
+      // Only attempt discovery if we haven't tried recently (prevent spam)
       if (this.status.bootstrapProgress >= 30 && this.knownNodes.size < 3) {
-        this.discoverNodes();
+        if (now - this.lastDiscoveryAttempt > this.DISCOVERY_COOLDOWN) {
+          this.lastDiscoveryAttempt = now;
+          this.discoverNodes().catch(error => {
+            console.debug('Discovery failed (continuing bootstrap):', error);
+          });
+        }
       }
       
       // Only try to create circuits when we have enough nodes
@@ -307,8 +319,10 @@ class RealTorService {
         this.createInitialCircuits();
       }
       
-      if (this.status.bootstrapProgress >= 100) {
-        this.status.connected = true;
+      // Force completion after reasonable time to prevent infinite loops
+      if (this.status.bootstrapProgress >= 100 || 
+          (this.status.bootstrapProgress >= 80 && this.knownNodes.size === 0)) {
+        this.status.connected = this.knownNodes.size > 0;
         this.status.bootstrapProgress = 100;
         
         if (this.bootstrapInterval) {
@@ -316,7 +330,12 @@ class RealTorService {
           this.bootstrapInterval = null;
         }
         
-        this.onTorConnected();
+        if (this.status.connected) {
+          this.onTorConnected();
+        } else {
+          console.log('🔄 TOR bootstrap completed in offline mode');
+          this.notifyListeners('offlineMode', true);
+        }
       }
       
       this.notifyListeners('bootstrapProgress', this.status.bootstrapProgress);
