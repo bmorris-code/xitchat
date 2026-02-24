@@ -8,7 +8,7 @@ import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import MediaGallery from './MediaGallery';
 import ForwardModal from './ForwardModal';
-import { geohashChannels, joinGeohashChannel } from '../services/geohashChannels';
+import { geohashChannels } from '../services/geohashChannels';
 
 interface ChatWindowProps {
   chat: Chat | null;
