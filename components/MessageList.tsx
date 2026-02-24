@@ -38,19 +38,48 @@ const MessageList: React.FC<MessageListProps> = ({
   const [decryptedTexts, setDecryptedTexts] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    // Auto-decrypt any new encrypted messages
-    messages.forEach(async (msg) => {
-      if (msg.text?.startsWith('[ENCRYPTED]') && msg.encryptedData && !decryptedTexts[msg.id]) {
+
+  const decrypt = async () => {
+
+    for (const msg of messages) {
+
+      if (
+        msg.text?.startsWith('[ENCRYPTED]') &&
+        msg.encryptedData &&
+        !decryptedTexts[msg.id]
+      ) {
+
         try {
-          const decrypted = await encryptionService.decryptMessage(msg.encryptedData, msg.senderId);
-          setDecryptedTexts(prev => ({ ...prev, [msg.id]: decrypted }));
-        } catch (e) {
-          console.error('Failed to decrypt message', e);
-          setDecryptedTexts(prev => ({ ...prev, [msg.id]: '[ENCRYPTED] 🔒' }));
+
+          const decrypted =
+            await encryptionService.decryptMessage(
+              msg.encryptedData,
+              msg.senderId
+            );
+
+          setDecryptedTexts(prev => ({
+            ...prev,
+            [msg.id]: decrypted
+          }));
+
+        } catch {
+
+          setDecryptedTexts(prev => ({
+            ...prev,
+            [msg.id]: '[ENCRYPTED] 🔒'
+          }));
+
         }
+
       }
-    });
-  }, [messages]);
+
+    }
+
+  };
+
+  decrypt();
+
+}, [messages]);
 
   const renderMessageContent = (msg: Message) => {
     // Determine text: decrypted if available
@@ -122,8 +151,11 @@ const MessageList: React.FC<MessageListProps> = ({
         - session_initialized: {new Date().toLocaleDateString()} -
       </div>
 
-      {messages.map(msg => (
-        <div key={msg.id} className="group flex flex-col font-mono relative animate-in fade-in slide-in-from-left-2">
+      {messages.map((msg, index) => (
+  <div
+    key={`${msg.id}-${msg.timestamp}-${index}`}
+    className="group flex flex-col font-mono relative animate-in fade-in slide-in-from-left-2"
+  >
           {msg.replyTo && (
             <div className="mb-1 ml-4 border-l-2 border-current border-opacity-20 pl-3 py-1 opacity-40 text-[10px] italic group-hover:opacity-80 transition-opacity">
               <span className="font-bold">&lt;{msg.replyTo.senderHandle}&gt;</span> {msg.replyTo.text.substring(0, 30)}...
