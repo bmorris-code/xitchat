@@ -207,6 +207,10 @@ class GeohashChannelsService {
     const geohash = this.encodeGeohash(lat, lng, 7);
     this.currentLocation = { latitude: lat, longitude: lng, geohash, accuracy: 150, timestamp: Date.now() };
     this.ensureLocalAreaChannel();
+// ✅ auto-join local area channel
+  const localChannel = this.getLocalAreaChannel();
+  if (localChannel) this.joinChannel(localChannel.id).catch(console.error);
+    
     this.findNearbyChannels();
     this.notifyListeners('locationUpdated', this.currentLocation);
     this.isConnected = true;
@@ -416,6 +420,31 @@ class GeohashChannelsService {
   getCurrentLocation(): GeohashLocation | null {
     return this.currentLocation;
   }
+}
+
+// ---------------- JOIN CHANNEL ----------------
+async joinChannel(channelId: string): Promise<void> {
+  const channel = this.channels.get(channelId);
+  if (!channel) throw new Error(`Channel ${channelId} not found`);
+
+  if (!channel.participants.includes('me')) {
+    channel.participants.push('me');
+    this.saveChannels();
+  }
+
+  console.log(`✅ Joined channel: ${channelId}`);
+  this.notifyListeners('channelJoined', channelId);
+}
+
+// Optional: leaveChannel
+async leaveChannel(channelId: string): Promise<void> {
+  const channel = this.channels.get(channelId);
+  if (!channel) return;
+
+  channel.participants = channel.participants.filter(p => p !== 'me');
+  this.saveChannels();
+  console.log(`🚪 Left channel: ${channelId}`);
+  this.notifyListeners('channelLeft', channelId);
 }
 
 // ---------------- LAZY EXPORT ----------------
