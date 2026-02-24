@@ -53,11 +53,12 @@ const buildMessages = (userMessage: string): GroqMessage[] => [
 
 export const getXitBotResponseGroq = async (userMessage: string): Promise<string> => {
   const now = Date.now();
-  const cacheKey = userMessage.toLowerCase().trim();
-
+  
   if (!groq) {
     return getFallbackChatResponse(userMessage);
   }
+
+  const chatCacheKey = `chat_${userMessage.toLowerCase().trim()}`;
 
   maybeResetDailyCounter(now);
   if (dailyApiCount >= DAILY_API_LIMIT) {
@@ -101,13 +102,14 @@ export const streamXitBotResponseGroq = async (
   onToken: (token: string, fullText: string) => void
 ): Promise<string> => {
   const now = Date.now();
-  const cacheKey = userMessage.toLowerCase().trim();
+  const streamCacheKey = `chat_${userMessage.toLowerCase().trim()}`;
 
-  const cacheKey = `chat_${userMessage}`;
-  const now = Date.now();
-  
+  if (!groq) {
+    return getXitBotResponseGroq(userMessage);
+  }
+
   // Check cache first
-  const cached = chatCache.get(cacheKey);
+  const cached = chatCache.get(streamCacheKey);
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) {
     onToken(cached.response, cached.response);
     return cached.response;
@@ -140,7 +142,7 @@ export const streamXitBotResponseGroq = async (
       onToken(fullText, fullText);
     }
 
-    chatCache.set(cacheKey, { response: fullText, timestamp: now });
+    chatCache.set(streamCacheKey, { response: fullText, timestamp: now });
     return fullText;
   } catch (error: any) {
     console.error('Groq Stream Error:', error);
