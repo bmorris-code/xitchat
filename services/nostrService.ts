@@ -125,13 +125,24 @@ class NostrService {
         return;
       }
 
-      if (message.includes('WebSocket') && message.includes('failed')) {
+      if (message.includes('WebSocket') && (
+        message.includes('failed') || 
+        message.includes('ERR_NAME_NOT_RESOLVED') ||
+        message.includes('ERR_CONNECTION_TIMED_OUT') ||
+        message.includes('net::')
+      )) {
         console.debug('⚠️ WebSocket issue (handled):', message);
         return;
       }
 
       if (message.includes('CLOSING') || message.includes('CLOSED')) {
         console.debug('⚠️ WebSocket state issue (handled):', message);
+        return;
+      }
+
+      // Handle Ably connection errors
+      if (message.includes('ably-realtime') || message.includes('Ably')) {
+        console.debug('⚠️ Ably connection issue (handled):', message);
         return;
       }
 

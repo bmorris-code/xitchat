@@ -60,13 +60,18 @@
   // Debug: Check environment variables
   setTimeout(function() {
     console.log('=== XitChat Environment Debug ===');
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      console.log('VITE_GROQ_API_KEY exists:', !!import.meta.env.VITE_GROQ_API_KEY);
-      console.log('VITE_GROQ_API_KEY length:', import.meta.env.VITE_GROQ_API_KEY?.length || 0);
-      console.log('VITE_GEMINI_API_KEY exists:', !!import.meta.env.VITE_GEMINI_API_KEY);
-      console.log('VITE_ABLY_API_KEY exists:', !!import.meta.env.VITE_ABLY_API_KEY);
-    } else {
-      console.log('import.meta.env not available');
+    try {
+      if (typeof import.meta !== 'undefined' && import.meta.env) {
+        console.log('VITE_GROQ_API_KEY exists:', !!import.meta.env.VITE_GROQ_API_KEY);
+        console.log('VITE_GROQ_API_KEY length:', import.meta.env.VITE_GROQ_API_KEY?.length || 0);
+        console.log('VITE_GEMINI_API_KEY exists:', !!import.meta.env.VITE_GEMINI_API_KEY);
+        console.log('VITE_ABLY_API_KEY exists:', !!import.meta.env.VITE_ABLY_API_KEY);
+      } else {
+        console.log('import.meta.env not available');
+      }
+    } catch (error) {
+      console.log('import.meta check failed:', error.message);
+      console.log('Environment variables not accessible in bootstrap.js');
     }
   }, 2000);
 })();

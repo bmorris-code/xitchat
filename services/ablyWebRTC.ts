@@ -30,10 +30,22 @@ export class HybridMeshWebRTC {
 
       // Security hardening: require explicit runtime key/token; do not read bundled env secrets.
       const ablyKey = apiKey;
-      if (!ablyKey) throw new Error('Ably API key not provided.');
+      if (!ablyKey) {
+        console.debug('⚠️ Ably API key not provided - skipping WebRTC mesh');
+        return false;
+      }
 
       this.ably = new Ably.Realtime(ablyKey);
       this.channel = this.ably.channels.get(this.currentRoom);
+
+      // Setup error handling for Ably connection
+      this.ably.connection.on('failed', (error) => {
+        console.debug('⚠️ Ably connection failed (handled):', error);
+      });
+
+      this.ably.connection.on('disconnected', () => {
+        console.debug('⚠️ Ably disconnected (handled)');
+      });
 
       // Subscribe to channels
       await this.channel.subscribe('signal', (msg: any) => this.handleSignalingMessage(msg.data));
@@ -50,7 +62,7 @@ export class HybridMeshWebRTC {
       return true;
 
     } catch (error) {
-      console.warn('⚠️ Ably WebRTC initialization skipped (Offline Mode):', error);
+      console.debug('⚠️ Ably WebRTC initialization failed (handled):', error);
       return false;
     }
   }
