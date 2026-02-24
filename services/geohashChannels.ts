@@ -55,6 +55,9 @@ export interface GeohashLocation {
 
 // -------------------- SERVICE --------------------
 class GeohashChannelsService {
+  createChannel(newRoomName: any, newRoomDesc: any, arg2: boolean, arg3: any, isTrading: any) {
+    throw new Error('Method not implemented.');
+  }
   private static instance: GeohashChannelsService;
 
   private channels: Map<string, GeohashChannel> = new Map();
