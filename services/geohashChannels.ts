@@ -4,6 +4,7 @@ import { nostrService } from './nostrService';
 import { hybridMesh } from './hybridMesh';
 import { encryptionService, EncryptedData } from './encryptionService';
 
+// -------------------- TYPES --------------------
 export interface ChannelMessage {
   id: string;
   channelId: string;
@@ -52,8 +53,10 @@ export interface GeohashLocation {
   timestamp: number;
 }
 
+// -------------------- SERVICE --------------------
 class GeohashChannelsService {
   private static instance: GeohashChannelsService;
+
   private channels: Map<string, GeohashChannel> = new Map();
   private messages: Map<string, GeohashMessage[]> = new Map();
   private currentLocation: GeohashLocation | null = null;
@@ -61,10 +64,11 @@ class GeohashChannelsService {
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private isConnected = false;
   private myHandle: string = '@anon';
-  private nostrChannelPrefix = 'xitchat-local-'; // Prefix for Nostr channel IDs
+  private nostrChannelPrefix = 'xitchat-local-';
   private myId = 'me';
 
-  static getInstance() {
+  // ---------------- SINGLETON ----------------
+  static getInstance(): GeohashChannelsService {
     if (!this.instance) this.instance = new GeohashChannelsService();
     return this.instance;
   }
@@ -74,6 +78,7 @@ class GeohashChannelsService {
     this.initializeGeohashService();
   }
 
+  // ---------------- INITIALIZATION ----------------
   private async initializeGeohashService() {
     const savedHandle = localStorage.getItem('xitchat_handle');
     if (savedHandle) this.myHandle = `@${savedHandle}`;
@@ -84,6 +89,7 @@ class GeohashChannelsService {
     this.startBackgroundSync();
   }
 
+  // ---------------- MESSAGES ----------------
   private subscribeToNostrMessages() {
     nostrService.subscribe('channelMessageReceived', (message) => {
       if (message.channelId?.startsWith(this.nostrChannelPrefix)) {
@@ -125,36 +131,36 @@ class GeohashChannelsService {
 
   private subscribeToMeshMessages() {
     hybridMesh.subscribe('messageReceived', async (message) => {
-      if (message.content?.startsWith('[GEOHASH:')) {
-        const match = message.content.match(/\[GEOHASH:([^\]]+)\]/);
-        if (!match) return;
+      if (!message.content?.startsWith('[GEOHASH:')) return;
 
-        const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
-        let finalContent = cleanContent;
-        let isEncrypted = false;
+      const match = message.content.match(/\[GEOHASH:([^\]]+)\]/);
+      if (!match) return;
 
-        if (cleanContent.startsWith('{') && cleanContent.includes('data') && cleanContent.includes('iv')) {
-          try {
-            const parsed = JSON.parse(cleanContent);
-            finalContent = await encryptionService.decryptGroupMessage(parsed, match[1]);
-            isEncrypted = true;
-          } catch {}
-        }
+      const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
+      let finalContent = cleanContent;
+      let isEncrypted = false;
 
-        const geoMessage: GeohashMessage = {
-          id: message.id || `mesh_${Date.now()}`,
-          channelId: `${this.nostrChannelPrefix}${match[1]}`,
-          nodeId: message.from,
-          nodeHandle: message.senderHandle || `@${message.from?.substring(0, 8) || 'unknown'}`,
-          content: finalContent,
-          timestamp: message.timestamp || Date.now(),
-          type: 'text',
-          // @ts-ignore
-          encrypted: isEncrypted,
-        };
-
-        this.addReceivedMessage(geoMessage);
+      if (cleanContent.startsWith('{') && cleanContent.includes('data') && cleanContent.includes('iv')) {
+        try {
+          const parsed = JSON.parse(cleanContent);
+          finalContent = await encryptionService.decryptGroupMessage(parsed, match[1]);
+          isEncrypted = true;
+        } catch {}
       }
+
+      const geoMessage: GeohashMessage = {
+        id: message.id || `mesh_${Date.now()}`,
+        channelId: `${this.nostrChannelPrefix}${match[1]}`,
+        nodeId: message.from,
+        nodeHandle: message.senderHandle || `@${message.from?.substring(0, 8) || 'unknown'}`,
+        content: finalContent,
+        timestamp: message.timestamp || Date.now(),
+        type: 'text',
+        // @ts-ignore
+        encrypted: isEncrypted,
+      };
+
+      this.addReceivedMessage(geoMessage);
     });
   }
 
@@ -172,6 +178,7 @@ class GeohashChannelsService {
     }
   }
 
+  // ---------------- LOCATION ----------------
   private isNearbyGeohash(geohash: string) {
     if (!this.currentLocation) return true;
     return this.currentLocation.geohash.substring(0, 4) === geohash.substring(0, 4);
@@ -182,7 +189,6 @@ class GeohashChannelsService {
       this.updateLocation(-26.2041, 28.0473);
       return;
     }
-
     setTimeout(() => this.requestLocationWithUserGesture(), 1000);
   }
 
@@ -190,7 +196,8 @@ class GeohashChannelsService {
     const onSuccess = (pos: GeolocationPosition) => this.updateLocation(pos.coords.latitude, pos.coords.longitude);
     const onFail = (_: GeolocationPositionError) => this.updateLocation(-26.2041, 28.0473);
 
-    const secureOrigin = window.location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const secureOrigin =
+      window.location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(window.location.hostname);
     if (!secureOrigin) return this.updateLocation(-26.2041, 28.0473);
 
     navigator.geolocation.watchPosition(onSuccess, onFail, { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 });
@@ -236,28 +243,47 @@ class GeohashChannelsService {
     let hash = '';
     let latRange = [-90, 90];
     let lngRange = [-180, 180];
-    let even = true, bit = 0, ch = 0;
+    let even = true,
+      bit = 0,
+      ch = 0;
     while (hash.length < precision) {
       let mid;
       if (even) {
         mid = (lngRange[0] + lngRange[1]) / 2;
-        if (lng >= mid) { ch = ch * 2 + 1; lngRange[0] = mid; } else { ch = ch * 2; lngRange[1] = mid; }
+        if (lng >= mid) {
+          ch = ch * 2 + 1;
+          lngRange[0] = mid;
+        } else {
+          ch = ch * 2;
+          lngRange[1] = mid;
+        }
       } else {
         mid = (latRange[0] + latRange[1]) / 2;
-        if (lat >= mid) { ch = ch * 2 + 1; latRange[0] = mid; } else { ch = ch * 2; latRange[1] = mid; }
+        if (lat >= mid) {
+          ch = ch * 2 + 1;
+          latRange[0] = mid;
+        } else {
+          ch = ch * 2;
+          latRange[1] = mid;
+        }
       }
       even = !even;
       bit++;
-      if (bit === 5) { hash += base32[ch]; bit = 0; ch = 0; }
+      if (bit === 5) {
+        hash += base32[ch];
+        bit = 0;
+        ch = 0;
+      }
     }
     return hash;
   }
 
+  // ---------------- SYNC ----------------
   private findNearbyChannels() {
     if (!this.currentLocation) return;
     const nearby: GeohashChannel[] = [];
     const prefix = this.currentLocation.geohash.substring(0, 4);
-    this.channels.forEach(channel => {
+    this.channels.forEach((channel) => {
       if (channel.geohash.startsWith(prefix) || channel.isPublic) {
         if (this.canViewChannel(channel)) nearby.push(channel);
       }
@@ -277,8 +303,11 @@ class GeohashChannelsService {
   }
 
   // ---------------- PUBLIC API ----------------
-
-  async sendMessage(channelId: string, content: string, type: GeohashMessage['type'] = 'text'): Promise<string> {
+  async sendMessage(
+    channelId: string,
+    content: string,
+    type: GeohashMessage['type'] = 'text'
+  ): Promise<string> {
     const channel = this.channels.get(channelId);
     if (!channel && !channelId.startsWith(this.nostrChannelPrefix)) throw new Error('Channel not found');
 
@@ -295,14 +324,20 @@ class GeohashChannelsService {
     // Encrypt if group
     let broadcastContent = content;
     if (type !== 'system' && channel?.isEncrypted) {
-      try { broadcastContent = JSON.stringify(await encryptionService.encryptGroupMessage(content, this.currentLocation!.geohash)); }
-      catch { console.warn('Failed to encrypt message'); }
+      try {
+        broadcastContent = JSON.stringify(await encryptionService.encryptGroupMessage(content, this.currentLocation!.geohash));
+      } catch {
+        console.warn('Failed to encrypt message');
+      }
     }
 
     if (!this.messages.has(channelId)) this.messages.set(channelId, []);
     this.messages.get(channelId)!.push(message);
 
-    if (channel) { channel.lastActivity = Date.now(); channel.messageCount++; }
+    if (channel) {
+      channel.lastActivity = Date.now();
+      channel.messageCount++;
+    }
 
     await this.broadcastMessage(message.id, broadcastContent, this.currentLocation?.geohash || 'unknown');
 
@@ -315,52 +350,78 @@ class GeohashChannelsService {
 
   private async broadcastMessage(messageId: string, content: string, geohash: string) {
     const tagged = `[GEOHASH:${geohash}]${content}`;
-    try { await nostrService.broadcastMessage(tagged); } catch {}
-    try { await hybridMesh.sendMessage(tagged); } catch {}
+    try {
+      await nostrService.broadcastMessage(tagged);
+    } catch {}
+    try {
+      await hybridMesh.sendMessage(tagged);
+    } catch {}
   }
 
   // ---------------- STORAGE ----------------
-
   private loadChannels() {
     try {
       const saved = localStorage.getItem('geohash_channels');
       if (saved) JSON.parse(saved).forEach((c: GeohashChannel) => this.channels.set(c.id, c));
 
       const savedMessages = localStorage.getItem('geohash_messages');
-      if (savedMessages) Object.entries(JSON.parse(savedMessages)).forEach(([id, msgs]) => this.messages.set(id, msgs as GeohashMessage[]));
-    } catch { }
+      if (savedMessages)
+        Object.entries(JSON.parse(savedMessages)).forEach(([id, msgs]) => this.messages.set(id, msgs as GeohashMessage[]));
+    } catch {}
   }
 
-  private saveChannels() { localStorage.setItem('geohash_channels', JSON.stringify(Array.from(this.channels.values()))); }
+  private saveChannels() {
+    localStorage.setItem('geohash_channels', JSON.stringify(Array.from(this.channels.values())));
+  }
+
   private saveMessages() {
     const out: { [key: string]: GeohashMessage[] } = {};
-    this.messages.forEach((msgs, id) => { out[id] = msgs; });
+    this.messages.forEach((msgs, id) => {
+      out[id] = msgs;
+    });
     localStorage.setItem('geohash_messages', JSON.stringify(out));
   }
 
   // ---------------- LISTENERS ----------------
-
   subscribe(event: string, callback: (data: any) => void) {
     if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-    return () => this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+    return () => (this.listeners[event] = this.listeners[event].filter((cb) => cb !== callback));
   }
-  private notifyListeners(event: string, data: any) { if (this.listeners[event]) this.listeners[event].forEach(cb => cb(data)); }
 
- // ---------------- GETTERS ----------------
-getNearbyChannels() { return this.nearbyChannels; }
-getChannelMessages(channelId: string) { return this.messages.get(channelId) || []; }
-getLocalAreaChannel() { 
-  return this.currentLocation 
-    ? this.channels.get(`${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`) || null 
-    : null; 
-}
-getLocalAreaMessages() { 
-  const c = this.getLocalAreaChannel(); 
-  return c ? this.getChannelMessages(c.id) : []; 
-}
-getCurrentLocation(): GeohashLocation | null {
-  return this.currentLocation;
+  private notifyListeners(event: string, data: any) {
+    if (this.listeners[event]) this.listeners[event].forEach((cb) => cb(data));
+  }
+
+  // ---------------- GETTERS ----------------
+  getNearbyChannels() {
+    return this.nearbyChannels;
+  }
+
+  getChannelMessages(channelId: string) {
+    return this.messages.get(channelId) || [];
+  }
+
+  getLocalAreaChannel() {
+    return this.currentLocation
+      ? this.channels.get(`${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`) || null
+      : null;
+  }
+
+  getLocalAreaMessages() {
+    const c = this.getLocalAreaChannel();
+    return c ? this.getChannelMessages(c.id) : [];
+  }
+
+  getCurrentLocation(): GeohashLocation | null {
+    return this.currentLocation;
+  }
 }
 
-export const geohashChannels = GeohashChannelsService.getInstance();
+// ---------------- LAZY EXPORT ----------------
+export let geohashChannels: GeohashChannelsService;
+
+export function getGeohashChannelsInstance(): GeohashChannelsService {
+  if (!geohashChannels) geohashChannels = GeohashChannelsService.getInstance();
+  return geohashChannels;
+}
