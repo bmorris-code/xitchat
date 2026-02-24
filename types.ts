@@ -24,6 +24,12 @@ export interface Reaction {
   users: string[];
 }
 
+export interface GeohashMessage extends Message {
+  channelId: string;
+  tor?: boolean;
+  pow?: boolean;
+}
+
 export interface Listing {
   id: string;
   title: string;
