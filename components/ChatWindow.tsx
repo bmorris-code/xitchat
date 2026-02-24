@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Chat, Message, GeohashMessage } from '../types';
+import { Chat, Message } from '../types';
 import { encryptionService } from '../services/encryptionService';
 import { localStorageService } from '../services/localStorageService';
 import ChatSettings from './ChatSettings';
