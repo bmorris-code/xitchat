@@ -891,34 +891,43 @@ class NostrService {
   }
 
   private async subscribeToPresenceEvents(): Promise<void> {
+    if (!this.pool || this.connectedRelays.size === 0) {
+      console.warn('⚠️ Nostr pool not initialized or no connected relays, skipping presence subscription');
+      return;
+    }
+
     const activeRelays = Array.from(this.connectedRelays);
-    if (activeRelays.length === 0) return;
 
     try {
       console.log('🗼 Subscribing to Nostr presence events for global radar...');
 
-      // Subscribe to presence events with D-tag filter for specificity
-      this.presenceSubscription = this.pool!.subscribeMany(activeRelays, {
+      // Create a subscription using `sub` (SimplePool method)
+      this.presenceSubscription = this.pool.sub(activeRelays, {
         kinds: [this.PRESENCE_KIND],
-        '#d': ['xitchat-presence'], // Only subscribe to events with our D-tag
-        limit: 10 // Get recent presence events
-      }, {
-        onevent: async (event) => {
-          await this.handlePresenceEvent(event);
-        },
-        oneose: () => {
-          console.log('✅ Presence events subscription ready');
-        },
-        onclose: (reason: string) => {
-          console.debug('Presence subscription closed:', reason);
-          // Auto-resubscribe after delay
-          setTimeout(() => this.subscribeToPresenceEvents(), 30000);
-        }
+        '#d': ['xitchat-presence'], // Filter only our D-tag
+        limit: 10
       });
 
-      console.log('🗼 Subscribed to Nostr presence events');
+      // Handle incoming events
+      this.presenceSubscription.on('event', async (event: any) => {
+        await this.handlePresenceEvent(event);
+      });
+
+      // Handle "end of stored events" notification
+      this.presenceSubscription.on('eose', () => {
+        console.log('✅ Presence events subscription ready');
+      });
+
+      // Handle subscription close
+      this.presenceSubscription.on('close', (reason: string) => {
+        console.debug('⚠️ Presence subscription closed:', reason);
+        // Auto-resubscribe after a short delay
+        setTimeout(() => this.subscribeToPresenceEvents(), 30000);
+      });
+
+      console.log('🗼 Presence subscription created successfully');
     } catch (error) {
-      console.warn('⚠️ Failed to subscribe to presence events:', error);
+      console.error('❌ Failed to subscribe to presence events:', error);
     }
   }
 
