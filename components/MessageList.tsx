@@ -39,7 +39,11 @@ const MessageList: React.FC<MessageListProps> = ({
 
   useEffect(() => {
 
+  let cancelled = false;
+
   const decrypt = async () => {
+
+    const updates: Record<string, string> = {};
 
     for (const msg of messages) {
 
@@ -57,17 +61,11 @@ const MessageList: React.FC<MessageListProps> = ({
               msg.senderId
             );
 
-          setDecryptedTexts(prev => ({
-            ...prev,
-            [msg.id]: decrypted
-          }));
+          updates[msg.id] = decrypted;
 
         } catch {
 
-          setDecryptedTexts(prev => ({
-            ...prev,
-            [msg.id]: '[ENCRYPTED] 🔒'
-          }));
+          updates[msg.id] = '[ENCRYPTED] 🔒';
 
         }
 
@@ -75,9 +73,22 @@ const MessageList: React.FC<MessageListProps> = ({
 
     }
 
+    if (!cancelled && Object.keys(updates).length > 0) {
+
+      setDecryptedTexts(prev => ({
+        ...prev,
+        ...updates
+      }));
+
+    }
+
   };
 
   decrypt();
+
+  return () => {
+    cancelled = true;
+  };
 
 }, [messages]);
 
