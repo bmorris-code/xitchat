@@ -1,4 +1,4 @@
-// GeohashChannels.ts
+// services/geohashChannels.ts
 import { meshPermissions } from './meshPermissions';
 import { nostrService } from './nostrService';
 import { hybridMesh } from './hybridMesh';
@@ -156,8 +156,6 @@ class GeohashChannelsService {
         content: finalContent,
         timestamp: message.timestamp || Date.now(),
         type: 'text',
-        // @ts-ignore
-        encrypted: isEncrypted,
       };
 
       this.addReceivedMessage(geoMessage);
@@ -207,10 +205,6 @@ class GeohashChannelsService {
     const geohash = this.encodeGeohash(lat, lng, 7);
     this.currentLocation = { latitude: lat, longitude: lng, geohash, accuracy: 150, timestamp: Date.now() };
     this.ensureLocalAreaChannel();
-// ✅ auto-join local area channel
-  const localChannel = this.getLocalAreaChannel();
-  if (localChannel) this.joinChannel(localChannel.id).catch(console.error);
-    
     this.findNearbyChannels();
     this.notifyListeners('locationUpdated', this.currentLocation);
     this.isConnected = true;
@@ -362,6 +356,30 @@ class GeohashChannelsService {
     } catch {}
   }
 
+  // ---------------- JOIN / LEAVE CHANNEL ----------------
+  async joinChannel(channelId: string): Promise<void> {
+    const channel = this.channels.get(channelId);
+    if (!channel) throw new Error(`Channel ${channelId} not found`);
+
+    if (!channel.participants.includes('me')) {
+      channel.participants.push('me');
+      this.saveChannels();
+    }
+
+    console.log(`✅ Joined channel: ${channelId}`);
+    this.notifyListeners('channelJoined', channelId);
+  }
+
+  async leaveChannel(channelId: string): Promise<void> {
+    const channel = this.channels.get(channelId);
+    if (!channel) return;
+
+    channel.participants = channel.participants.filter(p => p !== 'me');
+    this.saveChannels();
+    console.log(`🚪 Left channel: ${channelId}`);
+    this.notifyListeners('channelLeft', channelId);
+  }
+
   // ---------------- STORAGE ----------------
   private loadChannels() {
     try {
@@ -422,34 +440,10 @@ class GeohashChannelsService {
   }
 }
 
-// ---------------- JOIN CHANNEL ----------------
-async joinChannel(channelId: string): Promise<void> {
-  const channel = this.channels.get(channelId);
-  if (!channel) throw new Error(`Channel ${channelId} not found`);
-
-  if (!channel.participants.includes('me')) {
-    channel.participants.push('me');
-    this.saveChannels();
-  }
-
-  console.log(`✅ Joined channel: ${channelId}`);
-  this.notifyListeners('channelJoined', channelId);
-}
-
-// Optional: leaveChannel
-async leaveChannel(channelId: string): Promise<void> {
-  const channel = this.channels.get(channelId);
-  if (!channel) return;
-
-  channel.participants = channel.participants.filter(p => p !== 'me');
-  this.saveChannels();
-  console.log(`🚪 Left channel: ${channelId}`);
-  this.notifyListeners('channelLeft', channelId);
-}
-
 // ---------------- LAZY EXPORT ----------------
-export const geohashChannels = GeohashChannelsService.getInstance();
+export let geohashChannels: GeohashChannelsService;
 
 export function getGeohashChannelsInstance(): GeohashChannelsService {
+  if (!geohashChannels) geohashChannels = GeohashChannelsService.getInstance();
   return geohashChannels;
 }
