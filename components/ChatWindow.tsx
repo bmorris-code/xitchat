@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Chat, Message } from '../types';
 import { encryptionService } from '../services/encryptionService';
@@ -9,6 +8,7 @@ import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import MediaGallery from './MediaGallery';
 import ForwardModal from './ForwardModal';
+import { geohashChannels, GeohashMessage } from '../services/GeohashChannelsService';
 
 interface ChatWindowProps {
   chat: Chat | null;
@@ -16,7 +16,6 @@ interface ChatWindowProps {
   myHandle: string;
   aiStreaming?: boolean;
   aiStreamingProvider?: string;
-  onSendMessage: (text: string, options?: { replyTo?: Message['replyTo']; imageUrl?: string; videoUrl?: string, nostrRecipient?: string, encryptedData?: any }) => void;
   onForwardMessage: (message: Message, targetChatId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   onDeleteMessage?: (messageId: string) => void;
@@ -32,7 +31,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   myHandle,
   aiStreaming = false,
   aiStreamingProvider = 'auto',
-  onSendMessage,
   onForwardMessage,
   onReaction,
   onDeleteMessage,
@@ -41,6 +39,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   className = "",
   nostrRecipient
 }) => {
+  // === State ===
+  const [chatMessages, setChatMessages] = useState<GeohashMessage[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showForwardTarget, setShowForwardTarget] = useState<Message | null>(null);
   const [showChatSettings, setShowChatSettings] = useState(false);
@@ -60,109 +60,98 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const emojis = ['🙂', '😎', '😜', '🔥', '💀', '👽', '👾', '🚀', '❤️', '👍', '👎', '✨'];
 
+  // === Subscribe to Geohash Channel Messages ===
+  useEffect(() => {
+    if (!chat) return;
+
+    const loadMessages = () => {
+      const msgs = geohashChannels.getChannelMessages(chat.id);
+      setChatMessages(msgs);
+    };
+
+    loadMessages();
+
+    const unsubReceived = geohashChannels.subscribe('messageReceived', (msg: GeohashMessage) => {
+      if (msg.channelId === chat.id) setChatMessages(prev => [...prev, msg]);
+    });
+
+    const unsubSent = geohashChannels.subscribe('messageSent', (msg: GeohashMessage) => {
+      if (msg.channelId === chat.id) setChatMessages(prev => [...prev, msg]);
+    });
+
+    return () => {
+      unsubReceived();
+      unsubSent();
+    };
+  }, [chat?.id]);
+
+  // === Scroll to bottom when messages update ===
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
+  }, [chatMessages]);
 
-    // Simulate receiving typing events (in real app, this would be a Nostr/Mesh listener)
-    const handleTyping = (data: any) => {
-      if (data.chatId === chat?.id && data.senderId !== 'me') {
-        setIsPeerTyping(true);
-        setTimeout(() => setIsPeerTyping(false), 3000);
+  // === Send Message ===
+  const handleSendMessage = async (text: string, options?: any) => {
+    if (!chat || !text) return;
+
+    let messageText = text;
+    let encryptedData = null;
+
+    const shouldEncrypt =
+      encryptionEnabled &&
+      secureMode &&
+      chat.participant?.id !== 'xit-bot' &&
+      (chat.type === 'private' || chat.isEncrypted);
+
+    try {
+      if (shouldEncrypt) {
+        if (chat.type === 'private') {
+          if (!encryptionService.hasUserKeys(chat.participant.id))
+            await encryptionService.generateKeyPair(chat.participant.id);
+
+          encryptedData = await encryptionService.encryptMessage(text, chat.participant.id);
+
+        } else if (chat.isEncrypted) {
+          if (!chat.id) return;
+          encryptedData = await encryptionService.encryptGroupMessage(text, chat.id);
+        }
+
+        messageText = `[ENCRYPTED] ${encryptedData?.data.substring(0, 20)}...`;
       }
-    };
+    } catch (err) {
+      console.error('Encryption failed:', err);
+    }
 
-    // For demo purposes, we'll just set up the logic
-    return () => { };
-  }, [chat?.messages, chat?.id]);
+    // Send via GeohashChannelsService
+    if (chat.id) {
+      try {
+        await geohashChannels.sendMessage(chat.id, text);
+      } catch (err) {
+        console.error('Send failed:', err);
+      }
+    }
 
-const handleSendMessage = async (text: string, options?: any) => {
+    // Store locally if encrypted
+    if (encryptedData) {
+      await localStorageService.storeEncryptedMessage(chat.id, `msg-${Date.now()}`, encryptedData);
+    }
+  };
 
- if (!chat) return;
-
- let messageText = text;
- let encryptedData = null;
-
- const shouldEncrypt =
-   encryptionEnabled &&
-   secureMode &&
-   chat.participant?.id !== 'xit-bot' &&
-   text &&
-   (chat.type === 'private' || chat.isEncrypted);
-
- if (shouldEncrypt) {
-
-   try {
-
-     if (!encryptionService.hasUserKeys('me'))
-       await encryptionService.initializeUser('me');
-
-
-     if (chat.type === 'private') {
-
-       if (!encryptionService.hasUserKeys(chat.participant.id))
-         await encryptionService.generateKeyPair(chat.participant.id);
-
-       encryptedData =
-         await encryptionService.encryptMessage(text, chat.participant.id);
-
-     }
-
-
-     else if (chat.isEncrypted) {
-
-       const geohash = chat.geohash || chat.id;
-
-       if (!geohashChannels[geohash]) {
-         await joinGeohashChannel(geohash);
-       }
-
-       encryptedData =
-         await encryptionService.encryptGroupMessage(text, geohash);
-
-     }
-
-
-     messageText =
-       `[ENCRYPTED] ${encryptedData.data.substring(0, 20)}...`;
-
-   }
-
-   catch (error) {
-
-     console.error('Encryption failed:', error);
-
-   }
-
- }
-
-
- onSendMessage(messageText, { ...options, encryptedData });
-
-
- if (encryptedData) {
-
-   await localStorageService.storeEncryptedMessage(
-     chat.id,
-     `msg-${Date.now()}`,
-     encryptedData
-   );
-
- }
-
-};
-
+  // === Handle file uploads ===
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = e.target.files?.[0];
     if (!file || isUploading) return;
+
     setIsUploading(true);
     const mediaId = `media_${Date.now()}`;
     setUploadProgress(prev => new Map(prev.set(mediaId, 0)));
 
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
+
       if (type === 'image') {
         const img = new Image();
         img.onload = () => {
@@ -192,6 +181,7 @@ const handleSendMessage = async (text: string, options?: any) => {
     e.target.value = '';
   };
 
+  // === Helpers for themes, colors ===
   const getChatBackgroundClass = () => {
     const bgMap: any = { black: 'bg-black', 'dark-gray': 'bg-gray-900', navy: 'bg-blue-950', forest: 'bg-green-950', burgundy: 'bg-red-950', charcoal: 'bg-gray-800' };
     return bgMap[chatBackground] || 'bg-black';
@@ -209,6 +199,7 @@ const handleSendMessage = async (text: string, options?: any) => {
     return 'text-orange-400';
   };
 
+  // === Render ===
   if (!chat) {
     return (
       <div className={`flex-1 hidden md:flex flex-col items-center justify-center text-current opacity-30 gap-4 ${className}`}>
@@ -220,7 +211,6 @@ const handleSendMessage = async (text: string, options?: any) => {
 
   return (
     <div className={`flex-1 flex flex-col ${getChatBackgroundClass()} relative pt-safe ${className}`}>
-      {/* Hidden inputs for media */}
       <input type="file" accept="image/*" className="hidden" ref={imageInputRef} onChange={(e) => handleFileChange(e, 'image')} />
       <input type="file" accept="video/*" className="hidden" ref={videoInputRef} onChange={(e) => handleFileChange(e, 'video')} />
 
@@ -239,7 +229,7 @@ const handleSendMessage = async (text: string, options?: any) => {
       />
 
       <MessageList
-        messages={chat.messages}
+        messages={chatMessages}
         chat={chat}
         myHandle={myHandle}
         scrollRef={scrollRef}
