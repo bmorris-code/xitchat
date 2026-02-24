@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Message, Chat } from '../types';
 import SecureImageView from './SecureImageView';
 import SecureMessageView from './SecureMessageView';
+import { encryptionService } from '../services/encryptionService';
 
 interface MessageListProps {
   messages: Message[];
@@ -34,12 +35,31 @@ const MessageList: React.FC<MessageListProps> = ({
   emojis,
   isPeerTyping
 }) => {
+  const [decryptedTexts, setDecryptedTexts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    // Auto-decrypt any new encrypted messages
+    messages.forEach(async (msg) => {
+      if (msg.text.startsWith('[ENCRYPTED]') && msg.encryptedData && !decryptedTexts[msg.id]) {
+        try {
+          const decrypted = await encryptionService.decryptMessage(msg.encryptedData, msg.senderId);
+          setDecryptedTexts(prev => ({ ...prev, [msg.id]: decrypted }));
+        } catch (e) {
+          console.error('Failed to decrypt message', e);
+          setDecryptedTexts(prev => ({ ...prev, [msg.id]: '[ENCRYPTED] 🔒' }));
+        }
+      }
+    });
+  }, [messages]);
 
   const renderMessageContent = (msg: Message) => {
+    // Determine text: decrypted if available
+    const displayText = decryptedTexts[msg.id] || msg.text;
+
     if (msg.imageUrl) {
       return (
         <div className="space-y-2">
-          <p className="text-current break-words">{msg.text}</p>
+          <p className="text-current break-words">{displayText}</p>
           <div className="relative group">
             {msg.text.startsWith('[ENCRYPTED_IMAGE]') ? (
               <SecureImageView
@@ -76,7 +96,7 @@ const MessageList: React.FC<MessageListProps> = ({
     if (msg.videoUrl) {
       return (
         <div className="space-y-2">
-          <p className="text-current break-words">{msg.text}</p>
+          <p className="text-current break-words">{displayText}</p>
           <div className="relative group">
             <video src={msg.videoUrl} controls className="max-w-full rounded border border-current border-opacity-30" />
             <div className="absolute top-2 right-2 bg-black/80 px-2 py-1 rounded text-[8px] uppercase tracking-widest">Video</div>
@@ -85,7 +105,8 @@ const MessageList: React.FC<MessageListProps> = ({
       );
     }
 
-    return <SecureMessageView text={msg.text} senderId={msg.senderId} encryptedData={msg.encryptedData} />;
+    // Plain or encrypted text
+    return <SecureMessageView text={displayText} senderId={msg.senderId} encryptedData={msg.encryptedData} />;
   };
 
   const getProtocolTag = (msg: Message) => {
