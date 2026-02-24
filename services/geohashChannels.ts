@@ -440,7 +440,14 @@ class GeohashChannelsService {
   }
 
   getCurrentLocation(): GeohashLocation | null {
-    return this.currentLocation;
+    // Return current location or default if not set yet
+    return this.currentLocation || {
+      latitude: -26.2041,
+      longitude: 28.0473,
+      geohash: this.encodeGeohash(-26.2041, 28.0473, 7),
+      accuracy: 150,
+      timestamp: Date.now()
+    };
   }
 }
 
