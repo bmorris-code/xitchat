@@ -77,39 +77,79 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => { };
   }, [chat?.messages, chat?.id]);
 
-  const handleSendMessage = async (text: string, options?: any) => {
-    if (!chat) return;
-    let messageText = text;
-    let encryptedData = null;
+const handleSendMessage = async (text: string, options?: any) => {
+  if (!chat || !text.trim()) return;
 
-    const shouldEncrypt = encryptionEnabled && secureMode && chat.participant.id !== 'xit-bot' && text &&
-      (chat.type === 'private' || (chat.type === 'room' && chat.isEncrypted));
+  const channelId = chat.id;
 
-    if (shouldEncrypt) {
-      try {
-        if (!encryptionService.hasUserKeys('me')) await encryptionService.initializeUser('me');
+  // 1️⃣ Ensure local area channel exists
+  if (channelId.startsWith('xitchat-local-')) {
+    await geohashChannels.ensureLocalAreaChannel();
+  }
 
-        if (chat.type === 'private') {
-          if (!encryptionService.hasUserKeys(chat.participant.id)) await encryptionService.generateKeyPair(chat.participant.id);
-          encryptedData = await encryptionService.encryptMessage(text, chat.participant.id);
-        } else if (chat.isEncrypted) {
-          // For rooms, we use the geohash-based group encryption
-          const geohash = chat.id.split('_')[0].replace('xitchat-local-', '');
-          encryptedData = await encryptionService.encryptGroupMessage(text, geohash);
+  // 2️⃣ Join the channel if not already a participant
+  try {
+    await geohashChannels.joinChannel(channelId);
+  } catch (err) {
+    console.warn(`Cannot join channel ${channelId}:`, err);
+    return; // Abort sending if no permission
+  }
+
+  let messageContent = text;
+  let encryptedData = null;
+
+  // 3️⃣ Determine if message should be encrypted
+  const shouldEncrypt =
+    encryptionEnabled &&
+    secureMode &&
+    chat.participant?.id !== 'xit-bot' &&
+    (chat.type === 'private' || (chat.type === 'room' && chat.isEncrypted));
+
+  if (shouldEncrypt) {
+    try {
+      if (!encryptionService.hasUserKeys('me')) await encryptionService.initializeUser('me');
+
+      if (chat.type === 'private') {
+        // Private 1:1 encryption
+        if (!encryptionService.hasUserKeys(chat.participant.id)) {
+          await encryptionService.generateKeyPair(chat.participant.id);
         }
-
-        messageText = `[ENCRYPTED] ${encryptedData.data.substring(0, 20)}...`;
-      } catch (error) {
-        console.error('Encryption failed:', error);
+        encryptedData = await encryptionService.encryptMessage(text, chat.participant.id);
+      } else if (chat.isEncrypted) {
+        // Group encryption based on geohash
+        const geohash = channelId.replace('xitchat-local-', '').split('_')[0];
+        encryptedData = await encryptionService.encryptGroupMessage(text, geohash);
       }
+
+      // Display a placeholder in the chat while keeping encrypted content
+      messageContent = encryptedData
+        ? `[ENCRYPTED] ${encryptedData.data.substring(0, 20)}...`
+        : text;
+    } catch (error) {
+      console.error('Encryption failed:', error);
     }
+  }
 
-    onSendMessage(messageText, { ...options, encryptedData });
+  // 4️⃣ Send via GeohashChannelsService (handles mesh + Nostr)
+  try {
+    const sentMessageId = await geohashChannels.sendMessage(channelId, messageContent, 'text');
 
+    // 5️⃣ Save encrypted payload locally if needed
     if (encryptedData) {
-      await localStorageService.storeEncryptedMessage(chat.id, `msg-${Date.now()}`, encryptedData);
+      await localStorageService.storeEncryptedMessage(
+        channelId,
+        sentMessageId,
+        encryptedData
+      );
     }
-  };
+
+    // Optional: reset reply state
+    setReplyingTo(null);
+
+  } catch (error) {
+    console.error('Failed to send message:', error);
+  }
+};;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = e.target.files?.[0];
