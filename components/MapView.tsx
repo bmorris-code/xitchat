@@ -1,8 +1,10 @@
-
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { hybridMesh, HybridMeshPeer } from '../services/hybridMesh';
-import { geohashChannels, GeohashChannel } from '../services/geohashChannels';
+import { getGeohashChannelsInstance, GeohashChannel } from '../services/geohashChannels';
+
+// Initialize the service instance
+const geohashChannels = getGeohashChannelsInstance();
 
 interface MapViewProps {
   onUserSelect: (user: User) => void;

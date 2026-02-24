@@ -8,7 +8,10 @@ import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import MediaGallery from './MediaGallery';
 import ForwardModal from './ForwardModal';
-import { geohashChannels, GeohashMessage } from '../services/geohashChannels';
+import { getGeohashChannelsInstance, GeohashMessage } from '../services/geohashChannels';
+
+// Initialize the service instance
+const geohashChannels = getGeohashChannelsInstance();
 
 interface ChatWindowProps {
   chat: Chat | null;

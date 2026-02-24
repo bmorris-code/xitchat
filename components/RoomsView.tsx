@@ -1,6 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { geohashChannels, GeohashChannel } from '../services/geohashChannels';
+import { getGeohashChannelsInstance, GeohashChannel } from '../services/geohashChannels';
+
+// Initialize the service instance
+const geohashChannels = getGeohashChannelsInstance();
 
 interface RoomsViewProps {
   onJoinRoom: (roomId: string) => void;
