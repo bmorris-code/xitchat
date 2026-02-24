@@ -901,28 +901,23 @@ class NostrService {
     try {
       console.log('🗼 Subscribing to Nostr presence events for global radar...');
 
-      // Create a subscription using `sub` (SimplePool method)
-      this.presenceSubscription = this.pool.sub(activeRelays, {
+      // Create a subscription using `subscribeMany` (SimplePool method)
+      this.presenceSubscription = this.pool!.subscribeMany(activeRelays, {
         kinds: [this.PRESENCE_KIND],
         '#d': ['xitchat-presence'], // Filter only our D-tag
         limit: 10
-      });
-
-      // Handle incoming events
-      this.presenceSubscription.on('event', async (event: any) => {
-        await this.handlePresenceEvent(event);
-      });
-
-      // Handle "end of stored events" notification
-      this.presenceSubscription.on('eose', () => {
-        console.log('✅ Presence events subscription ready');
-      });
-
-      // Handle subscription close
-      this.presenceSubscription.on('close', (reason: string) => {
-        console.debug('⚠️ Presence subscription closed:', reason);
-        // Auto-resubscribe after a short delay
-        setTimeout(() => this.subscribeToPresenceEvents(), 30000);
+      }, {
+        onevent: async (event: any) => {
+          await this.handlePresenceEvent(event);
+        },
+        oneose: () => {
+          console.log('✅ Presence events subscription ready');
+        },
+        onclose: (reason: string) => {
+          console.debug('⚠️ Presence subscription closed:', reason);
+          // Auto-resubscribe after a short delay
+          setTimeout(() => this.subscribeToPresenceEvents(), 30000);
+        }
       });
 
       console.log('🗼 Presence subscription created successfully');
