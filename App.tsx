@@ -392,11 +392,10 @@ const App: React.FC = () => {
         const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
         const hasRealLocalTransport = initializedTypes.includes('bluetooth') || initializedTypes.includes('wifi');
 
+        // More permissive for Android: Allow Nostr-only connections for basic app functionality
         if (isNativeAndroid && !hasRealLocalTransport) {
-          setRealTransportGuard({
-            blocked: true,
-            reason: 'Bluetooth/WiFi mesh transport unavailable. Enable Nearby Devices, Location, Bluetooth, and WiFi.'
-          });
+          console.log('📱 Android: No local transport available, allowing Nostr-only mode');
+          setRealTransportGuard({ blocked: false, reason: 'Using Nostr for connectivity' });
         } else {
           setRealTransportGuard({ blocked: false, reason: '' });
         }
