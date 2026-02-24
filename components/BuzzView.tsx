@@ -349,7 +349,13 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
               <div className="flex justify-between items-start mb-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 border border-current border-opacity-30 overflow-hidden shrink-0">
-                    <img src={shout.user.avatar} className="w-full h-full object-cover grayscale opacity-50 group-hover:opacity-100 transition-all" alt="" />
+                    {shout.user.avatar ? (
+                      <img src={shout.user.avatar} className="w-full h-full object-cover grayscale opacity-50 group-hover:opacity-100 transition-all" alt="" />
+                    ) : (
+                      <div className="w-full h-full bg-gray-600 flex items-center justify-center text-white text-xs">
+                        {shout.user.name?.charAt(0)?.toUpperCase() || '?'}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
