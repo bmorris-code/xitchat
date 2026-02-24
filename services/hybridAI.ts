@@ -201,9 +201,6 @@ class HybridAIService {
 
       hybridMesh.sendMessage(JSON.stringify({
         type: 'ai_request',
-        data: { requestId, userMessage }
-      }), targetPeer);
-    });
   }
 
   async getXitBotResponse(userMessage: string, skipMesh: boolean = false): Promise<string> {
