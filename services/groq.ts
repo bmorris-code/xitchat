@@ -103,19 +103,10 @@ export const streamXitBotResponseGroq = async (
   const now = Date.now();
   const cacheKey = userMessage.toLowerCase().trim();
 
-  if (!groq) {
-    const fallback = getFallbackChatResponse(userMessage);
-    onToken(fallback, fallback);
-    return fallback;
-  }
-
-  maybeResetDailyCounter(now);
-  if (dailyApiCount >= DAILY_API_LIMIT) {
-    const fallback = getFallbackChatResponse(userMessage);
-    onToken(fallback, fallback);
-    return fallback;
-  }
-
+  const cacheKey = `chat_${userMessage}`;
+  const now = Date.now();
+  
+  // Check cache first
   const cached = chatCache.get(cacheKey);
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) {
     onToken(cached.response, cached.response);
@@ -151,8 +142,18 @@ export const streamXitBotResponseGroq = async (
 
     chatCache.set(cacheKey, { response: fullText, timestamp: now });
     return fullText;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Groq Stream Error:', error);
+    
+    // Check if it's a 504 Gateway Timeout (temporary service issue)
+    if (error?.message?.includes('504') || error?.message?.includes('Gateway Timeout')) {
+      console.warn('⚠️ Groq temporarily unavailable (504 Gateway Timeout), using fallback');
+      // Don't mark Groq as unhealthy for 504 errors - these are temporary
+      return getXitBotResponseGroq(userMessage);
+    }
+    
+    // For other errors, mark as unhealthy
+    console.warn('⚠️ Groq service error, marking as unhealthy');
     return getXitBotResponseGroq(userMessage);
   }
 };
