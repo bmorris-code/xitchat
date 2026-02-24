@@ -891,6 +891,11 @@ class NostrService {
   }
 
   private async subscribeToPresenceEvents(): Promise<void> {
+    // Temporarily disabled presence subscription to prevent pool.sub errors
+    console.log('🗼 Presence subscription temporarily disabled');
+    return;
+    
+    /*
     if (!this.pool || this.connectedRelays.size === 0) {
       console.warn('⚠️ Nostr pool not initialized or no connected relays, skipping presence subscription');
       return;
@@ -924,6 +929,7 @@ class NostrService {
     } catch (error) {
       console.error('❌ Failed to subscribe to presence events:', error);
     }
+    */
   }
 
   private async handlePresenceEvent(event: any): Promise<void> {
