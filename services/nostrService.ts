@@ -85,15 +85,19 @@ class NostrService {
   // Default public Nostr relays - using only most reliable ones
   private readonly defaultRelays = [
     'wss://relay.damus.io',
-    'wss://nos.lol'
+    'wss://nos.lol',
+    'wss://relay.nostr.band',
+  'wss://nostr.mom',
+  'wss://relay.snort.social',
+  'wss://offchain.pub'
   ];
 
   // Presence event constants
   private readonly PRESENCE_KIND = 30315; // Custom kind for presence events
-  private readonly PRESENCE_TTL = 120000; // 2 minutes TTL for presence events
+  private readonly PRESENCE_TTL = 300000; // 2 minutes TTL for presence events
   private presenceSubscription: any = null;
   private lastPresencePublish = 0;
-  private readonly PRESENCE_PUBLISH_INTERVAL = 120000; // Publish presence every 120 seconds (reduced load)
+  private readonly PRESENCE_PUBLISH_INTERVAL = 45000; // Publish presence every 120 seconds (reduced load)
   private isRateLimited = false;
   private rateLimitBackoff = 0;
 
@@ -220,8 +224,8 @@ class NostrService {
     for (let i = 0; i < maxAttempts; i++) {
       const peer = this.peers.get(peerId);
 
-      if (peer) {
-        return peer;
+      if (!peer) {
+        return null;
       }
 
       // Wait before retry with exponential backoff
