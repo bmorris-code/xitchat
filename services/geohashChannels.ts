@@ -68,8 +68,42 @@ export interface GeohashLocation {
 
 // -------------------- SERVICE --------------------
 class GeohashChannelsService {
-  createChannel(newRoomName: any, newRoomDesc: any, arg2: boolean, arg3: any, isTrading: any) {
-    throw new Error('Method not implemented.');
+  async createChannel(
+    newRoomName: string,
+    newRoomDesc: string,
+    isPublic: boolean,
+    requiresInvite: boolean,
+    isTrading: boolean
+  ): Promise<string> {
+    const base = (newRoomName || 'room').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const currentGeohash = this.currentLocation?.geohash?.substring(0, 5) || 'global';
+    const channelId = `${this.nostrChannelPrefix}${currentGeohash}-${base || 'room'}-${Math.random().toString(36).slice(2, 7)}`;
+
+    const channel: GeohashChannel = {
+      id: channelId,
+      geohash: currentGeohash,
+      name: newRoomName?.trim() || 'New Room',
+      description: newRoomDesc?.trim() || 'Mesh room',
+      desc: newRoomDesc?.trim() || 'Mesh room',
+      tags: [isTrading ? 'trading' : 'chat', isPublic ? 'public' : 'private'],
+      participants: ['me'],
+      isPublic,
+      requiresInvite,
+      createdBy: this.myId,
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+      messageCount: 0,
+      isEncrypted: !isPublic || requiresInvite,
+      isTradingChannel: !!isTrading
+    };
+
+    this.channels.set(channelId, channel);
+    this.messages.set(channelId, []);
+    this.findNearbyChannels();
+    this.saveChannels();
+    this.saveMessages();
+    this.notifyListeners('channelsUpdated', Array.from(this.channels.values()));
+    return channelId;
   }
   private static instance: GeohashChannelsService;
 
@@ -431,10 +465,39 @@ if (!msgs.find(m => m.id === message.id)) {
     } catch {}
   }
 
+  async broadcastToNearby(content: string): Promise<void> {
+    const geohash = this.currentLocation?.geohash || 'unknown';
+    await this.broadcastMessage(generateUUID(), content, geohash);
+  }
+
   // ---------------- JOIN / LEAVE CHANNEL ----------------
   async joinChannel(channelId: string): Promise<void> {
-    const channel = this.channels.get(channelId);
-    if (!channel) throw new Error(`Channel ${channelId} not found`);
+    let channel = this.channels.get(channelId);
+    if (!channel) {
+      const normalized = (channelId || 'room').toLowerCase();
+      const geohash = this.currentLocation?.geohash?.substring(0, 5) || 'global';
+      channel = {
+        id: channelId,
+        geohash,
+        name: channelId.startsWith('room-') ? channelId.replace('room-', '').toUpperCase() : channelId,
+        description: 'Auto-created room',
+        desc: 'Auto-created room',
+        tags: ['auto'],
+        participants: [],
+        isPublic: true,
+        requiresInvite: false,
+        createdBy: 'system',
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        messageCount: 0,
+        isEncrypted: false,
+        isTradingChannel: normalized.includes('trade')
+      };
+      this.channels.set(channelId, channel);
+      if (!this.messages.has(channelId)) this.messages.set(channelId, []);
+      this.saveChannels();
+      this.saveMessages();
+    }
 
     if (!channel.participants.includes('me')) {
       channel.participants.push('me');
@@ -522,10 +585,8 @@ if (!msgs.find(m => m.id === message.id)) {
   }
 }
 
-// ---------------- LAZY EXPORT ----------------
-export let geohashChannels: GeohashChannelsService;
+export const geohashChannels: GeohashChannelsService = GeohashChannelsService.getInstance();
 
 export function getGeohashChannelsInstance(): GeohashChannelsService {
-  if (!geohashChannels) geohashChannels = GeohashChannelsService.getInstance();
   return geohashChannels;
 }

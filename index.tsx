@@ -7,10 +7,8 @@ import './index.css';
 import './utils/globalJsonSetup';
 
 class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; message: string }> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, message: '' };
-  }
+  props!: { children: React.ReactNode };
+  state = { hasError: false, message: '' };
 
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, message: error?.message || 'Unknown render error' };

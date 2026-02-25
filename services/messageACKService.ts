@@ -294,7 +294,7 @@ class MessageACKService {
 
     // Mark as failed if max retries reached
     if (message.retryCount >= message.maxRetries) {
-      console.error(`❌ Message ${message.id} failed after ${message.maxRetries} retries`);
+      console.warn(`Message ${message.id} not acknowledged after ${message.maxRetries} retries`);
       this.notifyListeners('messageFailed', {
         messageId: message.id,
         to: message.to,
@@ -472,3 +472,4 @@ class MessageACKService {
 }
 
 export const messageACKService = new MessageACKService();
+

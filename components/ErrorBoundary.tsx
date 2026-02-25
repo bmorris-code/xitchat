@@ -12,8 +12,10 @@ interface ErrorBoundaryProps {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-    state: { hasError: boolean; error: any; errorInfo: string; };
-    props: any;
+    props!: ErrorBoundaryProps;
+    state: ErrorBoundaryState;
+    setState!: React.Component<ErrorBoundaryProps, ErrorBoundaryState>['setState'];
+
     constructor(props: ErrorBoundaryProps) {
         super(props);
         this.state = { hasError: false, error: null, errorInfo: '' };
@@ -26,9 +28,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
     componentDidCatch(error: Error, info: React.ErrorInfo) {
         this.setState({ errorInfo: info.componentStack || '' });
         console.error('[XitChat ErrorBoundary]', error, info);
-    }
-    setState(arg0: { errorInfo: any; }) {
-        throw new Error('Method not implemented.');
     }
 
     handleReload = () => {

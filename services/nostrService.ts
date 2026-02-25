@@ -86,11 +86,34 @@ class NostrService {
   private readonly defaultRelays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
-    'wss://relay.nostr.band',
   'wss://nostr.mom',
-  'wss://relay.snort.social',
-  'wss://offchain.pub'
+  'wss://relay.snort.social'
   ];
+
+  private getQueryRelays(): string[] {
+    const connected = Array.from(this.connectedRelays);
+    return connected.length > 0 ? connected : this.defaultRelays;
+  }
+
+  private getPublishRelays(): string[] {
+    return Array.from(this.connectedRelays);
+  }
+
+  private async publishToRelay(relayUrl: string, event: any): Promise<boolean> {
+    try {
+      await Promise.race([
+        this.pool!.publish([relayUrl], event),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Publish timeout to ${relayUrl}`)), 12000)
+        )
+      ]);
+      return true;
+    } catch (error) {
+      this.connectedRelays.delete(relayUrl);
+      this.failedRelays.add(relayUrl);
+      return false;
+    }
+  }
 
   // Presence event constants
   private readonly PRESENCE_KIND = 30315; // Custom kind for presence events
@@ -133,6 +156,7 @@ class NostrService {
         message.includes('failed') || 
         message.includes('ERR_NAME_NOT_RESOLVED') ||
         message.includes('ERR_CONNECTION_TIMED_OUT') ||
+        message.includes('opening handshake timed out') ||
         message.includes('net::')
       )) {
         console.debug('⚠️ WebSocket issue (handled):', message);
@@ -224,8 +248,8 @@ class NostrService {
     for (let i = 0; i < maxAttempts; i++) {
       const peer = this.peers.get(peerId);
 
-      if (!peer) {
-        return null;
+      if (peer) {
+        return peer;
       }
 
       // Wait before retry with exponential backoff
@@ -237,7 +261,7 @@ class NostrService {
       await this.refreshPeerList();
     }
 
-    return null;
+    return this.peers.get(peerId) || null;
   }
 
   // Refresh peer list
@@ -452,7 +476,7 @@ class NostrService {
   private async loadUserProfile(): Promise<void> {
     try {
       // Fetch user metadata
-      const metadataEvents = await this.pool!.querySync(this.defaultRelays, {
+      const metadataEvents = await this.pool!.querySync(this.getQueryRelays(), {
         kinds: [0], // Metadata event
         authors: [this.publicKey!],
         limit: 1
@@ -676,9 +700,7 @@ class NostrService {
       // Find peer with retry mechanism
       const peer = await this.findPeerWithRetry(recipientPublicKey);
       if (!peer) {
-        console.warn(`⚠️ Peer ${recipientPublicKey.substring(0, 8)}... not reachable after retries`);
-        this.showUserNotification('Peer not found - they may be offline');
-        return false;
+        console.debug(`Peer ${recipientPublicKey.substring(0, 8)}... not in local cache; sending anyway`);
       }
 
       if (this.connectedRelays.size === 0) {
@@ -785,13 +807,22 @@ class NostrService {
         throw new Error('Failed to create valid Nostr event');
       }
 
-      // Publish to relays
-      const promises = this.defaultRelays.map(relayUrl =>
-        this.pool!.publish([relayUrl], event)
+      let targetRelays = this.getPublishRelays();
+      if (targetRelays.length === 0) {
+        await this.retryFailedRelays();
+        targetRelays = this.getPublishRelays();
+      }
+      if (targetRelays.length === 0) {
+        throw new Error('No connected relays available for channel publish');
+      }
+      const results = await Promise.allSettled(
+        targetRelays.map(relayUrl => this.publishToRelay(relayUrl, event))
       );
-
-      await Promise.allSettled(promises);
-      console.log(`📢 Published message to channel ${channelId || 'broadcast'}`);
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value).length;
+      if (successful === 0) {
+        throw new Error('Failed to publish channel message to any relay');
+      }
+      console.log(`📢 Published message to channel ${channelId || 'broadcast'} via ${successful}/${targetRelays.length} relays`);
 
       this.emit('channelMessageSent', {
         id: event.id,
@@ -823,12 +854,22 @@ class NostrService {
         content: JSON.stringify(metadata)
       }, privateKeyBytes);
 
-      const promises = this.defaultRelays.map(relayUrl =>
-        this.pool!.publish([relayUrl], event)
+      let targetRelays = this.getPublishRelays();
+      if (targetRelays.length === 0) {
+        await this.retryFailedRelays();
+        targetRelays = this.getPublishRelays();
+      }
+      if (targetRelays.length === 0) {
+        throw new Error('No connected relays available for profile update');
+      }
+      const results = await Promise.allSettled(
+        targetRelays.map(relayUrl => this.publishToRelay(relayUrl, event))
       );
-
-      await Promise.allSettled(promises);
-      console.log('👤 Profile updated on Nostr');
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value).length;
+      if (successful === 0) {
+        throw new Error('Failed to publish profile update to any relay');
+      }
+      console.log(`👤 Profile updated on Nostr via ${successful}/${targetRelays.length} relays`);
 
       this.emit('profileUpdated', metadata);
       return true;
@@ -873,16 +914,25 @@ class NostrService {
       }
 
       // Publish to relays with timeout and error handling
-      const publishPromises = this.defaultRelays.map(async (relayUrl) => {
+      let targetRelays = this.getPublishRelays();
+      if (targetRelays.length === 0) {
+        await this.retryFailedRelays();
+        targetRelays = this.getPublishRelays();
+      }
+      if (targetRelays.length === 0) {
+        console.debug('No connected relays available for broadcast');
+        return false;
+      }
+      const publishPromises = targetRelays.map(async (relayUrl) => {
         try {
           // Add timeout to prevent hanging
           const result = await Promise.race([
-            this.pool!.publish([relayUrl], event),
+            this.publishToRelay(relayUrl, event),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Publish timeout')), 15000) // Increased to 15 seconds
+              setTimeout(() => reject(new Error('Publish timeout')), 15000)
             )
           ]);
-          return { relay: relayUrl, success: true, result };
+          return { relay: relayUrl, success: !!result, result };
         } catch (error: any) {
           if (error.message && (error.message.includes('rate-limited') || error.message.includes('slow down'))) {
             console.debug(`⚠️ Rate limited by ${relayUrl}, backing off...`);
@@ -896,7 +946,7 @@ class NostrService {
       const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
 
       if (successful > 0) {
-        console.log(`📢 Broadcasted message to ${successful}/${this.defaultRelays.length} relays`);
+        console.log(`📢 Broadcasted message to ${successful}/${targetRelays.length} relays`);
         this.emit('messageBroadcasted', {
           id: event.id,
           content: content,
@@ -913,12 +963,11 @@ class NostrService {
     }
   }
 
+  async publishNote(content: string): Promise<boolean> {
+    return this.broadcastMessage(content);
+  }
+
   private async subscribeToPresenceEvents(): Promise<void> {
-    // Temporarily disabled presence subscription to prevent pool.sub errors
-    console.log('🗼 Presence subscription temporarily disabled');
-    return;
-    
-    /*
     if (!this.pool || this.connectedRelays.size === 0) {
       console.warn('⚠️ Nostr pool not initialized or no connected relays, skipping presence subscription');
       return;
@@ -952,7 +1001,6 @@ class NostrService {
     } catch (error) {
       console.error('❌ Failed to subscribe to presence events:', error);
     }
-    */
   }
 
   private async handlePresenceEvent(event: any): Promise<void> {
@@ -1099,7 +1147,7 @@ class NostrService {
   async searchUsers(query: string): Promise<NostrPeer[]> {
     try {
       // Search for users by name or about field
-      const events = await this.pool!.querySync(this.defaultRelays, {
+      const events = await this.pool!.querySync(this.getQueryRelays(), {
         kinds: [0], // Metadata
         search: query,
         limit: 3 // Reduced from 5
