@@ -384,6 +384,8 @@ const App: React.FC = () => {
 
   // Initialize Hybrid Mesh (Bluetooth first, WebRTC fallback)
   useEffect(() => {
+    const meshUnsubscribers: Array<() => void> = [];
+
     const initializeMesh = async () => {
       try {
         const initializedTypes = await hybridMesh.initialize();
@@ -404,7 +406,7 @@ const App: React.FC = () => {
         handshakePersistence.startBackgroundMaintenance();
 
         // Subscribe to mesh messages
-        hybridMesh.subscribe('messageReceived', (message) => {
+        meshUnsubscribers.push(hybridMesh.subscribe('messageReceived', (message) => {
           console.log('📨 Mesh message received:', message);
 
           // Support both 'from' (HybridMeshMessage) and 'senderId' (App Message) property names
@@ -544,25 +546,25 @@ const App: React.FC = () => {
             });
             window.dispatchEvent(event);
           }
-        });
+        }));
 
-        hybridMesh.subscribe('ackReceived', (ack: any) => {
+        meshUnsubscribers.push(hybridMesh.subscribe('ackReceived', (ack: any) => {
           if (!ack?.messageId) return;
           messageACKService.markMessageDelivered(
             ack.messageId,
             ack.from || 'unknown',
             mapTransportForAck(ack.connectionType)
           );
-        });
+        }));
 
-        hybridMesh.subscribe('peersUpdated', (peers) => {
+        meshUnsubscribers.push(hybridMesh.subscribe('peersUpdated', (peers) => {
           console.log('Mesh peers updated:', peers);
 
           // Update last seen for all current peers
           peers.forEach(peer => {
             handshakePersistence.updateLastSeen(peer.id);
           });
-        });
+        }));
       } catch (error) {
         console.error('Failed to initialize hybrid mesh:', error);
         const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
@@ -576,6 +578,17 @@ const App: React.FC = () => {
     };
 
     initializeMesh();
+
+    return () => {
+      meshUnsubscribers.forEach(unsubscribe => {
+        try {
+          unsubscribe();
+        } catch {
+          // no-op
+        }
+      });
+      handshakePersistence.stopBackgroundMaintenance();
+    };
   }, []);
 
   // Wire Message ACK retry events to active transports

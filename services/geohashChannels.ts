@@ -428,7 +428,8 @@ class GeohashChannelsService {
     let broadcastContent = content;
     if (type !== 'system' && channel?.isEncrypted) {
       try {
-        broadcastContent = JSON.stringify(await encryptionService.encryptGroupMessage(content, this.currentLocation!.geohash));
+        const groupKey = this.currentLocation?.geohash || 'global';
+        broadcastContent = JSON.stringify(await encryptionService.encryptGroupMessage(content, groupKey));
       } catch {
         console.warn('Failed to encrypt message');
       }

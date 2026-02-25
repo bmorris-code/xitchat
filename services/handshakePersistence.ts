@@ -11,8 +11,18 @@ interface HandshakeNode {
 }
 
 class HandshakePersistenceService {
+  private integrityInterval: ReturnType<typeof setInterval> | null = null;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+
   stopBackgroundMaintenance() {
-    throw new Error('Method not implemented.');
+    if (this.integrityInterval) {
+      clearInterval(this.integrityInterval);
+      this.integrityInterval = null;
+    }
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
   }
   private readonly STORAGE_KEY = 'xitchat_handshake_nodes';
   private nodes: Map<string, HandshakeNode> = new Map();
@@ -180,13 +190,15 @@ class HandshakePersistenceService {
 
   // Start background integrity degradation
   startBackgroundMaintenance() {
+    if (this.integrityInterval || this.cleanupInterval) return;
+
     // Degrade integrity every hour
-    setInterval(() => {
+    this.integrityInterval = setInterval(() => {
       this.degradeIntegrity();
     }, 60 * 60 * 1000);
 
     // Cleanup old nodes daily
-    setInterval(() => {
+    this.cleanupInterval = setInterval(() => {
       this.cleanupOldNodes();
     }, 24 * 60 * 60 * 1000);
   }
