@@ -15,6 +15,7 @@
     "sync:ios": "npm run build:mobile && npx cap sync ios",
     "sync:android": "npm run build:mobile && npx cap sync android",
     "android": "npx cap open android",
+    "release:all": "npm run sync:android && cd android && gradlew.bat assembleDebug",
     "auto-update-apk": "node scripts/auto-update-apk.cjs",
     "preview": "vite preview",
     "vercel-build": "vite build"
