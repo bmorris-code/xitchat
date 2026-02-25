@@ -1175,6 +1175,25 @@ const App: React.FC = () => {
     setView('chats');
   };
 
+  const handleChatSelect = useCallback((chatId: string | null) => {
+    setActiveChatId(chatId);
+    if (!chatId) return;
+    setChats(prev => prev.map(c =>
+      c.id === chatId && (c.unreadCount || 0) > 0
+        ? { ...c, unreadCount: 0 }
+        : c
+    ));
+  }, []);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+    setChats(prev => prev.map(c =>
+      c.id === activeChatId && (c.unreadCount || 0) > 0
+        ? { ...c, unreadCount: 0 }
+        : c
+    ));
+  }, [activeChatId]);
+
   const handleSendMessage = useCallback(async (text: string, options?: { imageUrl?: string; videoUrl?: string; replyTo?: Message['replyTo'], nostrRecipient?: string, encryptedData?: any }) => {
     if (!activeChatId) return;
     const newMessage: Message = {
@@ -1931,7 +1950,7 @@ const App: React.FC = () => {
                 <ChatList
                   chats={chats}
                   activeChatId={activeChatId}
-                  onChatSelect={(id) => setActiveChatId(id)}
+                  onChatSelect={handleChatSelect}
                   onInviteNode={() => setShowInviteModal(true)}
                 />
               </div>
@@ -1943,7 +1962,7 @@ const App: React.FC = () => {
                 <ChatList
                   chats={chats}
                   activeChatId={activeChatId}
-                  onChatSelect={(id) => setActiveChatId(id)}
+                  onChatSelect={handleChatSelect}
                   onInviteNode={() => setShowInviteModal(true)}
                 />
               </div>
@@ -1962,7 +1981,7 @@ const App: React.FC = () => {
                 onReaction={(msgId, emoji) => handleReaction(activeChatId, msgId, emoji)}
                 onDeleteMessage={handleDeleteMessage}
                 onClearChatHistory={handleClearChatHistory}
-                onClose={isMobile ? () => setActiveChatId(null) : undefined}
+                onClose={isMobile ? () => handleChatSelect(null) : undefined}
                 className={isMobile ? "flex-1" : ""}
                 nostrRecipient={activeChat?.participant.id.startsWith('nostr-') ? activeChat.participant.id.replace('nostr-', '') : undefined}
               />
