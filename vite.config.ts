@@ -51,20 +51,20 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
           short_name: 'XitChat',
           description: 'Mesh Networking Chat App',
           theme_color: '#020202',
-          background_color: '#020202', // ADDED
-          display: 'standalone',        // ADDED
-          start_url: '/',               // ADDED
-          scope: '/',                   // ADDED
-          orientation: 'portrait',      // ADDED
+          background_color: '#020202',
+          display: 'standalone',
+          start_url: '/',
+          scope: '/',
+          orientation: 'portrait',
           icons: [
             {
-              src: 'pwa-192x192.png',
+              src: 'icon-192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any maskable'
             },
             {
-              src: 'pwa-512x512.png',
+              src: 'icon-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any maskable'

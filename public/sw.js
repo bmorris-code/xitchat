@@ -1,12 +1,19 @@
 const CACHE_NAME = 'xitchat-mesh-v1';
 const OFFLINE_URL = '/index.html';
 
+// iOS PWA Fix: Ensure proper scope handling
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       // Cache the critical manifest and entry point
-      return cache.addAll(['/', '/index.html', '/manifest.json']);
+      return cache.addAll([
+        '/', 
+        '/index.html', 
+        '/manifest.json',
+        '/icon-192.png',
+        '/icon-512.png'
+      ]);
     })
   );
 });
