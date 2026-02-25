@@ -170,31 +170,35 @@ class HybridMeshService {
 
       const initializedTypes: MeshConnectionType[] = [];
 
-      // 1. Start Nostr (global serverless mesh - works everywhere)
-      const nostrSuccess = await this.startNostr();
-      if (nostrSuccess) initializedTypes.push('nostr');
-
-      // 2. Start Broadcast Mesh (local same-device - works everywhere)
+      // Start local-friendly transports first so offline chat becomes available quickly.
       const broadcastSuccess = await this.startBroadcastMesh();
       if (broadcastSuccess) initializedTypes.push('broadcast');
 
-      // ANDROID SERVERLESS: Only use direct P2P on Android
+      // ANDROID SERVERLESS: prioritize direct local P2P on Android
       if (isNativeAndroid) {
-        // 3. Start WiFi Direct (direct P2P - no server)
+        // 1. Start WiFi Direct (direct P2P - no server)
         console.log('📡 Starting WiFi Direct (serverless P2P)...');
         const wifiSuccess = await this.startWiFiP2P();
         console.log('✅ WiFi Direct P2P initialized:', wifiSuccess);
         if (wifiSuccess) initializedTypes.push('wifi');
 
-        // 4. Start Bluetooth Mesh (direct P2P - no server)  
+        // 2. Start Bluetooth Mesh (direct P2P - no server)  
         console.log('🔵 Starting Bluetooth Mesh (serverless P2P)...');
         const bluetoothSuccess = await this.startBluetooth();
         console.log('✅ Bluetooth Mesh P2P initialized:', bluetoothSuccess);
         if (bluetoothSuccess) initializedTypes.push('bluetooth');
 
+        // 3. Start Nostr last as optional/global layer
+        const nostrSuccess = await this.startNostr();
+        if (nostrSuccess) initializedTypes.push('nostr');
+
         // NO WEBRTC ON ANDROID - It requires servers
         console.log('� Skipping WebRTC on Android (requires server - using true P2P instead)');
       } else {
+        // Web: Nostr remains primary global layer
+        const nostrSuccess = await this.startNostr();
+        if (nostrSuccess) initializedTypes.push('nostr');
+
         // Web-only: Use WebRTC if configured
         console.log('🌐 Web: Using WebRTC when configured...');
         const webrtcSuccess = await this.startWebRTC();
@@ -252,13 +256,22 @@ class HybridMeshService {
 
   private async startNostr(): Promise<boolean> {
     try {
-      const success = await nostrService.initialize();
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        console.log('Offline detected: skipping Nostr startup for now');
+        return false;
+      }
+
+      const success = await Promise.race<boolean>([
+        nostrService.initialize(),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), 8000))
+      ]);
       if (success) {
         this.activeServices.nostr = true;
         nostrService.subscribe('peerUpdated', (peer: NostrPeer) => this.updateSinglePeer(peer, 'nostr'));
         nostrService.subscribe('messageReceived', (msg: any) => this.handleMessage('nostr', msg));
         return true;
       }
+      console.log('Nostr startup timed out or unavailable; continuing with local mesh transports');
       return false;
     } catch (e) { return false; }
   }

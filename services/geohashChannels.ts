@@ -457,12 +457,11 @@ if (!msgs.find(m => m.id === message.id)) {
 
   private async broadcastMessage(messageId: string, content: string, geohash: string) {
     const tagged = `[GEOHASH:${geohash}]${content}`;
-    try {
-      await nostrService.broadcastMessage(tagged);
-    } catch {}
-    try {
-      await hybridMesh.sendMessage(tagged);
-    } catch {}
+    const attempts = [
+      hybridMesh.sendMessage(tagged), // local/offline first
+      nostrService.broadcastMessage(tagged) // global layer best-effort
+    ];
+    await Promise.allSettled(attempts);
   }
 
   async broadcastToNearby(content: string): Promise<void> {

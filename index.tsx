@@ -51,6 +51,8 @@ if (import.meta.env.DEV) {
     if (
       message.includes('rate-limited') ||
       message.includes('slow down') ||
+      message.includes('pow:') ||
+      message.includes('bits needed') ||
       message.includes('connection timed out') ||
       message.includes('publish timed out') ||
       message.includes('timeout')
@@ -99,6 +101,8 @@ window.addEventListener('unhandledrejection', (event) => {
   if (
     reason.includes('rate-limited') ||
     reason.includes('slow down') ||
+    reason.includes('pow:') ||
+    reason.includes('bits needed') ||
     reason.includes('noting too much') ||
     reason.includes('publish timed out') ||
     reason.includes('connection timed out') ||

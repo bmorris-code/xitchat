@@ -86,7 +86,6 @@ class NostrService {
   private readonly defaultRelays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
-  'wss://nostr.mom',
   'wss://relay.snort.social'
   ];
 
@@ -149,6 +148,10 @@ class NostrService {
       if (message.includes('rate-limited') || message.includes('slow down matey')) {
         console.debug('⚠️ Nostr network issue (handled):', message);
         // Don't spam console with rate limit errors
+        return;
+      }
+      if (message.includes('pow:') && message.includes('bits needed')) {
+        console.debug('⚠️ Nostr PoW relay requirement (handled):', message);
         return;
       }
 
@@ -328,6 +331,10 @@ class NostrService {
           if (reason?.message?.includes('rate-limited') || reason?.message?.includes('slow down')) {
             console.warn('⚠️ Nostr network issue (handled):', reason.message);
             this.showUserNotification('Network busy, retrying automatically...');
+            event.preventDefault();
+          } else if (reason?.message?.includes('pow:') || reason?.message?.includes('bits needed')) {
+            console.warn('⚠️ Relay requires PoW (handled):', reason.message || reason);
+            this.showUserNotification('Some relays require PoW, retrying with other relays...');
             event.preventDefault();
           } else if (reason?.message?.includes('connection timed out') || reason?.message?.includes('timeout') || reason?.message?.includes('publish timed out')) {
             console.warn('⚠️ Nostr connection timeout (handled):', reason.message);
