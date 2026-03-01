@@ -26,9 +26,16 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
           clientsClaim: true,
           skipWaiting: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'], // Added fonts
+          navigateFallbackDenylist: [
+            /\/.*\.apk(\?.*)?$/i
+          ],
 
           // ADD THIS - Prevent caching issues
           runtimeCaching: [
+            {
+              urlPattern: /\/.*\.apk(\?.*)?$/i,
+              handler: 'NetworkOnly'
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',
