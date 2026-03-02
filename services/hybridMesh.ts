@@ -680,25 +680,25 @@ class HybridMeshService {
           switch (peer.connectionType) {
             case 'bluetooth':
               success = peer.serviceId
-                ? await workingBluetoothMesh.sendMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                ? await workingBluetoothMesh.sendMessage(peer.serviceId, payload).catch(() => false)
                 : false;
               if (success) console.log(`✅ Message sent via Bluetooth to ${peer.handle}`);
               break;
             case 'wifi':
               success = peer.serviceId
-                ? await wifiP2P.sendMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                ? await wifiP2P.sendMessage(peer.serviceId, payload).catch(() => false)
                 : false;
               if (success) console.log(`✅ Message sent via WiFi P2P to ${peer.handle}`);
               break;
             case 'nostr':
               success = peer.serviceId
-                ? await nostrService.sendDirectMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                ? await nostrService.sendDirectMessage(peer.serviceId, payload).catch(() => false)
                 : false;
               if (success) console.log(`✅ Message sent via Nostr to ${peer.handle}`);
               break;
             case 'broadcast':
               success = peer.serviceId
-                ? await broadcastMesh.sendMessage(peer.serviceId, payload).then(() => true).catch(() => false)
+                ? await broadcastMesh.sendMessage(peer.serviceId, payload).catch(() => false)
                 : false;
               if (success) console.log(`✅ Message sent via Broadcast to ${peer.handle}`);
               break;
@@ -728,7 +728,7 @@ class HybridMeshService {
               this.getConnectedWifiServiceIds().forEach(id => wifiTargets.add(id));
 
               for (const wifiTarget of wifiTargets) {
-                const wifiSuccess = await wifiP2P.sendMessage(wifiTarget, payload).then(() => true).catch(() => false);
+                const wifiSuccess = await wifiP2P.sendMessage(wifiTarget, payload).catch(() => false);
                 if (wifiSuccess) {
                   success = true;
                   console.log(`Message sent via WiFi fallback to ${peer.handle} (${wifiTarget})`);
@@ -784,7 +784,7 @@ class HybridMeshService {
           return;
         } else {
           if (this.activeServices.wifi && this.isLikelyLocalNetworkAddress(targetId)) {
-            const wifiDirectSuccess = await wifiP2P.sendMessage(targetId, payload).then(() => true).catch(() => false);
+            const wifiDirectSuccess = await wifiP2P.sendMessage(targetId, payload).catch(() => false);
             if (wifiDirectSuccess) {
               console.log(`✅ Direct WiFi send succeeded for ${targetId}`);
               return;
@@ -898,4 +898,6 @@ class HybridMeshService {
 }
 
 export const hybridMesh = new HybridMeshService();
+
+
 

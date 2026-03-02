@@ -461,7 +461,7 @@ class WiFiP2PService {
     this.emit('discoveryStopped');
   }
 
-  async sendMessage(peerId: string, content: string): Promise<void> {
+  async sendMessage(peerId: string, content: string): Promise<boolean> {
     const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
 
     if (isNativeAndroid && this.WiFiDirectPlugin) {
@@ -478,7 +478,7 @@ class WiFiP2PService {
           timestamp: new Date(),
           type: 'chat'
         });
-        return;
+        return true;
       } catch (error) {
         console.warn('Native WiFi Direct send failed, falling back to signaling:', error);
       }
@@ -487,12 +487,11 @@ class WiFiP2PService {
     const peer = this.peers.get(peerId);
     if (!peer) {
       console.warn(`Peer ${peerId} not found`);
-      return;
+      return false;
     }
 
     console.log(`📤 Sending via serverless WiFi P2P to ${peerId}: ${content}`);
 
-    // ANDROID SERVERLESS: Use WebRTC + Nostr signaling only
     const message: WiFiMessage = {
       id: Math.random().toString(36).substr(2, 9),
       from: this.myPeerId,
@@ -502,17 +501,22 @@ class WiFiP2PService {
       type: 'chat'
     };
 
-    // If we have a direct WebRTC connection, use it!
-    if (peer && peer.isConnected && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+    if (peer.isConnected && peer.dataChannel && peer.dataChannel.readyState === 'open') {
       peer.dataChannel.send(JSON.stringify(message));
       console.log(`📤 Sent via WebRTC P2P to ${peerId}: ${content}`);
-    } else {
-      // Otherwise, send via Nostr signaling (serverless P2P)
-      await this.sendSignal(peerId, 'chat', content);
-      console.log(`📤 Sent via Nostr P2P to ${peerId}: ${content}`);
+      this.emit('messageSent', message);
+      return true;
     }
 
-    this.emit('messageSent', message);
+    try {
+      await this.sendSignal(peerId, 'chat', content);
+      console.log(`📤 Sent via Nostr P2P to ${peerId}: ${content}`);
+      this.emit('messageSent', message);
+      return true;
+    } catch (error) {
+      console.warn('Failed to send WiFi P2P signal:', error);
+      return false;
+    }
   }
 
   setUserInfo(name: string, handle: string): void {
@@ -577,3 +581,4 @@ class WiFiP2PService {
 }
 
 export const wifiP2P = new WiFiP2PService();
+

@@ -244,8 +244,8 @@ class BroadcastMeshService {
     return true;
   }
 
-  async sendMessage(peerId: string, content: string): Promise<void> {
-    if (!this.isConnected) return;
+  async sendMessage(peerId: string, content: string): Promise<boolean> {
+    if (!this.isConnected) return false;
 
     const message: BroadcastMessage = {
       id: this.generateMessageId(),
@@ -259,6 +259,7 @@ class BroadcastMeshService {
 
     await this.sendMessageInternal(message);
     console.log(`📤 Sent broadcast-mesh message to ${peerId}: ${content}`);
+    return true;
   }
 
   async broadcastMessage(content: string): Promise<void> {
@@ -330,3 +331,4 @@ class BroadcastMeshService {
 }
 
 export const broadcastMesh = new BroadcastMeshService();
+

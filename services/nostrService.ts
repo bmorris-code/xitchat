@@ -697,6 +697,20 @@ class NostrService {
         throw new Error('Nostr service not initialized');
       }
 
+      // Accept npub and convert to hex pubkey for NIP-04 operations.
+      if (recipientPublicKey.startsWith('npub')) {
+        try {
+          const decoded = nostrTools.nip19.decode(recipientPublicKey);
+          if (decoded.type === 'npub' && typeof decoded.data === 'string') {
+            recipientPublicKey = decoded.data;
+          }
+        } catch (decodeError) {
+          console.error('Failed to decode npub recipient key:', decodeError);
+          this.showUserNotification('Invalid peer address');
+          return false;
+        }
+      }
+
       // Validate recipient public key format FIRST
       if (!recipientPublicKey || typeof recipientPublicKey !== 'string' || recipientPublicKey.length !== 64) {
         console.error('❌ Invalid recipient public key format');
@@ -1332,3 +1346,4 @@ class NostrService {
 }
 
 export const nostrService = new NostrService();
+
