@@ -32,6 +32,8 @@ android/app/release/
 android/app/debug/
 *.apk
 *.aab
+!public/xitchat-v1.apk
+!public/xitchat.apk
 
 # iOS specific
 ios/App/Pods/

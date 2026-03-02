@@ -1,10 +1,6 @@
 {
   "rewrites": [
-    { "source": "/xitchat-v1.apk", "destination": "/xitchat-v1.apk" },
-    { "source": "/xitchat.apk", "destination": "/xitchat.apk" },
-    { "source": "/apk-download.html", "destination": "/apk-download.html" },
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!.*\\.[^/]+$).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
