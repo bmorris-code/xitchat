@@ -47,6 +47,12 @@ self.addEventListener('fetch', (event) => {
     return; // Let the browser handle it (Network Only)
   }
 
+  // APK files must never be cached or replaced by offline HTML fallback.
+  if (url.pathname.endsWith('.apk')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   // --- 2. CACHE ASSETS (JS, CSS, WASM, FONTS) ---
   // Nostr/Crypto libraries often use WASM. We must cache it.
   if (

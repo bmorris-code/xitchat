@@ -6,9 +6,33 @@
   NODE_VERSION = "18"
 
 [[redirects]]
+  from = "/xitchat-v1.apk"
+  to = "/xitchat-v1.apk"
+  status = 200
+
+[[redirects]]
+  from = "/xitchat.apk"
+  to = "/xitchat.apk"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+[[headers]]
+  for = "/xitchat-v1.apk"
+  [headers.values]
+    Content-Type = "application/vnd.android.package-archive"
+    Content-Disposition = "attachment; filename=\"xitchat-v1.apk\""
+    Cache-Control = "public, max-age=300, must-revalidate"
+
+[[headers]]
+  for = "/xitchat.apk"
+  [headers.values]
+    Content-Type = "application/vnd.android.package-archive"
+    Content-Disposition = "attachment; filename=\"xitchat.apk\""
+    Cache-Control = "public, max-age=300, must-revalidate"
 
 [[headers]]
   for = "/*"
