@@ -691,10 +691,16 @@ class HybridMeshService {
               if (success) console.log(`✅ Message sent via WiFi P2P to ${peer.handle}`);
               break;
             case 'nostr':
-              success = peer.serviceId
-                ? await nostrService.sendDirectMessage(peer.serviceId, payload).catch(() => false)
-                : false;
-              if (success) console.log(`✅ Message sent via Nostr to ${peer.handle}`);
+              {
+                const nostrTarget = peer.serviceId || peer.id;
+                success = this.isLikelyNostrId(nostrTarget)
+                  ? await nostrService.sendDirectMessage(nostrTarget, payload).catch(() => false)
+                  : false;
+                if (!success && nostrTarget) {
+                  console.debug(Skipping invalid nostr target for : );
+                }
+              }
+              if (success) console.log(✅ Message sent via Nostr to );
               break;
             case 'broadcast':
               success = peer.serviceId
@@ -898,6 +904,7 @@ class HybridMeshService {
 }
 
 export const hybridMesh = new HybridMeshService();
+
 
 
 

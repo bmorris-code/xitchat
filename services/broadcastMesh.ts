@@ -246,6 +246,10 @@ class BroadcastMeshService {
 
   async sendMessage(peerId: string, content: string): Promise<boolean> {
     if (!this.isConnected) return false;
+    if (!this.peers.has(peerId)) {
+      console.debug(`Broadcast direct send skipped; peer ${peerId} not in known peer map`);
+      return false;
+    }
 
     const message: BroadcastMessage = {
       id: this.generateMessageId(),
