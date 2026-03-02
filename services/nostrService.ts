@@ -573,6 +573,32 @@ class NostrService {
         }
       }
 
+      // Subscribe to tagged text notes used for cross-device broadcast fallback
+      try {
+        this.pool!.subscribeMany(activeRelays, {
+          kinds: [1],
+          '#t': ['xitchat'],
+          limit: 20
+        }, {
+          onevent: async (event) => {
+            this.handleTaggedTextNote(event);
+          },
+          oneose: () => {
+            console.log('Tagged text notes subscription ready');
+          },
+          onclose: (reason: string) => {
+            if (reason.includes('rate-limited')) {
+              console.debug('Rate limited on tagged notes, backing off...');
+              setTimeout(() => this.subscribeToEvents(), 30000);
+            }
+          }
+        });
+      } catch (error: any) {
+        if (error.message?.includes('rate-limited')) {
+          console.debug('Rate limited on tagged notes subscription, backing off...');
+          setTimeout(() => this.subscribeToEvents(), 30000);
+        }
+      }
       // Subscribe to metadata updates for recent peers
       if (recentPeers.length > 0) {
         this.pool!.subscribeMany(activeRelays, {
@@ -669,6 +695,25 @@ class NostrService {
     }
   }
 
+  private handleTaggedTextNote(event: any): void {
+    try {
+      if (!event?.content || !event?.pubkey) return;
+      if (event.pubkey === this.publicKey) return;
+
+      const message = {
+        id: event.id,
+        from: event.pubkey,
+        to: this.publicKey,
+        content: event.content,
+        timestamp: new Date(event.created_at * 1000),
+        type: 'broadcast'
+      };
+
+      this.emit('messageReceived', message);
+    } catch (error) {
+      console.error('Failed to handle tagged text note:', error);
+    }
+  }
   private handleMetadataUpdate(event: any): void {
     try {
       const metadata = JSON.parse(event.content);
@@ -925,7 +970,7 @@ class NostrService {
       const event = nostrTools.finalizeEvent({
         kind: 1, // Text note (broadcast)
         created_at: Math.floor(Date.now() / 1000),
-        tags: [], // No tags needed for broadcast
+        tags: [['t', 'xitchat']]
         content: content
       }, privateKeyBytes);
 
@@ -1346,4 +1391,6 @@ class NostrService {
 }
 
 export const nostrService = new NostrService();
+
+
 

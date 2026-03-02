@@ -697,10 +697,10 @@ class HybridMeshService {
                   ? await nostrService.sendDirectMessage(nostrTarget, payload).catch(() => false)
                   : false;
                 if (!success && nostrTarget) {
-                  console.debug(Skipping invalid nostr target for : );
+                  console.debug(`Skipping invalid nostr target for ${peer.handle}`);
                 }
               }
-              if (success) console.log(✅ Message sent via Nostr to );
+              if (success) console.log(`✅ Message sent via Nostr to ${peer.handle}`);
               break;
             case 'broadcast':
               success = peer.serviceId
