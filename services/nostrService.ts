@@ -751,7 +751,7 @@ class NostrService {
           }
         } catch (decodeError) {
           console.error('Failed to decode npub recipient key:', decodeError);
-          this.showUserNotification('Invalid peer address');
+          
           return false;
         }
       }
@@ -759,7 +759,7 @@ class NostrService {
       // Validate recipient public key format FIRST
       if (!recipientPublicKey || typeof recipientPublicKey !== 'string' || recipientPublicKey.length !== 64) {
         console.error('❌ Invalid recipient public key format');
-        this.showUserNotification('Invalid peer address');
+        
         return false;
       }
 
@@ -970,7 +970,7 @@ class NostrService {
       const event = nostrTools.finalizeEvent({
         kind: 1, // Text note (broadcast)
         created_at: Math.floor(Date.now() / 1000),
-        tags: [['t', 'xitchat']]
+        tags: [['t', 'xitchat']],
         content: content
       }, privateKeyBytes);
 
@@ -1391,6 +1391,7 @@ class NostrService {
 }
 
 export const nostrService = new NostrService();
+
 
 
 
