@@ -156,13 +156,36 @@ const MessageList: React.FC<MessageListProps> = ({
     return 'P2P';
   };
 
+  const getDeliveryLabel = (msg: Message): string | null => {
+    if (msg.senderId !== 'me') return null;
+    if (msg.deliveryStatus === 'delivered') return `DELIVERED${msg.deliveryDetail ? `:${String(msg.deliveryDetail).toUpperCase()}` : ''}`;
+    if (msg.deliveryStatus === 'failed') return 'FAILED';
+    return 'SENDING';
+  };
+
+  const getDeliveryClass = (msg: Message): string => {
+    if (msg.deliveryStatus === 'delivered') return 'text-[#00ff41] border-[#00ff41]/40 bg-[#00ff41]/10';
+    if (msg.deliveryStatus === 'failed') return 'text-red-400 border-red-500/40 bg-red-500/10';
+    return 'text-amber-400 border-amber-500/40 bg-amber-500/10';
+  };
+
+  const isProtocolNoise = (text?: string): boolean => {
+    const value = (text || '').trim();
+    if (!value) return false;
+    return (
+      value.startsWith('xitchat-broadcast-v1-') ||
+      value.startsWith('xitchat-wifi:') ||
+      value.startsWith('xitchat-economy-sync:')
+    );
+  };
+
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 relative no-scrollbar">
       <div className="text-[10px] opacity-20 mb-8 font-mono uppercase tracking-[0.3em] text-center border-b border-[#004400] pb-2">
         - session_initialized: {new Date().toLocaleDateString()} -
       </div>
 
-      {messages.map((msg, index) => (
+      {messages.filter(msg => !isProtocolNoise(msg.text)).map((msg, index) => (
   <div
     key={`${msg.id}-${msg.timestamp}-${index}`}
     className="group flex flex-col font-mono relative animate-in fade-in slide-in-from-left-2"
@@ -180,6 +203,11 @@ const MessageList: React.FC<MessageListProps> = ({
               </span>
               <span className="opacity-30 text-[9px]">[{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}]</span>
               <span className="text-[7px] bg-white/5 px-1 rounded opacity-30 uppercase tracking-tighter">{getProtocolTag(msg)}</span>
+              {getDeliveryLabel(msg) && (
+                <span className={`text-[7px] font-black border px-1 uppercase tracking-tighter ml-1 ${getDeliveryClass(msg)}`}>
+                  {getDeliveryLabel(msg)}
+                </span>
+              )}
               {msg.tor && <span className="text-[7px] font-black border border-purple-500 text-purple-500 px-1 uppercase tracking-tighter bg-purple-500/10 ml-1">TOR</span>}
               {msg.pow && <span className="text-[7px] font-black border border-amber-500 text-amber-500 px-1 uppercase tracking-tighter bg-amber-500/10 ml-1">POW</span>}
             </div>

@@ -181,6 +181,20 @@ const App: React.FC = () => {
     return chats.reduce((acc, chat) => acc + (chat.unreadCount || 0), 0);
   }, [chats]);
 
+  const setMessageDeliveryState = useCallback((
+    messageId: string,
+    deliveryStatus: Message['deliveryStatus'],
+    deliveryDetail?: string
+  ) => {
+    if (!messageId || !deliveryStatus) return;
+    setChats(prev => prev.map(chat => ({
+      ...chat,
+      messages: chat.messages.map(msg =>
+        msg.id === messageId ? { ...msg, deliveryStatus, deliveryDetail } : msg
+      )
+    })));
+  }, []);
+
   // ... existing code ...
 
   // FIX FOR "MIME TYPE" / "RESOURCE LOAD ERROR"
@@ -363,7 +377,7 @@ const App: React.FC = () => {
             id: peer.id,
             name: peer.name,
             handle: peer.handle,
-            avatar: `https://picsum.photos/seed/${peer.id}/200`,
+            avatar: '/icon-192.png',
             status: 'Online',
             mood: 'Connected via mesh discovery'
           };
@@ -431,7 +445,7 @@ const App: React.FC = () => {
               id: senderId,
               name: message.senderName || 'Unknown Node',
               handle: message.senderHandle || `@${String(senderId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`,
-              avatar: `https://picsum.photos/seed/${senderId}/200`,
+              avatar: '/icon-192.png',
               connectionType: handshakeType
             });
 
@@ -472,7 +486,7 @@ const App: React.FC = () => {
                     id: participantId,
                     name: participantName,
                     handle: participantHandle,
-                    avatar: radarPeer?.avatar || `https://picsum.photos/seed/${participantId}/200`,
+                    avatar: radarPeer?.avatar || '/icon-192.png',
                     status: radarPeer?.isOnline ? 'Online' : 'Away',
                     mood: 'Connected via mesh',
                     moodEmoji: 'RAD',
@@ -597,7 +611,7 @@ const App: React.FC = () => {
       try {
         if (!event?.to || !event?.content) return;
 
-        if (event.transportLayer === 'nostr' && (/^[0-9a-f]{64}$/i.test(event.to) || event.to.startsWith('npub'))) {
+        if (event.transportLayer === 'nostr' && nostrService.isValidRecipientKey(event.to)) {
           const success = await nostrService.sendDirectMessage(event.to, event.content);
           if (success && event.messageId) {
             messageACKService.markMessageDelivered(event.messageId, event.to, 'nostr');
@@ -622,7 +636,7 @@ const App: React.FC = () => {
           timestamp: ack.timestamp
         });
 
-        if ((/^[0-9a-f]{64}$/i.test(ack.to) || ack.to.startsWith('npub')) && nostrConnected) {
+        if (nostrConnected && nostrService.isValidRecipientKey(ack.to)) {
           await nostrService.sendDirectMessage(ack.to, payload);
         } else {
           await hybridMesh.sendMessage(payload, ack.to);
@@ -632,11 +646,23 @@ const App: React.FC = () => {
       }
     });
 
+    const unsubDelivered = messageACKService.subscribe('messageDelivered', (event: any) => {
+      if (!event?.messageId) return;
+      setMessageDeliveryState(event.messageId, 'delivered', event.transportLayer || 'ack');
+    });
+
+    const unsubFailed = messageACKService.subscribe('messageFailed', (event: any) => {
+      if (!event?.messageId) return;
+      setMessageDeliveryState(event.messageId, 'failed', event.error || 'delivery_failed');
+    });
+
     return () => {
       unsubSend();
       unsubAck();
+      unsubDelivered();
+      unsubFailed();
     };
-  }, [nostrConnected]);
+  }, [nostrConnected, setMessageDeliveryState]);
 
   // Android/PWA lifecycle mesh tuning: re-scan on wake/resume and network restoration.
   useEffect(() => {
@@ -821,7 +847,7 @@ const App: React.FC = () => {
   }, []);
 
   const [myMood, setMyMood] = useState({ text: 'Connected to the matrix.', emoji: '⚡' });
-  const [myAvatar, setMyAvatar] = useState('https://picsum.photos/seed/me/200');
+  const [myAvatar, setMyAvatar] = useState('/icon-192.png');
   const [myHandle, setMyHandle] = useState('symbolic');
   const [uptime, setUptime] = useState(0);
   const [myLocation, setMyLocation] = useState<{ lat: number, lng: number } | null>(null);
@@ -1201,6 +1227,7 @@ const App: React.FC = () => {
       senderId: 'me',
       senderHandle: myHandle,
       text,
+      deliveryStatus: 'sending',
       imageUrl: options?.imageUrl,
       videoUrl: options?.videoUrl,
       replyTo: options?.replyTo,
@@ -1219,6 +1246,7 @@ const App: React.FC = () => {
         const success = await nostrService.sendDirectMessage(options.nostrRecipient, text);
         if (success) {
           messageACKService.markMessageDelivered(newMessage.id, options.nostrRecipient, 'nostr');
+          setMessageDeliveryState(newMessage.id, 'delivered', 'nostr');
           console.log('📤 Message sent via Nostr to:', options.nostrRecipient);
         }
       } catch (error) {
@@ -1230,7 +1258,9 @@ const App: React.FC = () => {
     if (activeChat?.type === 'room' && !options?.imageUrl && !options?.videoUrl) {
       try {
         await geohashChannels.sendMessage(activeChat.participant.id, text, 'text');
+        setMessageDeliveryState(newMessage.id, 'delivered', 'room');
       } catch (error) {
+        setMessageDeliveryState(newMessage.id, 'failed', 'room_send_failed');
         console.error('Failed to send room message via geohash channels:', error);
       }
     } else {
@@ -1405,7 +1435,7 @@ const App: React.FC = () => {
         setBotStreamState({ active: false, provider: streamProvider });
       }
     }
-  }, [activeChatId, activeChat?.type, activeChat?.participant?.id, myHandle, nostrConnected, nostrPeers]);
+  }, [activeChatId, activeChat?.type, activeChat?.participant?.id, myHandle, nostrConnected, nostrPeers, setMessageDeliveryState]);
 
   const handleDeleteMessage = useCallback((messageId: string) => {
     if (!activeChatId) return;
@@ -1532,7 +1562,7 @@ const App: React.FC = () => {
       id: `node-${handle}`,
       name: handle.substring(1),
       handle: handle,
-      avatar: `https://picsum.photos/seed/${handle}/200`,
+      avatar: '/icon-192.png',
       status: 'Online',
       mood: 'Trading on the BBS.'
     };
@@ -1547,7 +1577,7 @@ const App: React.FC = () => {
       id: `nostr-${peer.id}`,
       name: peer.name || `Nostr User`,
       handle: peer.nip05 || `@${peer.id.substring(0, 8)}`,
-      avatar: peer.picture || `https://picsum.photos/seed/${peer.id}/200`,
+      avatar: peer.picture || '/icon-192.png',
       status: 'Online',
       mood: peer.about || 'Connected via Nostr'
     };
@@ -1722,7 +1752,7 @@ const App: React.FC = () => {
                     >
                       <div className="flex items-center gap-4">
                         <img
-                          src={peer.picture || `https://picsum.photos/seed/${peer.id}/200`}
+                          src={peer.picture || '/icon-192.png'}
                           alt={peer.name || 'Nostr User'}
                           className="w-12 h-12 rounded-full object-cover"
                         />

@@ -59,8 +59,8 @@ class RealtimeRadarService {
     this.setupPresenceIntegration();
     this.setupLifecycleIntegration();
     
-    // Initialize with a default location to prevent null errors
-    this.myCurrentLocation = this.generateRandomLocation();
+    // Real-time only: no synthetic default location.
+    this.myCurrentLocation = null;
     
     // Start TTL-based cleanup
     this.startTtlCleanup();

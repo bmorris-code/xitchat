@@ -113,7 +113,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, userAvatar, tot
           className="w-10 h-10 rounded-full border border-[#004400] flex items-center justify-center overflow-hidden hover:border-[#00ff41] transition-colors"
         >
           <img
-            src={userAvatar || "https://picsum.photos/seed/me/60"}
+            src={userAvatar || "/icon-192.png"}
             className="grayscale opacity-50 hover:opacity-100 transition-opacity w-full h-full object-cover"
             alt="Me"
           />

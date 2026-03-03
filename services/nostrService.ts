@@ -98,6 +98,29 @@ class NostrService {
     return Array.from(this.connectedRelays);
   }
 
+  private isValidHexPubkey(value: string): boolean {
+    return /^[0-9a-f]{64}$/i.test(value);
+  }
+
+  private isValidNpub(value: string): boolean {
+    if (!/^npub1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]+$/i.test(value)) {
+      return false;
+    }
+    try {
+      const decoded = nostrTools.nip19.decode(value);
+      return decoded.type === 'npub' && typeof decoded.data === 'string' && this.isValidHexPubkey(decoded.data);
+    } catch {
+      return false;
+    }
+  }
+
+  isValidRecipientKey(value: string): boolean {
+    if (!value || typeof value !== 'string') return false;
+    if (this.isValidHexPubkey(value)) return true;
+    if (value.startsWith('npub')) return this.isValidNpub(value);
+    return false;
+  }
+
   private async publishToRelay(relayUrl: string, event: any): Promise<boolean> {
     try {
       await Promise.race([
@@ -744,21 +767,25 @@ class NostrService {
 
       // Accept npub and convert to hex pubkey for NIP-04 operations.
       if (recipientPublicKey.startsWith('npub')) {
+        if (!this.isValidNpub(recipientPublicKey)) {
+          console.debug('Skipping malformed npub recipient key');
+          return false;
+        }
         try {
           const decoded = nostrTools.nip19.decode(recipientPublicKey);
           if (decoded.type === 'npub' && typeof decoded.data === 'string') {
             recipientPublicKey = decoded.data;
           }
         } catch (decodeError) {
-          console.error('Failed to decode npub recipient key:', decodeError);
+          console.debug('Skipping recipient; npub decode failed');
           
           return false;
         }
       }
 
       // Validate recipient public key format FIRST
-      if (!recipientPublicKey || typeof recipientPublicKey !== 'string' || recipientPublicKey.length !== 64) {
-        console.error('❌ Invalid recipient public key format');
+      if (!this.isValidHexPubkey(recipientPublicKey)) {
+        console.debug('Skipping recipient; invalid public key format');
         
         return false;
       }

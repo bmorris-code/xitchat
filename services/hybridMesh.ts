@@ -453,11 +453,35 @@ class HybridMeshService {
     }
   }
 
+  private isTransportControlPayload(content: string): boolean {
+    const value = (content || '').trim();
+    if (!value) return true;
+
+    // Internal transport/control payloads should never render in user chat.
+    if (
+      value.startsWith('xitchat-broadcast-v1-') ||
+      value.startsWith('xitchat-wifi:') ||
+      value.startsWith('xitchat-economy-sync:')
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
   private handleMessage(connectionType: MeshConnectionType, message: any) {
     let content = message.content;
     let metadata: any = {};
 
     try {
+      if (typeof content !== 'string') {
+        return;
+      }
+
+      if (this.isTransportControlPayload(content)) {
+        return;
+      }
+
       if (content.startsWith('{')) {
         const parsed = this.tryParseJsonWithRecovery(content);
 

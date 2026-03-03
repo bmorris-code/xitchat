@@ -16,6 +16,18 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
   const [meshStatus, setMeshStatus] = useState({ connected: false, peerCount: 0 });
   const [typingPeers, setTypingPeers] = useState<Set<string>>(new Set());
 
+  const sanitizePreview = (text: string): string => {
+    const value = (text || '').trim();
+    if (
+      value.startsWith('xitchat-broadcast-v1-') ||
+      value.startsWith('xitchat-wifi:') ||
+      value.startsWith('xitchat-economy-sync:')
+    ) {
+      return 'signal_packet_hidden';
+    }
+    return text;
+  };
+
   useEffect(() => {
     const updateMeshStatus = () => {
       const info = hybridMesh.getConnectionInfo();
@@ -112,7 +124,7 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
                 </div>
                 <p className={`text-[11px] truncate mt-0.5 transition-colors ${isTyping ? 'text-[#00ff41] italic' : 'text-[#006600] group-hover:text-[#00aa22]'
                   }`}>
-                  &gt; {isTyping ? 'typing...' : chat.lastMessage}
+                  &gt; {isTyping ? 'typing...' : sanitizePreview(chat.lastMessage)}
                 </p>
               </div>
             </button>
