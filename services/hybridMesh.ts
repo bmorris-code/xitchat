@@ -332,7 +332,9 @@ class HybridMeshService {
     this.peers.set(peerId, hybridPeer);
 
     // CRITICAL: Add discovered peer to presence beacon for radar visibility
-    this.addPeerToPresenceBeacon(hybridPeer, type);
+    if (hybridPeer.isConnected) {
+      this.addPeerToPresenceBeacon(hybridPeer, type);
+    }
   }
 
   private addPeerToPresenceBeacon(peer: HybridMeshPeer, connectionType: MeshConnectionType): void {

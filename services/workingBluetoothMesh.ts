@@ -35,10 +35,12 @@ export interface WorkingMeshNode {
   distance: number;
   lastSeen: number;
   signalStrength: number;
+  isConnected: boolean;
 }
 
 class WorkingBluetoothMeshService {
   private peers: Map<string, WorkingMeshNode> = new Map();
+  private nativeConnectedDeviceIds: Set<string> = new Set();
   private isConnected = false;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private myDevice: BluetoothDevice | null = null;
@@ -68,6 +70,14 @@ class WorkingBluetoothMeshService {
 
     BluetoothMesh.addListener('deviceDiscovered', (event: any) => {
       this.handleNativeDiscoveredDevice(event);
+    }).catch(() => {});
+
+    BluetoothMesh.addListener('deviceConnected', (event: any) => {
+      this.handleNativeConnectionState(event, true);
+    }).catch(() => {});
+
+    BluetoothMesh.addListener('deviceDisconnected', (event: any) => {
+      this.handleNativeConnectionState(event, false);
     }).catch(() => {});
 
     BluetoothMesh.addListener('messageReceived', (event: any) => {
@@ -152,7 +162,8 @@ class WorkingBluetoothMeshService {
         device: null,
         distance,
         lastSeen: Date.now(),
-        signalStrength: signal
+        signalStrength: signal,
+        isConnected: this.nativeConnectedDeviceIds.has(deviceId)
       };
 
       this.peers.set(deviceId, peer);
@@ -161,8 +172,40 @@ class WorkingBluetoothMeshService {
       existingPeer.lastSeen = Date.now();
       existingPeer.distance = distance;
       existingPeer.signalStrength = signal;
+      existingPeer.isConnected = this.nativeConnectedDeviceIds.has(deviceId);
       this.emit('peersUpdated', Array.from(this.peers.values()));
     }
+  }
+
+  private handleNativeConnectionState(event: any, connected: boolean): void {
+    const deviceId = event?.deviceId;
+    if (!deviceId) return;
+
+    if (connected) {
+      this.nativeConnectedDeviceIds.add(deviceId);
+    } else {
+      this.nativeConnectedDeviceIds.delete(deviceId);
+    }
+
+    const existingPeer = this.peers.get(deviceId);
+    if (existingPeer) {
+      existingPeer.isConnected = connected;
+      existingPeer.lastSeen = Date.now();
+    } else {
+      const name = event.deviceName || `Device ${deviceId.substring(0, 4)}`;
+      this.peers.set(deviceId, {
+        id: deviceId,
+        name,
+        handle: `@${name.replace(/\s+/g, '').toLowerCase()}`,
+        device: null,
+        distance: 5,
+        lastSeen: Date.now(),
+        signalStrength: 50,
+        isConnected: connected
+      });
+    }
+
+    this.emit('peersUpdated', Array.from(this.peers.values()));
   }
 
   async startScanning(): Promise<boolean> {
@@ -249,7 +292,8 @@ class WorkingBluetoothMeshService {
         device,
         distance,
         lastSeen: Date.now(),
-        signalStrength: signal
+        signalStrength: signal,
+        isConnected: !!device.gatt?.connected
       };
 
       this.peers.set(deviceId, peer);
@@ -258,6 +302,7 @@ class WorkingBluetoothMeshService {
       existingPeer.lastSeen = Date.now();
       existingPeer.distance = distance;
       existingPeer.signalStrength = signal;
+      existingPeer.isConnected = !!device.gatt?.connected;
       this.emit('peersUpdated', Array.from(this.peers.values()));
     }
   }
@@ -284,6 +329,7 @@ class WorkingBluetoothMeshService {
     if (!peer) return false;
 
     if ((window as any).Capacitor?.isNativePlatform()) {
+      if (!peer.isConnected) return false;
       try {
         const BluetoothMesh = this.nativeBluetoothPlugin || (await import('@capacitor/core')).registerPlugin<any>('BluetoothMesh');
         this.nativeBluetoothPlugin = BluetoothMesh;
@@ -319,7 +365,7 @@ class WorkingBluetoothMeshService {
   }
 
   isConnectedToMesh(): boolean {
-    return this.isConnected && this.peers.size > 0;
+    return this.isConnected && Array.from(this.peers.values()).some(peer => peer.isConnected);
   }
 
   private emit(event: string, data?: any): void {
@@ -351,6 +397,7 @@ class WorkingBluetoothMeshService {
 
     this.isConnected = false;
     this.nativeTransportStarted = false;
+    this.nativeConnectedDeviceIds.clear();
     this.peers.clear();
     this.emit('disconnected', {});
     networkStateManager.updateServiceStatus('bluetoothMesh', false, false);
