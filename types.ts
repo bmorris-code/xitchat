@@ -40,6 +40,8 @@ export interface Message {
   senderId: string;
   senderHandle?: string;
   text: string;
+  deliveryStatus?: 'sending' | 'delivered' | 'failed';
+  deliveryDetail?: string;
   imageUrl?: string;
   videoUrl?: string;
   replyTo?: {
