@@ -1222,8 +1222,9 @@ const App: React.FC = () => {
 
   const handleSendMessage = useCallback(async (text: string, options?: { imageUrl?: string; videoUrl?: string; replyTo?: Message['replyTo'], nostrRecipient?: string, encryptedData?: any }) => {
     if (!activeChatId) return;
+    const isXitBotHandle = normalizePeerToken(activeChat?.participant?.handle) === 'xitbot';
     const isLocalXitBotChat =
-      activeChat?.participant.id === 'xit-bot' &&
+      (activeChat?.participant.id === 'xit-bot' || isXitBotHandle) &&
       !options?.imageUrl &&
       !options?.videoUrl;
     const newMessage: Message = {
@@ -1376,7 +1377,7 @@ const App: React.FC = () => {
     });
     }
 
-    if (activeChat?.participant.id === 'xit-bot' && !options?.imageUrl && !options?.videoUrl) {
+    if (isLocalXitBotChat) {
       const targetChatId = activeChatId;
       if (!targetChatId) return;
 
