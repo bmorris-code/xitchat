@@ -1222,6 +1222,10 @@ const App: React.FC = () => {
 
   const handleSendMessage = useCallback(async (text: string, options?: { imageUrl?: string; videoUrl?: string; replyTo?: Message['replyTo'], nostrRecipient?: string, encryptedData?: any }) => {
     if (!activeChatId) return;
+    const isLocalXitBotChat =
+      activeChat?.participant.id === 'xit-bot' &&
+      !options?.imageUrl &&
+      !options?.videoUrl;
     const newMessage: Message = {
       id: Math.random().toString(36).substr(2, 9),
       senderId: 'me',
@@ -1239,6 +1243,10 @@ const App: React.FC = () => {
 
     setChats(prev => prev.map(c => (c.id === activeChatId ? { ...c, lastMessage: lastMsgPreview, messages: [...c.messages, newMessage] } : c)));
 
+    if (isLocalXitBotChat) {
+      // Local AI chat does not rely on mesh ACK delivery.
+      setMessageDeliveryState(newMessage.id, 'delivered', 'ai_local');
+    } else {
     // Send via Nostr if recipient is a Nostr user
     if (options?.nostrRecipient && nostrConnected) {
       try {
@@ -1366,6 +1374,7 @@ const App: React.FC = () => {
       message: compactMessage,
       participant: compactParticipant
     });
+    }
 
     if (activeChat?.participant.id === 'xit-bot' && !options?.imageUrl && !options?.videoUrl) {
       const targetChatId = activeChatId;
