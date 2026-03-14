@@ -85,7 +85,11 @@ window.addEventListener('unhandledrejection', (event) => {
     reason.includes('noting too much') ||
     reason.includes('publish timed out') ||
     reason.includes('connection timed out') ||
-    reason.includes('timeout')
+    reason.includes('timeout') ||
+    reason.includes('ERR_NAME_NOT_RESOLVED') ||
+    reason.includes('WebSocket connection to') ||
+    reason.includes('establishment: net::') ||
+    reason.includes('response code: 502')
   ) {
     // Silence these specific errors as they are expected during high load
     event.preventDefault();

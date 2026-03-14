@@ -62,11 +62,11 @@ class NostrService {
   };
 
   private readonly defaultRelays = [
-    'wss://relay.nostr.bg',
-    'wss://nostr.mom',
-    'wss://relay.orangepill.dev',
-    'wss://nostr21.com',
-    'wss://relay.nostrati.com'
+    'wss://relay.damus.io',
+    'wss://nos.lol',
+    'wss://relay.snort.social',
+    'wss://relay.primal.net',
+    'wss://nostr.bitcoiner.social'
   ];
 
   private readonly PRESENCE_KIND = 30315;
@@ -136,6 +136,12 @@ class NostrService {
       await this.subscribeToEvents();
       await this.subscribeToPresenceEvents();
 
+      this.serviceInfo.healthCheck = async () => this.isConnected();
+      this.serviceInfo.reconnect = async () => {
+        this.isInitialized = false;
+        return await this.initialize();
+      };
+      
       networkStateManager.registerService(this.serviceInfo);
       this.isInitialized = true;
       this.serviceInfo.isConnected = true;
@@ -153,14 +159,27 @@ class NostrService {
   }
 
   private async connectToRelays(): Promise<void> {
-    for (const relayUrl of this.defaultRelays) {
+    this.connectedRelays.clear();
+    this.failedRelays.clear();
+    
+    const connectionPromises = this.defaultRelays.map(async (relayUrl) => {
       try {
-        await this.pool!.ensureRelay(relayUrl);
+        // SimplePool.ensureRelay can fail or hang if the relay is down
+        // We wrap it in a timeout and catch all errors
+        const relayPromise = this.pool!.ensureRelay(relayUrl);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Connection timeout')), 8000)
+        );
+
+        await Promise.race([relayPromise, timeoutPromise]);
         this.connectedRelays.add(relayUrl);
-      } catch {
+      } catch (error) {
         this.failedRelays.add(relayUrl);
+        console.debug(`📡 Relay connection failed: ${relayUrl}`, error);
       }
-    }
+    });
+
+    await Promise.allSettled(connectionPromises);
   }
 
   private async loadUserProfile(): Promise<void> {
