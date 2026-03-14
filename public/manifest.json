@@ -52,23 +52,6 @@
       "purpose": "any maskable"
     }
   ],
-  "splash_pages": {
-  "640x1136": "/splash-640x1136.png",
-  "750x1334": "/splash-750x1334.png",
-  "828x1792": "/splash-828x1792.png",
-  "1125x2436": "/splash-1125x2436.png",
-  "1242x2208": "/splash-1242x2208.png",
-  "1242x2688": "/splash-1242x2688.png",
-  "1536x2048": "/splash-1536x2048.png",
-  "1668x2224": "/splash-1668x2224.png",
-  "1792x828": "/splash-1792x828.png",
-  "2048x1536": "/splash-2048x1536.png",
-  "2048x2732": "/splash-2048x2732.png",
-  "2208x1242": "/splash-2208x1242.png",
-  "2436x1125": "/splash-2436x1125.png",
-  "2688x1242": "/splash-2688x1242.png",
-  "2732x2048": "/splash-2732x2048.png"
-},
   "categories": ["social", "communication", "utilities"],
   "lang": "en",
   "dir": "ltr",

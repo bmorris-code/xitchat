@@ -43,27 +43,6 @@ if (import.meta.env.DEV) {
     originalWarn.apply(console, args);
   };
 
-  // Handle unhandled promise rejections (especially Nostr rate limits)
-  window.addEventListener('unhandledrejection', (event) => {
-    const message = event.reason?.message || event.reason || '';
-
-    // Handle Nostr rate limit errors gracefully
-    if (
-      message.includes('rate-limited') ||
-      message.includes('slow down') ||
-      message.includes('pow:') ||
-      message.includes('bits needed') ||
-      message.includes('connection timed out') ||
-      message.includes('publish timed out') ||
-      message.includes('timeout')
-    ) {
-      event.preventDefault(); // Prevent the error from showing in console
-      return;
-    }
-
-    // Log other unhandled rejections
-    console.error('Unhandled promise rejection:', event.reason);
-  });
 }
 
 // Import the PWA register function (Required for offline mode)
@@ -124,28 +103,7 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Test with a minimal version of App to isolate the issue
-const MinimalApp = () => {
-  console.log('MinimalApp component rendering...');
-
-  return (
-    <div style={{ padding: '20px', color: 'black', fontFamily: 'monospace', backgroundColor: 'yellow', minHeight: '100vh' }}>
-      <h1>XitChat</h1>
-      <p>Minimal version is working!</p>
-      <div style={{ marginTop: '20px' }}>
-        <button style={{
-          background: 'transparent',
-          border: '1px solid #00ff41',
-          color: '#00ff41',
-          padding: '8px 16px',
-          cursor: 'pointer'
-        }}>
-          Test Button
-        </button>
-      </div>
-    </div>
-  );
-};
+// MinimalApp removed
 
 try {
   console.log('Creating React root...');

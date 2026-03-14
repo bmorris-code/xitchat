@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>H60 Android Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Courier New', monospace; }
+        .terminal { background: #000; color: #00ff41; }
+        .glow { text-shadow: 0 0 10px #00ff41; }
+        .pulse { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-black text-green-400 p-4">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6 glow">📱 H60 Android Connected Test</h1>
+        
+        <div class="mb-6 p-4 border border-green-400/30">
+            <h2 class="text-lg font-bold mb-3">Device Status</h2>
+            <div id="deviceStatus" class="text-xs font-mono space-y-2"></div>
+        </div>
+
+        <div class="mb-6 p-4 border border-green-400/30">
+            <h2 class="text-lg font-bold mb-3">Network Test</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <button onclick="testConnection()" class="px-4 py-2 bg-green-400/20 border border-green-400 text-green-400 hover:bg-green-400/30">
+                    Test Connection
+                </button>
+                <button onclick="testWebRTC()" class="px-4 py-2 bg-blue-400/20 border border-blue-400 text-blue-400 hover:bg-blue-400/30">
+                    Test WebRTC
+                </button>
+            </div>
+            <div id="networkStatus" class="mt-3 text-xs font-mono"></div>
+        </div>
+
+        <div class="mb-6 p-4 border border-green-400/30">
+            <h2 class="text-lg font-bold mb-3">Real-time Chat Test</h2>
+            <div class="space-y-3">
+                <input type="text" id="testMessage" placeholder="Enter test message..." class="w-full bg-black border border-green-400/50 p-2 text-xs">
+                <button onclick="sendTestMessage()" class="px-4 py-2 bg-cyan-400/20 border border-cyan-400 text-cyan-400 hover:bg-cyan-400/30">
+                    Send Test Message
+                </button>
+            </div>
+            <div id="chatStatus" class="mt-3 text-xs font-mono"></div>
+        </div>
+
+        <div class="mb-6 p-4 border border-green-400/30">
+            <h2 class="text-lg font-bold mb-3">Test Log</h2>
+            <div id="log" class="text-xs font-mono h-64 overflow-y-auto bg-black/50 p-3 border border-green-400/20"></div>
+        </div>
+    </div>
+
+    <script>
+        let testWebSocket = null;
+        let deviceInfo = {};
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'text-red-400' : type === 'success' ? 'text-green-400' : 'text-cyan-400';
+            logDiv.innerHTML += `<div class="${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateDeviceStatus() {
+            deviceInfo = {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                vendor: navigator.vendor,
+                isAndroid: /Android/i.test(navigator.userAgent),
+                isMobile: /Mobi|Android/i.test(navigator.userAgent),
+                screenWidth: screen.width,
+                screenHeight: screen.height,
+                pixelRatio: window.devicePixelRatio,
+                language: navigator.language,
+                onLine: navigator.onLine,
+                connection: navigator.connection || navigator.mozConnection || navigator.webkitConnection
+            };
+
+            const statusDiv = document.getElementById('deviceStatus');
+            statusDiv.innerHTML = `
+                <div><strong>Device:</strong> ${deviceInfo.userAgent.split(' ').slice(-2).join(' ')}</div>
+                <div><strong>Platform:</strong> ${deviceInfo.platform}</div>
+                <div><strong>Mobile:</strong> ${deviceInfo.isMobile ? '✅' : '❌'}</div>
+                <div><strong>Android:</strong> ${deviceInfo.isAndroid ? '✅' : '❌'}</div>
+                <div><strong>Screen:</strong> ${deviceInfo.screenWidth}x${deviceInfo.screenHeight} (${deviceInfo.pixelRatio}x)</div>
+                <div><strong>Online:</strong> ${deviceInfo.onLine ? '✅' : '❌'}</div>
+                <div><strong>Language:</strong> ${deviceInfo.language}</div>
+                ${deviceInfo.connection ? `<div><strong>Connection:</strong> ${deviceInfo.connection.effectiveType || 'Unknown'}</div>` : ''}
+            `;
+
+            // Check if it's H60
+            if (navigator.userAgent.includes('H60') || navigator.userAgent.includes('Hisense')) {
+                log('📱 H60 device detected!', 'success');
+                statusDiv.innerHTML += `<div class="text-yellow-400 mt-2"><strong>⚠️ H60 Specific:</strong> Huawei device detected</div>`;
+            }
+        }
+
+        async function testConnection() {
+            log('🔍 Testing network connection...', 'info');
+            const statusDiv = document.getElementById('networkStatus');
+            
+            try {
+                // Test server connectivity
+                const response = await fetch('/api/health', { 
+                    method: 'GET',
+                    timeout: 5000 
+                });
+                log(`✅ Server connection successful (${response.status})`, 'success');
+                statusDiv.innerHTML = '<div class="text-green-400">✅ Server connected</div>';
+            } catch (error) {
+                log(`❌ Server connection failed: ${error.message}`, 'error');
+                statusDiv.innerHTML = '<div class="text-red-400">❌ Server connection failed</div>';
+            }
+
+            // Test WebSocket connectivity
+            try {
+                // Try different WebSocket endpoints
+                const wsEndpoints = [
+                    'ws://192.168.18.3:3001',
+                    'ws://192.168.18.3:8443',
+                    'ws://localhost:3001',
+                    'ws://localhost:8443'
+                ];
+                
+                let wsConnected = false;
+                for (const endpoint of wsEndpoints) {
+                    try {
+                        log(`🔍 Trying WebSocket: ${endpoint}`, 'info');
+                        testWebSocket = new WebSocket(endpoint);
+                        
+                        testWebSocket.onopen = () => {
+                            log(`✅ WebSocket connected to ${endpoint}`, 'success');
+                            statusDiv.innerHTML += `<div class="text-green-400">✅ WebSocket connected to ${endpoint}</div>`;
+                            wsConnected = true;
+                        };
+                        
+                        testWebSocket.onerror = (error) => {
+                            log(`❌ WebSocket error on ${endpoint}`, 'error');
+                            if (!wsConnected) {
+                                statusDiv.innerHTML += `<div class="text-red-400">❌ WebSocket failed on ${endpoint}</div>`;
+                            }
+                        };
+                        
+                        testWebSocket.onclose = (event) => {
+                            log(`🔌 WebSocket closed: ${event.code} - ${event.reason}`, 'error');
+                        };
+                        
+                        // Wait for connection or timeout
+                        await new Promise((resolve) => {
+                            const timeout = setTimeout(() => {
+                                if (!wsConnected) {
+                                    testWebSocket.close();
+                                }
+                                resolve();
+                            }, 3000);
+                            
+                            testWebSocket.onopen = () => {
+                                clearTimeout(timeout);
+                                resolve();
+                            };
+                            
+                            testWebSocket.onerror = () => {
+                                clearTimeout(timeout);
+                                resolve();
+                            };
+                        });
+                        
+                        if (wsConnected) break;
+                        
+                    } catch (wsError) {
+                        log(`❌ WebSocket creation failed on ${endpoint}: ${wsError.message}`, 'error');
+                    }
+                }
+                
+                if (!wsConnected) {
+                    log('❌ All WebSocket endpoints failed', 'error');
+                    statusDiv.innerHTML += '<div class="text-red-400">❌ No WebSocket endpoints available</div>';
+                }
+            } catch (error) {
+                log(`❌ WebSocket test failed: ${error.message}`, 'error');
+                statusDiv.innerHTML += '<div class="text-red-400">❌ WebSocket test failed</div>';
+            }
+        }
+
+        async function testWebRTC() {
+            log('🔍 Testing WebRTC capabilities...', 'info');
+            
+            if (!('RTCPeerConnection' in window)) {
+                log('❌ WebRTC not supported', 'error');
+                return;
+            }
+
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+
+                // Test camera access
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: true, 
+                        audio: false 
+                    });
+                    log('✅ Camera access granted', 'success');
+                    stream.getTracks().forEach(track => track.stop());
+                } catch (error) {
+                    log(`⚠️ Camera access denied: ${error.name}`, 'error');
+                }
+
+                // Test microphone access
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: false, 
+                        audio: true 
+                    });
+                    log('✅ Microphone access granted', 'success');
+                    stream.getTracks().forEach(track => track.stop());
+                } catch (error) {
+                    log(`⚠️ Microphone access denied: ${error.name}`, 'error');
+                }
+
+                pc.close();
+                log('✅ WebRTC capabilities verified', 'success');
+            } catch (error) {
+                log(`❌ WebRTC test failed: ${error.message}`, 'error');
+            }
+        }
+
+        function sendTestMessage() {
+            const message = document.getElementById('testMessage').value;
+            if (!message) {
+                log('❌ Please enter a message', 'error');
+                return;
+            }
+
+            log(`📤 Sending test message: "${message}"`, 'info');
+            
+            if (testWebSocket && testWebSocket.readyState === WebSocket.OPEN) {
+                const data = {
+                    type: 'test_message',
+                    text: message,
+                    deviceId: 'h60-android-test',
+                    timestamp: Date.now()
+                };
+                testWebSocket.send(JSON.stringify(data));
+                log('✅ Message sent via WebSocket', 'success');
+                document.getElementById('chatStatus').innerHTML = '<div class="text-green-400">✅ Message sent</div>';
+            } else {
+                log('❌ WebSocket not connected', 'error');
+                document.getElementById('chatStatus').innerHTML = '<div class="text-red-400">❌ WebSocket not connected</div>';
+            }
+
+            document.getElementById('testMessage').value = '';
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            log('🚀 H60 Android Test Initialized', 'success');
+            updateDeviceStatus();
+            
+            // Test basic connectivity
+            setTimeout(() => {
+                testConnection();
+            }, 1000);
+        });
+
+        // Monitor connection changes
+        window.addEventListener('online', () => {
+            log('🌐 Network connection restored', 'success');
+            updateDeviceStatus();
+        });
+
+        window.addEventListener('offline', () => {
+            log('📵 Network connection lost', 'error');
+            updateDeviceStatus();
+        });
+    </script>
+</body>
+</html>

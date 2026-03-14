@@ -350,14 +350,8 @@ class WorkingBluetoothMeshService {
       return false;
     }
 
-    try {
-      if (peer.device.gatt.connected) {
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
+    console.debug('Web Bluetooth send not supported; using mesh fallback');
+    return false;
   }
 
   getPeers(): WorkingMeshNode[] {

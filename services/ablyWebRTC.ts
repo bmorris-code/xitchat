@@ -1,5 +1,6 @@
 // XitChat Hybrid Mesh WebRTC - Production Ready
 import * as Ably from 'ably';
+import { ICE_SERVERS } from './iceConfig';
 
 export interface AblyWebRTCPeer {
   id: string;
@@ -82,7 +83,7 @@ export class HybridMeshWebRTC {
     if (!this.myPeerId) return;
 
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: ICE_SERVERS
     });
 
     const dc = pc.createDataChannel('messages', { ordered: true });
@@ -123,7 +124,7 @@ export class HybridMeshWebRTC {
   private async connectToPeer(peerId: string) {
     if (!this.myPeerId || this.peers.has(peerId)) return;
 
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     const dc = pc.createDataChannel('messages', { ordered: true });
     this.setupDataChannel(dc, peerId);
 
@@ -163,7 +164,7 @@ export class HybridMeshWebRTC {
     let peer: AblyWebRTCPeer;
 
     if (!this.peers.has(data.fromPeerId)) {
-      pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+      pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
       pc.ondatachannel = (event) => this.setupDataChannel(event.channel, data.fromPeerId);
 
       pc.onicecandidate = async (event) => {

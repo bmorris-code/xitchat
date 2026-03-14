@@ -85,7 +85,7 @@ class SOSService {
         }
 
         const location = geohashChannels.getCurrentLocation();
-        const geohash = location?.geohash || 'unknown';
+        const geohash = location?.geohash || 'unknown'; // test edit on sosService.ts
 
         const sos: SOSPayload = {
             id: `sos-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,

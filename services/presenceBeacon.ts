@@ -315,7 +315,7 @@ class PresenceBeaconService {
       // Get user info from localStorage if not provided
       const name = userInfo?.name || localStorage.getItem('xitchat_name') || 'Anonymous';
       const handle = userInfo?.handle || localStorage.getItem('xitchat_handle') || 'anon';
-      const pubkey = localStorage.getItem('xitchat_pubkey') || this.generatePubkey();
+      const pubkey = (nostrService as any).getPublicKey() || localStorage.getItem('xitchat_pubkey') || this.generatePubkey();
 
       // Create my presence record according to spec
       this.myPresence = {
@@ -641,9 +641,11 @@ class PresenceBeaconService {
   }
 
   private generatePubkey(): string {
-    // Generate a simple pubkey for demo purposes
-    // In a real implementation, this would use proper cryptographic key generation
-    return 'npub1' + Math.random().toString(36).substr(2, 58);
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem('xitchat_pubkey', hex);
+    return hex;
   }
 
   private cleanupExpiredPeers(): void {

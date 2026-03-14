@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>H60 Local300 Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Courier New', monospace; }
+        .terminal { background: #000; color: #00ff41; }
+        .glow { text-shadow: 0 0 10px #00ff41; }
+    </style>
+</head>
+<body class="bg-black text-green-400 p-4">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6 glow">H60 Local300 Real-time Chat Test</h1>
+        
+        <div class="mb-6 p-4 border border-green-400/30">
+            <h2 class="text-lg font-bold mb-3">Device Diagnostic</h2>
+            <div id="diagnostic" class="text-xs font-mono"></div>
+            <button onclick="runDiagnostic()" class="mt-3 px-4 py-2 bg-green-400/20 border border-green-400 text-green-400 hover:bg-green-400/30">
+                Run H60 Diagnostic
+            </button>
+        </div>
+
+        <div class="mb-6 p-4 border border-green-400/30">
+            <h2 class="text-lg font-bold mb-3">Real-time Room Test</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs mb-2">Room ID:</label>
+                    <input type="text" id="roomId" value="test-room-h60" class="w-full bg-black border border-green-400/50 p-2 text-xs">
+                </div>
+                <div>
+                    <label class="block text-xs mb-2">Message:</label>
+                    <input type="text" id="message" placeholder="Enter test message..." class="w-full bg-black border border-green-400/50 p-2 text-xs">
+                </div>
+            </div>
+            <div class="mt-3 flex gap-2">
+                <button onclick="joinRoom()" class="px-4 py-2 bg-green-400/20 border border-green-400 text-green-400 hover:bg-green-400/30">
+                    Join Room
+                </button>
+                <button onclick="sendMessage()" class="px-4 py-2 bg-green-400/20 border border-green-400 text-green-400 hover:bg-green-400/30">
+                    Send Message
+                </button>
+                <button onclick="createLocal300Room()" class="px-4 py-2 bg-cyan-400/20 border border-cyan-400 text-cyan-400 hover:bg-cyan-400/30">
+                    Create Local300 Room
+                </button>
+            </div>
+        </div>
+
+        <div class="mb-6 p-4 border border-green-400/30">
+            <h2 class="text-lg font-bold mb-3">Test Log</h2>
+            <div id="log" class="text-xs font-mono h-64 overflow-y-auto bg-black/50 p-3 border border-green-400/20"></div>
+        </div>
+    </div>
+
+    <script>
+        // Mock H60 User Agent for testing
+        const originalUserAgent = navigator.userAgent;
+        Object.defineProperty(navigator, 'userAgent', {
+            get: function() { return originalUserAgent + ' H60'; }
+        });
+
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'text-red-400' : type === 'success' ? 'text-green-400' : 'text-cyan-400';
+            logDiv.innerHTML += `<div class="${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        async function runDiagnostic() {
+            log('🔍 Running H60 device diagnostic...', 'info');
+            
+            // Simulate device diagnostic
+            const diagnostic = {
+                deviceInfo: {
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                    model: 'H60',
+                    manufacturer: 'Huawei'
+                },
+                capabilities: {
+                    bluetooth: 'bluetooth' in navigator,
+                    webrtc: 'RTCPeerConnection' in window,
+                    geolocation: 'geolocation' in navigator,
+                    camera: 'mediaDevices' in navigator,
+                    vibration: 'vibrate' in navigator
+                },
+                networkInfo: {
+                    online: navigator.onLine,
+                    connection: navigator.connection || 'unknown'
+                }
+            };
+
+            const diagnosticDiv = document.getElementById('diagnostic');
+            diagnosticDiv.innerHTML = `
+                <div class="space-y-2">
+                    <div><strong>Device:</strong> ${diagnostic.deviceInfo.model} (${diagnostic.deviceInfo.manufacturer})</div>
+                    <div><strong>Platform:</strong> ${diagnostic.deviceInfo.platform}</div>
+                    <div><strong>WebRTC:</strong> ${diagnostic.capabilities.webrtc ? '✅' : '❌'}</div>
+                    <div><strong>Bluetooth:</strong> ${diagnostic.capabilities.bluetooth ? '✅' : '❌'}</div>
+                    <div><strong>Geolocation:</strong> ${diagnostic.capabilities.geolocation ? '✅' : '❌'}</div>
+                    <div><strong>Camera:</strong> ${diagnostic.capabilities.camera ? '✅' : '❌'}</div>
+                    <div><strong>Online:</strong> ${diagnostic.networkInfo.online ? '✅' : '❌'}</div>
+                </div>
+            `;
+
+            // H60 specific checks
+            if (diagnostic.deviceInfo.model === 'H60') {
+                log('⚠️  H60 detected - checking for Huawei-specific issues...', 'info');
+                log('📋 H60 Recommendations:', 'info');
+                log('  - Enable "Install unknown apps" permission', 'info');
+                log('  - Disable battery optimization for XitChat', 'info');
+                log('  - Enable location services (High accuracy)', 'info');
+                log('  - Grant all permissions when prompted', 'info');
+            }
+
+            if (!diagnostic.capabilities.webrtc) {
+                log('❌ WebRTC not supported - P2P connections unavailable', 'error');
+            } else {
+                log('✅ WebRTC supported - P2P connections available', 'success');
+            }
+
+            log('🔍 Diagnostic complete', 'success');
+        }
+
+        // Mock WebSocket for testing
+        let mockWebSocket = null;
+        let currentRoom = null;
+
+        function joinRoom() {
+            const roomId = document.getElementById('roomId').value;
+            if (!roomId) {
+                log('❌ Please enter a room ID', 'error');
+                return;
+            }
+
+            log(`🏠 Joining room: ${roomId}`, 'info');
+            currentRoom = roomId;
+
+            // Simulate WebSocket connection
+            mockWebSocket = {
+                readyState: 1, // OPEN
+                send: (data) => {
+                    const message = JSON.parse(data);
+                    log(`📤 Sent to ${roomId}: ${message.text}`, 'success');
+                    // Simulate echo
+                    setTimeout(() => {
+                        log(`📥 Received in ${roomId}: ${message.text} (echo)`, 'info');
+                    }, 100);
+                }
+            };
+
+            log(`✅ Successfully joined room: ${roomId}`, 'success');
+        }
+
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            if (!message) {
+                log('❌ Please enter a message', 'error');
+                return;
+            }
+
+            if (!mockWebSocket || !currentRoom) {
+                log('❌ Please join a room first', 'error');
+                return;
+            }
+
+            const data = {
+                type: 'message',
+                roomId: currentRoom,
+                text: message,
+                senderId: 'h60-test-device',
+                timestamp: Date.now()
+            };
+
+            mockWebSocket.send(JSON.stringify(data));
+            document.getElementById('message').value = '';
+        }
+
+        function createLocal300Room() {
+            const roomId = `local300-${Date.now()}`;
+            log(`🏗️  Creating Local300 room: ${roomId}`, 'info');
+            
+            // Simulate room creation
+            setTimeout(() => {
+                log(`✅ Local300 room created: ${roomId}`, 'success');
+                log(`🌐 Room is now available for local discovery`, 'info');
+                document.getElementById('roomId').value = roomId;
+            }, 500);
+        }
+
+        // Auto-run diagnostic on load
+        window.addEventListener('load', () => {
+            log('🚀 H60 Local300 Test Suite Initialized', 'success');
+            log('📱 Simulating H60 device environment...', 'info');
+            runDiagnostic();
+        });
+    </script>
+</body>
+</html>

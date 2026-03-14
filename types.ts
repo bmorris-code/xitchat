@@ -68,6 +68,7 @@ export interface Chat {
   unreadCount: number;
   messages: Message[];
   isEncrypted?: boolean;
+  isTyping?: boolean;
 }
 
 export type View = 'chats' | 'map' | 'apps' | 'tradepost' | 'joebanker' | 'buzz' | 'gallery' | 'rooms' | 'games' | 'profile' | 'settings' | 'marketplace' | 'native' | 'xc_dashboard';

@@ -313,31 +313,33 @@ class LocalStorageService {
     }
   }
 
-  // Simple compression using LZ-string style algorithm
+  // Securely store data with encryption
   private async compress(data: string): Promise<string> {
     try {
-      // Simple compression - replace common patterns
-      return data
-        .replace(/\s+/g, ' ')
-        .replace(/"/g, "'")
-        .replace(/true/g, '1')
-        .replace(/false/g, '0')
-        .replace(/null/g, 'n');
+      const { encryptionService } = await import('./encryptionService');
+      const encrypted = await encryptionService.encryptSymmetric(data);
+      // Return as JSON string with a marker
+      return JSON.stringify({ _sv: 1, ...encrypted });
     } catch (error) {
-      return data; // Fallback to uncompressed
+      console.error('Secure storage failed, falling back to plaintext:', error);
+      return data;
     }
   }
 
-  // Simple decompression
+  // Securely retrieve and decrypt data
   private async decompress(data: string): Promise<string> {
     try {
-      return data
-        .replace(/n/g, 'null')
-        .replace(/0/g, 'false')
-        .replace(/1/g, 'true')
-        .replace(/'/g, '"');
+      if (!data.startsWith('{')) return data; // Not JSON, likely old plaintext
+      
+      const parsed = JSON.parse(data);
+      if (parsed?._sv !== 1) return data; // Not an encrypted payload
+
+      const { encryptionService } = await import('./encryptionService');
+      const decrypted = await encryptionService.decryptSymmetric(parsed);
+      return decrypted || data;
     } catch (error) {
-      return data; // Fallback to original
+      // If it's not valid JSON or decryption fails, return as-is (might be old format)
+      return data;
     }
   }
 

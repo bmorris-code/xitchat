@@ -3,6 +3,7 @@
 
 import { nostrService } from './nostrService';
 import { networkStateManager, NetworkService } from './networkStateManager';
+import { ICE_SERVERS } from './iceConfig';
 
 export interface WiFiPeer {
   id: string;
@@ -57,9 +58,12 @@ class WiFiP2PService {
     return `Peer ${(source.slice(0, 8) || 'peer')}`;
   }
 
+  private pendingCandidates: Map<string, RTCIceCandidate[]> = new Map();
+
   constructor() {
     this.myPeerId = this.generatePeerId();
-    this.broadcastChannel = new BroadcastChannel('xitchat-wifi');
+    if (typeof BroadcastChannel !== 'undefined') {
+      this.broadcastChannel = new BroadcastChannel('xitchat-wifi');
 
     this.broadcastChannel.onmessage = (event) => {
       try {
@@ -69,6 +73,9 @@ class WiFiP2PService {
         console.error('Failed to parse WiFi message:', error);
       }
     };
+    } else {
+      this.broadcastChannel = null as any;
+    }
 
     this.setupNostrSignaling();
   }
@@ -284,6 +291,12 @@ class WiFiP2PService {
     await pc.setLocalDescription(answer);
 
     this.sendSignal(message.from, 'webrtc-answer', JSON.stringify({ answer }));
+
+    const queued = this.pendingCandidates.get(message.from) || [];
+    for (const c of queued) {
+      await pc.addIceCandidate(c).catch(() => {});
+    }
+    this.pendingCandidates.delete(message.from);
   }
 
   private async handleWebRTCAnswer(message: WiFiMessage): Promise<void> {
@@ -292,18 +305,30 @@ class WiFiP2PService {
       const answer = JSON.parse(message.content).answer;
       await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
       console.log(`✅ WebRTC answer applied for ${message.from}`);
+
+      const queued = this.pendingCandidates.get(message.from) || [];
+      for (const c of queued) {
+        await peer.connection.addIceCandidate(c).catch(() => {});
+      }
+      this.pendingCandidates.delete(message.from);
     }
   }
 
   private async handleICECandidate(message: WiFiMessage): Promise<void> {
     const peer = this.peers.get(message.from);
-    if (peer && peer.connection) {
-      const candidate = JSON.parse(message.content).candidate;
+    if (!peer) return;
+    const candidate = JSON.parse(message.content).candidate;
+    
+    if (peer.connection && peer.connection.remoteDescription) {
       try {
         await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (e) {
         console.warn('Failed to add ICE candidate', e);
       }
+    } else {
+      const queue = this.pendingCandidates.get(message.from) || [];
+      queue.push(new RTCIceCandidate(candidate));
+      this.pendingCandidates.set(message.from, queue);
     }
   }
 

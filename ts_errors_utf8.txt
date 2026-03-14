@@ -1,0 +1,1 @@
+﻿services/nostrService.ts(1096,8): error TS1005: ',' expected.

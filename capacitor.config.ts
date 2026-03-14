@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     // This allows the app to fetch data safely
-    androidScheme: 'http',
+    androidScheme: 'https',
     // Allows connecting to http:// (non-secure) servers during development
     cleartext: true
   },

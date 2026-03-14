@@ -50,6 +50,18 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
   const [newCommentText, setNewCommentText] = useState('');
   const [showShareModal, setShowShareModal] = useState<string | null>(null);
   const [showIntelligenceOnly, setShowIntelligenceOnly] = useState(false);
+  const [mutedNodes, setMutedNodes] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('xitchat_muted_buzz_nodes');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+
+  // Logged-in user info
+  const myName = localStorage.getItem('xitchat_name') || 'Anonymous';
+  const myHandle = localStorage.getItem('xitchat_handle') || '@anon';
+  const myAvatar = localStorage.getItem('xitchat_avatar') || '';
 
   // Initialize with live intelligence feed
   useEffect(() => {
@@ -151,9 +163,9 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
       snippet: newBuzzText,
       category: newBuzzCat === 'ALL' ? 'GOSSIP' : newBuzzCat,
       user: {
-        name: 'Symbolic',
-        handle: '@symbolic',
-        avatar: 'https://picsum.photos/seed/me/200',
+        name: myName,
+        handle: myHandle,
+        avatar: myAvatar,
         distance: '0.0km'
       },
       likes: 0,
@@ -173,6 +185,37 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 
     // Award XC for posting buzz
     xcEconomy.awardBuzzPost();
+  };
+
+  const handleMuteNode = (handle: string) => {
+    setMutedNodes(prev => {
+      const next = new Set(prev);
+      next.add(handle);
+      localStorage.setItem('xitchat_muted_buzz_nodes', JSON.stringify([...next]));
+      return next;
+    });
+    setShowOptionsMenu(null);
+  };
+
+  const handleCopyId = (id: string) => {
+    navigator.clipboard.writeText(id).then(() => {
+      setCopyToast('ID copied to clipboard');
+      setTimeout(() => setCopyToast(null), 2000);
+    });
+    setShowOptionsMenu(null);
+  };
+
+  const handleReport = (id: string) => {
+    // Broadcast a report signal over the mesh
+    hybridMesh.sendMessage(JSON.stringify({
+      type: 'buzz_report',
+      buzzId: id,
+      reporter: myHandle,
+      timestamp: Date.now()
+    }));
+    setCopyToast('Signal reported to mesh');
+    setTimeout(() => setCopyToast(null), 2000);
+    setShowOptionsMenu(null);
   };
 
   const handleComment = (buzzId: string) => {
@@ -224,20 +267,28 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 
     switch (method) {
       case 'copy':
-        navigator.clipboard.writeText(shareText);
+        navigator.clipboard.writeText(shareText).then(() => {
+          setCopyToast('Copied to clipboard');
+          setTimeout(() => setCopyToast(null), 2000);
+        });
         break;
       case 'mesh':
-        // Share to mesh network
-        console.log('Sharing to mesh network:', shareText);
+        hybridMesh.sendMessage(JSON.stringify({
+          type: 'buzz_item',
+          data: buzz
+        }));
+        setCopyToast('Signal broadcast to mesh');
+        setTimeout(() => setCopyToast(null), 2000);
         break;
       case 'external':
-        // Share to external apps
         if (navigator.share) {
           navigator.share({
             title: buzz.title,
             text: shareText,
             url: window.location.href
           });
+        } else {
+          navigator.clipboard.writeText(shareText);
         }
         break;
     }
@@ -247,6 +298,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 
   const filteredShoutouts = useMemo(() => {
     return shoutouts.filter(s => {
+      if (mutedNodes.has(s.user.handle)) return false;
       const matchesCategory = currentFilter === 'ALL' || s.category === currentFilter;
       const matchesSearch = !searchQuery.trim() ||
         s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -254,10 +306,16 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
         s.user.handle.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
-  }, [shoutouts, currentFilter, searchQuery]);
+  }, [shoutouts, currentFilter, searchQuery, mutedNodes]);
 
   return (
     <div className="flex-1 flex flex-col pt-0 p-4 sm:p-6 overflow-y-auto bg-black text-current no-scrollbar relative">
+      {/* Toast notification */}
+      {copyToast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-[#00ff41] text-black text-[10px] font-bold uppercase tracking-widest px-4 py-2 shadow-[0_0_20px_#00ff41] animate-in fade-in slide-in-from-top-2">
+          {copyToast}
+        </div>
+      )}
       {/* Sticky Header Group: Title + Filters */}
       <div className="sticky top-0 z-50 bg-black/95 backdrop-blur-md border-b border-current border-opacity-20 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-6 pb-2 mb-4 shadow-lg">
         {/* Title Row */}
@@ -384,14 +442,23 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
                     <i className="fa-solid fa-ellipsis-vertical"></i>
                   </button>
                   {showOptionsMenu === shout.id && (
-                    <div className="absolute right-0 top-full mt-2 w-40 bg-black border border-current z-50 animate-in fade-in slide-in-from-top-2 shadow-2xl">
-                      <button className="w-full p-3 text-[10px] font-bold uppercase tracking-widest text-left hover:bg-white/10 flex items-center gap-3">
-                        <i className="fa-solid fa-flag"></i> report
+                    <div className="absolute right-0 top-full mt-2 w-44 bg-black border border-current z-50 animate-in fade-in slide-in-from-top-2 shadow-2xl">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleReport(shout.id); }}
+                        className="w-full p-3 text-[10px] font-bold uppercase tracking-widest text-left hover:bg-white/10 flex items-center gap-3 text-red-400 hover:text-red-300"
+                      >
+                        <i className="fa-solid fa-flag"></i> report signal
                       </button>
-                      <button className="w-full p-3 text-[10px] font-bold uppercase tracking-widest text-left hover:bg-white/10 flex items-center gap-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleCopyId(shout.id); }}
+                        className="w-full p-3 text-[10px] font-bold uppercase tracking-widest text-left hover:bg-white/10 flex items-center gap-3"
+                      >
                         <i className="fa-solid fa-link"></i> copy id
                       </button>
-                      <button className="w-full p-3 text-[10px] font-bold uppercase tracking-widest text-left hover:bg-white/10 border-t border-current border-opacity-20 flex items-center gap-3">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleMuteNode(shout.user.handle); }}
+                        className="w-full p-3 text-[10px] font-bold uppercase tracking-widest text-left hover:bg-white/10 border-t border-current border-opacity-20 flex items-center gap-3 text-amber-400 hover:text-amber-300"
+                      >
                         <i className="fa-solid fa-volume-xmark"></i> mute node
                       </button>
                     </div>
@@ -551,11 +618,11 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 
             <div className="space-y-4">
               <div className="p-4 border border-current border-opacity-20 bg-black">
-                <p className="text-xs font-mono text-white/80 leading-relaxed">
-                  "{shoutouts.find(s => s.id === showShareModal)?.snippet}"
+                <p className="text-xs font-mono text-white/80 leading-relaxed italic">
+                  {shoutouts.find(s => s.id === showShareModal)?.snippet}
                 </p>
                 <p className="text-[8px] opacity-40 mt-2">
-                  - {shoutouts.find(s => s.id === showShareModal)?.user.handle}
+                  — {shoutouts.find(s => s.id === showShareModal)?.user.handle}
                 </p>
               </div>
 

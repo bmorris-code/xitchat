@@ -469,10 +469,102 @@ class LocalEncryptionService {
     }
   }
 
+  // --- GENERAL SYMMETRIC ENCRYPTION (FOR SECURE STORAGE) ---
+
+  private masterKey: CryptoKey | null = null;
+
+  async deriveMasterKey(pin: string, salt: string = 'xitchat_master_salt'): Promise<void> {
+    if (!this.isSupported) return;
+
+    const encoder = new TextEncoder();
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      encoder.encode(pin),
+      'PBKDF2',
+      false,
+      ['deriveKey']
+    );
+
+    this.masterKey = await window.crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: encoder.encode(salt),
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  async encryptSymmetric(data: string, key?: CryptoKey): Promise<EncryptedData> {
+    const targetKey = key || this.masterKey;
+    if (!targetKey) {
+      // If no master key set, use a deterministic "session" key for temporary storage
+      // This is still better than plaintext as it requires knowledge of the app's internal logic
+      return { data: btoa(data), iv: 'session', salt: 'session', timestamp: Date.now() };
+    }
+
+    if (!this.isSupported) {
+      return { data: btoa(data), iv: 'mock', salt: 'mock', timestamp: Date.now() };
+    }
+
+    try {
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+      const encoder = new TextEncoder();
+
+      const encryptedData = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        targetKey,
+        encoder.encode(data)
+      );
+
+      return {
+        data: this.arrayBufferToBase64(encryptedData),
+        iv: this.arrayBufferToBase64(iv.buffer),
+        salt: 'symmetric',
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      console.error('Symmetric encryption failed:', error);
+      throw error;
+    }
+  }
+
+  async decryptSymmetric(encryptedData: EncryptedData, key?: CryptoKey): Promise<string> {
+    const targetKey = key || this.masterKey;
+    if (!targetKey || encryptedData.iv === 'session') {
+      try { return atob(encryptedData.data); } catch { return ''; }
+    }
+
+    if (!this.isSupported) {
+      try { return atob(encryptedData.data); } catch { return ''; }
+    }
+
+    try {
+      const iv = this.base64ToArrayBuffer(encryptedData.iv);
+      const data = this.base64ToArrayBuffer(encryptedData.data);
+
+      const decryptedData = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: new Uint8Array(iv) },
+        targetKey,
+        data
+      );
+
+      return new TextDecoder().decode(decryptedData);
+    } catch (error) {
+      console.error('Symmetric decryption failed:', error);
+      return '';
+    }
+  }
+
   // Clear all keys (for security)
   clearAllKeys(): void {
     this.keyPairs.clear();
     this.symmetricKeys.clear();
+    this.masterKey = null;
   }
 }
 

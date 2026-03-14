@@ -104,25 +104,30 @@ class PrivacyService {
   // Authenticate user (PIN, biometric, etc.)
   async authenticate(method: 'pin' | 'biometric' | 'password', credential: string): Promise<boolean> {
     try {
-      // In a real implementation, this would verify against stored credentials
-      const storedPin = localStorage.getItem('xitchat_auth_pin') || '1234';
+      if (method === 'pin') {
+        const storedPin = localStorage.getItem('xitchat_auth_pin');
+        
+        if (!storedPin) {
+          console.warn('⚠️ No PIN set. Please set a PIN in Privacy Settings.');
+          return false;
+        }
 
-      if (method === 'pin' && credential === storedPin) {
-        this.authSession = {
-          isActive: true,
-          expiresAt: Date.now() + (5 * 60 * 1000), // 5 minutes
-          method
-        };
-        return true;
+        if (credential === storedPin) {
+          this.authSession = {
+            isActive: true,
+            expiresAt: Date.now() + (5 * 60 * 1000), // 5 minutes
+            method
+          };
+          window.dispatchEvent(new CustomEvent('authSessionStarted', { detail: { method } }));
+          return true;
+        }
       }
 
       if (method === 'biometric') {
-        this.authSession = {
-          isActive: true,
-          expiresAt: Date.now() + (10 * 60 * 1000), // 10 minutes
-          method
-        };
-        return true;
+        // Biometric is currently not implemented for web. 
+        // Rejects by default to prevent "Security Theater"
+        console.warn('❌ Biometric authentication not yet configured for this platform.');
+        return false;
       }
 
       return false;
@@ -130,6 +135,18 @@ class PrivacyService {
       console.error('Authentication failed:', error);
       return false;
     }
+  }
+
+  // Set or update the PIN
+  setPin(newPin: string): boolean {
+    if (!newPin || newPin.length < 4) return false;
+    localStorage.setItem('xitchat_auth_pin', newPin);
+    return true;
+  }
+
+  // Check if a PIN has been set
+  hasPin(): boolean {
+    return !!localStorage.getItem('xitchat_auth_pin');
   }
 
   // Request permission to view content
@@ -211,6 +228,8 @@ class PrivacyService {
 
   // Show authentication dialog with Matrix styling
   private async showAuthDialog(contentType: 'message' | 'image'): Promise<boolean> {
+    const hasPin = this.hasPin();
+
     return new Promise((resolve) => {
       const modal = document.createElement('div');
       modal.className = 'fixed inset-0 z-[400] bg-black/95 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300';
@@ -218,16 +237,26 @@ class PrivacyService {
         <div class="max-w-sm w-full border-2 border-[#00ff41] bg-[#050505] p-8 shadow-[0_0_50px_rgba(0,255,65,0.2)] relative overflow-hidden">
           <div class="absolute inset-0 bg-gradient-to-b from-[#00ff41]/5 to-transparent pointer-events-none"></div>
           <div class="relative z-10">
-            <h3 class="text-xl font-black uppercase tracking-[0.2em] mb-6 text-center glow-text">auth_required.exe</h3>
-            <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-8 text-center">
-              Secure access to ${contentType} payload requires PIN verification.
+            <h3 class="text-xl font-black uppercase tracking-[0.2em] mb-6 text-center glow-text">
+              ${hasPin ? 'auth_required.exe' : 'no_pin_detected.exe'}
+            </h3>
+            <p class="text-[10px] font-bold opacity-50 uppercase tracking-widest mb-8 text-center px-4">
+              ${hasPin ? `Secure access to ${contentType} payload requires PIN verification.` : `Critical: No security PIN has been established. You must set a PIN in Settings.`}
             </p>
-            <input type="password" id="auth-pin" maxlength="4" 
-                   class="w-full bg-black border border-[#00ff41] border-opacity-30 px-4 py-4 text-center font-mono text-2xl mb-8 text-[#00ff41] outline-none focus:border-opacity-100 transition-all"
-                   placeholder="****" autocomplete="off">
+            ${hasPin ? `
+              <input type="password" id="auth-pin" maxlength="4" 
+                     class="w-full bg-black border border-[#00ff41] border-opacity-30 px-4 py-4 text-center font-mono text-2xl mb-8 text-[#00ff41] outline-none focus:border-opacity-100 transition-all"
+                     placeholder="****" autocomplete="off">
+            ` : `
+              <div class="p-6 border border-dashed border-amber-500/30 text-amber-500 text-[10px] uppercase font-bold text-center mb-8">
+                UNPROTECTED_TRANSMISSION
+              </div>
+            `}
             <div class="grid grid-cols-2 gap-4">
               <button id="auth-cancel" class="terminal-btn py-3 text-[10px] uppercase font-bold">abort</button>
-              <button id="auth-submit" class="terminal-btn active py-3 text-[10px] uppercase font-bold">unlock</button>
+              <button id="auth-submit" class="terminal-btn active py-3 text-[10px] uppercase font-bold">
+                ${hasPin ? 'unlock' : 'settings'}
+              </button>
             </div>
           </div>
         </div>
@@ -239,15 +268,32 @@ class PrivacyService {
       const cancelBtn = modal.querySelector('#auth-cancel') as HTMLButtonElement;
       const submitBtn = modal.querySelector('#auth-submit') as HTMLButtonElement;
 
+      if (pinInput) pinInput.focus();
+
       const cleanup = () => {
+        if (pinInput) pinInput.value = ''; // Security: clear PIN from DOM
         document.body.removeChild(modal);
       };
 
       const handleSubmit = async () => {
+        if (!hasPin) {
+          // Redirect or signal to open settings
+          window.dispatchEvent(new CustomEvent('open-settings'));
+          cleanup();
+          resolve(false);
+          return;
+        }
+
         const pin = pinInput.value;
         const success = await this.authenticate('pin', pin);
-        cleanup();
-        resolve(success);
+        if (success) {
+          cleanup();
+          resolve(true);
+        } else {
+          pinInput.value = '';
+          pinInput.classList.add('border-red-500');
+          setTimeout(() => pinInput.classList.remove('border-red-500'), 500);
+        }
       };
 
       cancelBtn.addEventListener('click', () => {

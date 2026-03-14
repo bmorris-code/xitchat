@@ -63,7 +63,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
-  const [isPeerTyping, setIsPeerTyping] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -229,7 +228,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         reactingToMessageId={reactingToMessageId}
         setReactingToMessageId={setReactingToMessageId}
         emojis={emojis}
-        isPeerTyping={isPeerTyping}
+        isPeerTyping={chat.isTyping}
       />
 
       <ChatInput

@@ -37,12 +37,79 @@ import NativeFeaturesView from './components/NativeFeaturesView';
 import TransmissionToast from './components/TransmissionToast';
 import { handshakePersistence, HandshakeNode } from './services/handshakePersistence';
 import { appUpdateService } from './services/appUpdateService';
+import { persistChats, loadPersistedChats } from './services/chatPersistence';
+import { defaultRoomsService } from './services/defaultRooms';
+const mapTransportForAck = (connectionType?: string): 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' => {
+  switch (connectionType) {
+    case 'webrtc': return 'webrtc';
+    case 'nostr': return 'nostr';
+    case 'bluetooth': return 'bluetooth';
+    case 'wifi': return 'wifi';
+    default: return 'relay';
+  }
+};
+
+/**
+ * Robustly identifies if a message is an internal system/protocol payload.
+ * Filters out handshakes, syncs, public keys, ACKs, etc.
+ */
+const isSystemMessage = (text: any): boolean => {
+  if (typeof text !== 'string') return false;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return false;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    const protocolTypes = [
+      'ack', 'sync_request', 'marketplace_request', 'public_key', 
+      'presence', 'handshake', 'ping', 'pong', 'mesh_sync',
+      'node_info', 'routing_update', 'status_broadcast'
+    ];
+    
+    // Check top level type
+    if (protocolTypes.includes(parsed.type)) return true;
+    
+    // Check for nested content (often encoded as a string within JSON)
+    if (parsed.content) {
+      if (typeof parsed.content === 'object' && protocolTypes.includes(parsed.content.type)) return true;
+      if (typeof parsed.content === 'string' && parsed.content.trim().startsWith('{')) {
+        try {
+          const nested = JSON.parse(parsed.content);
+          if (protocolTypes.includes(nested.type)) return true;
+        } catch {}
+      }
+    }
+    
+    // Some messages use 'payload' or 'data' for the interior object
+    const subObj = parsed.payload || parsed.data;
+    if (subObj && typeof subObj === 'object' && protocolTypes.includes(subObj.type)) return true;
+    
+    return false;
+  } catch {
+    return false;
+  }
+};
 
 const App: React.FC = () => {
   console.log('App component initializing...');
 
   const [view, setView] = useState<View>('chats');
-  const [chats, setChats] = useState<Chat[]>(INITIAL_CHATS);
+  const [chats, setChats] = useState<Chat[]>(() => {
+    const saved = loadPersistedChats();
+    if (saved) {
+      // Proactively filter out any system/protocol messages from saved history
+      return saved.map((chat: Chat) => ({
+        ...chat,
+        messages: chat.messages.filter(msg => !isSystemMessage(msg.text))
+      }));
+    }
+    return INITIAL_CHATS;
+  });
+
+  // Persist chats via service
+  useEffect(() => {
+    persistChats(chats);
+  }, [chats]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -74,21 +141,6 @@ const App: React.FC = () => {
     provider: 'auto'
   });
   const [myPublicKey, setMyPublicKey] = useState<string | null>(null);
-
-  const mapTransportForAck = (connectionType?: string): 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' => {
-    switch (connectionType) {
-      case 'webrtc':
-        return 'webrtc';
-      case 'nostr':
-        return 'nostr';
-      case 'bluetooth':
-        return 'bluetooth';
-      case 'wifi':
-        return 'wifi';
-      default:
-        return 'relay';
-    }
-  };
 
   console.log('App state initialized');
 
@@ -426,7 +478,35 @@ const App: React.FC = () => {
           // Support both 'from' (HybridMeshMessage) and 'senderId' (App Message) property names
           const senderId = message.from || message.senderId;
 
+          if (message.type === 'typing' && senderId && senderId !== 'me') {
+            setChats(prev => prev.map(c => {
+              const idsMatch = c.participant.id === senderId;
+              const handlesMatch = message.handle && c.participant.handle === message.handle;
+              if (idsMatch || handlesMatch) return { ...c, isTyping: !!message.isTyping };
+              return c;
+            }));
+            return;
+          }
+
           if (senderId && senderId !== 'me') {
+            // Filter out system/protocol messages (handshakes, syncs, etc.)
+            if (isSystemMessage(message.content)) {
+              console.log("🔇 Blocked internal system message from chat UI");
+              
+              // Handle ACKs specifically so they still update delivery status
+              try {
+                const parsed = JSON.parse(String(message.content));
+                const sysType = parsed.type || (parsed.content && typeof parsed.content === 'string' && parsed.content.includes('"ack"') ? 'ack' : null);
+                if (sysType === 'ack' || (typeof parsed.content === 'object' && parsed.content?.type === 'ack')) {
+                  const ackObj = typeof parsed.content === 'object' ? parsed.content : JSON.parse(parsed.content);
+                  if (ackObj?.messageId) {
+                    messageACKService.markMessageDelivered(ackObj.messageId, senderId, mapTransportForAck(message.connectionType));
+                  }
+                }
+              } catch {}
+              return;
+            }
+
             if (message.id) {
               messageACKService.receiveMessage(
                 message.id,
@@ -559,6 +639,20 @@ const App: React.FC = () => {
               }
             });
             window.dispatchEvent(event);
+          }
+        }));
+
+        meshUnsubscribers.push(hybridMesh.subscribe('messageSent', (event: any) => {
+          if (!event?.messageId) return;
+          console.log(`📤 Message sent confirmation: ${event.messageId} via ${event.connectionType}`);
+          // Message was successfully sent - mark as delivered
+          setMessageDeliveryState(event.messageId, 'delivered', event.connectionType || 'mesh');
+          if (event.to) {
+            messageACKService.markMessageDelivered(
+              event.messageId,
+              event.to,
+              mapTransportForAck(event.connectionType)
+            );
           }
         }));
 
@@ -756,24 +850,86 @@ const App: React.FC = () => {
           setNostrConnected(true);
           console.log('✅ Nostr service connected');
 
+          // Auto-join default rooms for existing users (who already completed onboarding)
+          const hasOnboarded = localStorage.getItem('xitchat_onboarded');
+          if (hasOnboarded) {
+            try {
+              await defaultRoomsService.initializeDefaultRooms();
+            } catch (error) {
+              console.error('Failed to initialize default rooms:', error);
+            }
+          }
+
           // Subscribe to Nostr events with defensive check
           let unsubMsg: (() => void) | null = null;
           try {
             unsubMsg = nostrService.subscribe('messageReceived', (message) => {
-              if (typeof message.content === 'string' && message.content.startsWith('{')) {
+              let normalizedContent = typeof message.content === 'string' ? message.content : '';
+              const trimmed = normalizedContent.trim();
+
+              if (trimmed.startsWith('{')) {
                 try {
-                  const control = JSON.parse(message.content);
-                  if (control.type === 'ack' && control.messageId) {
-                    messageACKService.markMessageDelivered(control.messageId, message.from, 'nostr');
+                  const outer = JSON.parse(trimmed);
+
+                  // ACK packets should not render as chat messages.
+                  if (outer?.type === 'ack' && outer?.messageId) {
+                    messageACKService.markMessageDelivered(outer.messageId, message.from, 'nostr');
+                    return;
+                  }
+
+                  // Hybrid mesh signed envelope: unwrap user content.
+                  if (typeof outer?.content === 'string') {
+                    normalizedContent = outer.content;
+                  } else if (
+                    outer &&
+                    (outer.timestamp !== undefined || outer.messageId !== undefined || outer.sig !== undefined || outer.pk !== undefined)
+                  ) {
+                    // Transport/signature envelope with no user content.
+                    return;
+                  } else if (typeof outer?.text === 'string') {
+                    normalizedContent = outer.text;
+                  } else if (typeof outer?.type === 'string') {
+                    // Unknown control packet type.
                     return;
                   }
                 } catch {
-                  // Ignore parse failures; regular message flow below.
+                  // keep original content when payload is plain text that starts with "{"
                 }
               }
 
+              // Filter out system/protocol messages from Nostr UI
+              if (isSystemMessage(normalizedContent)) return;
+
+              const nested = normalizedContent.trim();
+              if (nested.startsWith('{')) {
+                try {
+                  const inner = JSON.parse(nested);
+                  if (inner?.type === 'ack' && inner?.messageId) {
+                    messageACKService.markMessageDelivered(inner.messageId, message.from, 'nostr');
+                    return;
+                  }
+                  if (inner?.type === 'chat_message') {
+                    const text =
+                      (typeof inner.data === 'string' && inner.data) ||
+                      (typeof inner.data?.text === 'string' && inner.data.text) ||
+                      '';
+                    if (!text) return;
+                    normalizedContent = text;
+                  } else if (
+                    typeof inner?.type === 'string' ||
+                    (!inner?.content && !inner?.text && !inner?.data)
+                  ) {
+                    return;
+                  }
+                } catch {
+                  // keep normalizedContent as-is
+                }
+              }
+
+              if (!normalizedContent) return;
+
               if (message.id && message.from) {
-                messageACKService.receiveMessage(message.id, message.from, message.content, 'nostr').catch(() => { });
+                messageACKService.receiveMessage(message.id, message.from, normalizedContent, 'nostr').catch(() => { });
               }
 
               // Convert Nostr message to app format and add to chats
@@ -783,14 +939,14 @@ const App: React.FC = () => {
                   const newMessage: Message = {
                     id: message.id,
                     senderId: message.from,
-                    text: message.content,
+                    text: normalizedContent,
                     timestamp: message.timestamp.getTime(),
                     senderHandle: `nostr-${message.from.substring(0, 8)}`
                   };
 
                   return prev.map(c =>
                     c.id === nostrChat.id
-                      ? { ...c, messages: [...c.messages, newMessage], lastMessage: message.content }
+                      ? { ...c, messages: [...c.messages, newMessage], lastMessage: normalizedContent }
                       : c
                   );
                 }
@@ -968,6 +1124,42 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // Subscribe to geohash channel messages for real-time room chat updates
+  useEffect(() => {
+    const unsubscribe = geohashChannels.subscribe('messageReceived', (message: any) => {
+      if (!message?.id || !message?.channelId) return;
+
+      setChats(prev => prev.map(chat => {
+        // Only update room chats that match the incoming channel
+        if (chat.type !== 'room' || chat.participant.id !== message.channelId) return chat;
+
+        const newMsg: Message = {
+          id: message.id,
+          senderId: message.nodeId || 'unknown',
+          senderHandle: message.nodeHandle || `@${String(message.nodeId || 'peer').slice(0, 8)}`,
+          text: message.content || '',
+          timestamp: message.timestamp || Date.now(),
+        };
+
+        // Filter out system/protocol messages from rooms
+        if (isSystemMessage(newMsg.text)) return chat;
+
+        // Prevent duplicates
+        if (chat.messages.some(m => m.id === newMsg.id)) return chat;
+
+        const isCurrentChat = activeChatIdRef.current === chat.id;
+        return {
+          ...chat,
+          messages: [...chat.messages, newMsg],
+          lastMessage: message.content || '',
+          unreadCount: isCurrentChat ? chat.unreadCount : (chat.unreadCount || 0) + 1
+        };
+      }));
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   /*
   // Track Node Uptime
   useEffect(() => {
@@ -1090,9 +1282,19 @@ const App: React.FC = () => {
     }
   };
 
-  const handleOnboardingComplete = () => {
+  const handleOnboardingComplete = async () => {
     localStorage.setItem('xitchat_onboarded', 'true');
     setShowOnboarding(false);
+
+    // Auto-join default public rooms so users see activity immediately
+    try {
+      console.log('🏠 Auto-joining default public rooms...');
+      await defaultRoomsService.initializeDefaultRooms();
+      console.log('✅ Default rooms joined successfully');
+    } catch (error) {
+      console.error('❌ Failed to auto-join default rooms:', error);
+    }
+
     setView('profile');
   };
 
@@ -1181,7 +1383,7 @@ const App: React.FC = () => {
         ));
       }
       setActiveChatId(existing.id);
-      
+
       // Reset unread count when opening chat
       setChats(prev => prev.map(c =>
         c.id === existing.id ? { ...c, unreadCount: 0 } : c
@@ -1248,133 +1450,146 @@ const App: React.FC = () => {
       // Local AI chat does not rely on mesh ACK delivery.
       setMessageDeliveryState(newMessage.id, 'delivered', 'ai_local');
     } else {
-    // Send via Nostr if recipient is a Nostr user
-    if (options?.nostrRecipient && nostrConnected) {
-      try {
-        messageACKService.trackOutgoingMessage(newMessage.id, options.nostrRecipient, text, 'nostr', true);
-        const success = await nostrService.sendDirectMessage(options.nostrRecipient, text);
-        if (success) {
-          messageACKService.markMessageDelivered(newMessage.id, options.nostrRecipient, 'nostr');
-          setMessageDeliveryState(newMessage.id, 'delivered', 'nostr');
-          console.log('📤 Message sent via Nostr to:', options.nostrRecipient);
-        }
-      } catch (error) {
-        console.error('❌ Failed to send Nostr message:', error);
-      }
-    }
-
-    // Route room chat through geohash channels for cross-device room real-time updates.
-    if (activeChat?.type === 'room' && !options?.imageUrl && !options?.videoUrl) {
-      try {
-        await geohashChannels.sendMessage(activeChat.participant.id, text, 'text');
-        setMessageDeliveryState(newMessage.id, 'delivered', 'room');
-      } catch (error) {
-        setMessageDeliveryState(newMessage.id, 'failed', 'room_send_failed');
-        console.error('Failed to send room message via geohash channels:', error);
-      }
-    } else {
-      // Send message via hybrid mesh (Bluetooth first, WebRTC fallback)
-      try {
-        // Strip prefixes to get the raw mesh ID
-        let meshTargetId = activeChat?.participant?.id;
-        const activePeers = hybridMesh.getPeers().filter(peer => peer.isConnected);
-        const participantHandle = normalizePeerToken(activeChat?.participant?.handle);
-
-        // Prefer current live peer by handle first; this avoids replying to stale IDs.
-        if (participantHandle) {
-          const livePeerByHandle = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
-          if (livePeerByHandle && meshTargetId !== livePeerByHandle.id) {
-            meshTargetId = livePeerByHandle.id;
-            setChats(prev => prev.map(c =>
-              c.id === activeChatId
-                ? {
-                  ...c,
-                  participant: {
-                    ...c.participant,
-                    id: livePeerByHandle.id,
-                    name: livePeerByHandle.name || c.participant.name,
-                    handle: livePeerByHandle.handle || c.participant.handle
-                  }
-                }
-                : c
-            ));
-            console.log(`Remapped chat target by handle to live peer ${livePeerByHandle.handle} (${livePeerByHandle.id})`);
+      // Send via Nostr if recipient is a Nostr user
+      if (options?.nostrRecipient && nostrConnected) {
+        try {
+          messageACKService.trackOutgoingMessage(newMessage.id, options.nostrRecipient, text, 'nostr', true);
+          const success = await nostrService.sendDirectMessage(options.nostrRecipient, text);
+          if (success) {
+            messageACKService.markMessageDelivered(newMessage.id, options.nostrRecipient, 'nostr');
+            setMessageDeliveryState(newMessage.id, 'delivered', 'nostr');
+            console.log('📤 Message sent via Nostr to:', options.nostrRecipient);
           }
+        } catch (error) {
+          console.error('❌ Failed to send Nostr message:', error);
         }
+      }
 
-        // If chat still points to a stale ID, remap to current live peer with same handle.
-        if (meshTargetId) {
-          const targetToken = normalizePeerToken(meshTargetId);
-          const hasLiveTarget = activePeers.some(peer =>
-            normalizePeerToken(peer.id) === targetToken ||
-            normalizePeerToken(peer.serviceId) === targetToken
-          );
+      // Route room chat through geohash channels for cross-device room real-time updates.
+      if (activeChat?.type === 'room' && !options?.imageUrl && !options?.videoUrl) {
+        try {
+          await geohashChannels.sendMessage(activeChat.participant.id, text, 'text');
+          setMessageDeliveryState(newMessage.id, 'delivered', 'room');
+        } catch (error) {
+          setMessageDeliveryState(newMessage.id, 'failed', 'room_send_failed');
+          console.error('Failed to send room message via geohash channels:', error);
+        }
+      } else {
+        // Send message via hybrid mesh (Bluetooth first, WebRTC fallback)
+        try {
+          // Strip prefixes to get the raw mesh ID
+          let meshTargetId = activeChat?.participant?.id;
+          const activePeers = hybridMesh.getPeers().filter(peer => peer.isConnected);
+          const participantHandle = normalizePeerToken(activeChat?.participant?.handle);
 
-          if (!hasLiveTarget && participantHandle) {
-            const remappedPeer = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
-            if (remappedPeer) {
-              meshTargetId = remappedPeer.id;
+          // Prefer current live peer by handle first; this avoids replying to stale IDs.
+          if (participantHandle) {
+            const livePeerByHandle = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
+            if (livePeerByHandle && meshTargetId !== livePeerByHandle.id) {
+              meshTargetId = livePeerByHandle.id;
               setChats(prev => prev.map(c =>
                 c.id === activeChatId
                   ? {
                     ...c,
                     participant: {
                       ...c.participant,
-                      id: remappedPeer.id,
-                      name: remappedPeer.name || c.participant.name,
-                      handle: remappedPeer.handle || c.participant.handle
+                      id: livePeerByHandle.id,
+                      name: livePeerByHandle.name || c.participant.name,
+                      handle: livePeerByHandle.handle || c.participant.handle
                     }
                   }
                   : c
               ));
-              console.log(`Remapped stale chat target to live peer ${remappedPeer.handle} (${remappedPeer.id})`);
+              console.log(`Remapped chat target by handle to live peer ${livePeerByHandle.handle} (${livePeerByHandle.id})`);
             }
           }
-        }
 
-        if (meshTargetId?.startsWith('nostr-')) {
-          // For Nostr peers, we need to use the actual public key
-          const nostrPeerId = meshTargetId.replace('nostr-', '');
-          const nostrPeer = nostrPeers.find(p => p.id === nostrPeerId);
+          // If chat still points to a stale ID, remap to current live peer with same handle.
+          if (meshTargetId) {
+            const targetToken = normalizePeerToken(meshTargetId);
+            const hasLiveTarget = activePeers.some(peer =>
+              normalizePeerToken(peer.id) === targetToken ||
+              normalizePeerToken(peer.serviceId) === targetToken
+            );
 
-          // Use the publicKey field if available, otherwise use the id
-          meshTargetId = nostrPeer?.publicKey || nostrPeerId;
-        } else if (meshTargetId?.startsWith('node-')) {
-          meshTargetId = meshTargetId.replace('node-', '');
-        }
+            if (!hasLiveTarget && participantHandle) {
+              const remappedPeer = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
+              if (remappedPeer) {
+                meshTargetId = remappedPeer.id;
+                setChats(prev => prev.map(c =>
+                  c.id === activeChatId
+                    ? {
+                      ...c,
+                      participant: {
+                        ...c.participant,
+                        id: remappedPeer.id,
+                        name: remappedPeer.name || c.participant.name,
+                        handle: remappedPeer.handle || c.participant.handle
+                      }
+                    }
+                    : c
+                ));
+                console.log(`Remapped stale chat target to live peer ${remappedPeer.handle} (${remappedPeer.id})`);
+              }
+            }
+          }
 
-        if (meshTargetId) {
-          messageACKService.trackOutgoingMessage(newMessage.id, meshTargetId, text, 'relay', true);
+          if (meshTargetId?.startsWith('nostr-')) {
+            // For Nostr peers, we need to use the actual public key
+            const nostrPeerId = meshTargetId.replace('nostr-', '');
+            const nostrPeer = nostrPeers.find(p => p.id === nostrPeerId);
+
+            // Use the publicKey field if available, otherwise use the id
+            meshTargetId = nostrPeer?.publicKey || nostrPeerId;
+          } else if (meshTargetId?.startsWith('node-')) {
+            meshTargetId = meshTargetId.replace('node-', '');
+          }
+
+          if (meshTargetId) {
+            messageACKService.trackOutgoingMessage(newMessage.id, meshTargetId, text, 'relay', true);
+          }
+
+          const sendSuccess = await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData, newMessage.id);
+
+          if (sendSuccess) {
+            console.log('✅ Message sent successfully via hybrid mesh:', { text: text.substring(0, 30), targetId: meshTargetId, encrypted: !!options?.encryptedData });
+            // Mark as delivered immediately for successful sends
+            setMessageDeliveryState(newMessage.id, 'delivered', 'mesh');
+            if (meshTargetId) {
+              messageACKService.markMessageDelivered(newMessage.id, meshTargetId, 'relay');
+            }
+          } else {
+            console.warn('⚠️ Message send returned false - may not have been delivered');
+            setMessageDeliveryState(newMessage.id, 'failed', 'send_failed');
+          }
+        } catch (error) {
+          console.error('❌ Failed to send via hybrid mesh:', error);
+          setMessageDeliveryState(newMessage.id, 'failed', 'exception');
         }
-        await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData, newMessage.id);
-        console.log('Message sent via hybrid mesh:', { text, targetId: meshTargetId, encrypted: !!options?.encryptedData });
-      } catch (error) {
-        console.error('Failed to send via hybrid mesh:', error);
       }
-    }
 
-    // Sync a compact chat payload to avoid BLE packet truncation.
-    const compactMessage = {
-      id: newMessage.id,
-      senderId: newMessage.senderId,
-      senderHandle: newMessage.senderHandle,
-      text: newMessage.text,
-      timestamp: newMessage.timestamp,
-      replyTo: newMessage.replyTo,
-      imageUrl: newMessage.imageUrl,
-      videoUrl: newMessage.videoUrl
-    };
-    const compactParticipant = activeChat?.participant ? {
-      id: activeChat.participant.id,
-      name: activeChat.participant.name,
-      handle: activeChat.participant.handle
-    } : undefined;
+      // Sync a compact chat payload to avoid BLE packet truncation.
+      const compactMessage = {
+        id: newMessage.id,
+        senderId: newMessage.senderId,
+        senderHandle: newMessage.senderHandle,
+        text: newMessage.text,
+        timestamp: newMessage.timestamp,
+        replyTo: newMessage.replyTo,
+        imageUrl: newMessage.imageUrl,
+        videoUrl: newMessage.videoUrl
+      };
+      const compactParticipant = activeChat?.participant ? {
+        id: activeChat.participant.id,
+        name: activeChat.participant.name,
+        handle: activeChat.participant.handle
+      } : undefined;
 
-    await meshDataSync.syncChatMessage({
-      chatId: activeChatId,
-      message: compactMessage,
-      participant: compactParticipant
-    });
+      await meshDataSync.syncChatMessage({
+        chatId: activeChatId,
+        message: compactMessage,
+        participant: compactParticipant
+      });
     }
 
     if (isLocalXitBotChat) {
@@ -1617,6 +1832,7 @@ const App: React.FC = () => {
           { id: 'tradepost', icon: 'fa-shop', label: 'Node Shop', color: 'text-cyan-400', desc: 'Official digital skins and node gear.' },
           { id: 'games', icon: 'fa-gamepad', label: 'Play Lounge', color: 'text-purple-400', desc: 'Retro arcade and gaming.' },
           { id: 'gallery', icon: 'fa-images', label: 'Pics Gallery', color: 'text-orange-400', desc: 'Shared node transmissions.' },
+          { id: 'nostr', icon: 'fa-globe', label: 'Nostr Network', color: 'text-violet-400', desc: 'Discover global peers on the Nostr network.' },
         ];
         return (
           <div className="flex-1 p-6 overflow-y-auto bg-black text-current animate-in fade-in zoom-in-95 duration-300">
@@ -1697,7 +1913,7 @@ const App: React.FC = () => {
                 <div>
                   <h3 className="text-sm font-bold uppercase">Network Status</h3>
                   <p className="text-xs opacity-60">
-                    {nostrConnected ? `Connected to ${nostrService.getConnectionInfo().relayCount} relays` : 'Disconnected from Nostr network'}
+                    {nostrConnected ? `Connected to ${(nostrService.getConnectionInfo() as any).relayCount} relays` : 'Disconnected from Nostr network'}
                   </p>
                 </div>
               </div>
