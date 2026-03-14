@@ -89,7 +89,10 @@ window.addEventListener('unhandledrejection', (event) => {
     reason.includes('ERR_NAME_NOT_RESOLVED') ||
     reason.includes('WebSocket connection to') ||
     reason.includes('establishment: net::') ||
-    reason.includes('response code: 502')
+    reason.includes('response code: 502') ||
+    reason.includes('response code: 503') ||
+    reason.includes('Policy violated') ||
+    reason.includes('web of trust')
   ) {
     // Silence these specific errors as they are expected during high load
     event.preventDefault();

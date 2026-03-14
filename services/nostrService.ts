@@ -62,11 +62,12 @@ class NostrService {
   };
 
   private readonly defaultRelays = [
-    'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.snort.social',
     'wss://relay.primal.net',
-    'wss://nostr.bitcoiner.social'
+    'wss://nostr.bitcoiner.social',
+    'wss://relay.nostr.band',
+    'wss://nostr.mom'
   ];
 
   private readonly PRESENCE_KIND = 30315;
@@ -202,6 +203,9 @@ class NostrService {
         if (event.kind === 4) this.handleDirectMessage(event);
         else if (event.kind === 1) this.handleTaggedTextNote(event);
         else if (event.kind === 42) this.emit('channelMessageReceived', event);
+      },
+      onclose: (reasons: any) => {
+        console.debug('📡 Nostr subscription closed:', reasons);
       }
     });
   }
@@ -250,7 +254,13 @@ class NostrService {
       } catch (publishError: any) {
         // Suppress spam/restriction errors - these are relay policy issues, not app bugs
         const errorMsg = publishError?.message || String(publishError);
-        if (errorMsg.includes('spam') || errorMsg.includes('restricted') || errorMsg.includes('blocked')) {
+        if (
+          errorMsg.includes('spam') || 
+          errorMsg.includes('restricted') || 
+          errorMsg.includes('blocked') ||
+          errorMsg.includes('Policy violated') ||
+          errorMsg.includes('web of trust')
+        ) {
           console.warn('⚠️ Some relays rejected DM (policy restriction) - message may still be delivered by other relays');
           return true; // Still return true if at least one relay accepted it
         }
@@ -288,7 +298,13 @@ class NostrService {
       } catch (publishError: any) {
         // Suppress spam/restriction errors - these are relay policy issues, not app bugs
         const errorMsg = publishError?.message || String(publishError);
-        if (errorMsg.includes('spam') || errorMsg.includes('restricted') || errorMsg.includes('blocked')) {
+        if (
+          errorMsg.includes('spam') || 
+          errorMsg.includes('restricted') || 
+          errorMsg.includes('blocked') ||
+          errorMsg.includes('Policy violated') ||
+          errorMsg.includes('web of trust')
+        ) {
           console.warn('⚠️ Some relays rejected message (policy restriction) - trying other relays');
           return true; // Still return true if at least one relay accepted it
         }
@@ -314,7 +330,13 @@ class NostrService {
       } catch (publishError: any) {
         // Suppress spam/restriction errors
         const errorMsg = publishError?.message || String(publishError);
-        if (errorMsg.includes('spam') || errorMsg.includes('restricted') || errorMsg.includes('blocked')) {
+        if (
+          errorMsg.includes('spam') || 
+          errorMsg.includes('restricted') || 
+          errorMsg.includes('blocked') ||
+          errorMsg.includes('Policy violated') ||
+          errorMsg.includes('web of trust')
+        ) {
           return true; // Still return true if at least one relay accepted it
         }
         return false;
@@ -363,7 +385,10 @@ class NostrService {
   private async subscribeToPresenceEvents(): Promise<void> {
     if (!this.pool || this.connectedRelays.size === 0) return;
     this.presenceSubscription = this.pool.subscribeMany(Array.from(this.connectedRelays), [{ kinds: [this.PRESENCE_KIND], '#d': ['xitchat-presence'], limit: 10 }], {
-      onevent: (event: any) => this.handlePresenceEvent(event)
+      onevent: (event: any) => this.handlePresenceEvent(event),
+      onclose: (reasons: any) => {
+        console.debug('📡 Presence subscription closed:', reasons);
+      }
     });
   }
 
