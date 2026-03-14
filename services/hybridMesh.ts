@@ -443,8 +443,18 @@ class HybridMeshService {
       const timestamp = Date.now();
       const mId = messageId || Math.random().toString(36).substr(2, 9);
       const torStatus = realTorService.getStatus().connected;
-      const sig = await (nostrService as any).signData(content + timestamp + mId, Math.floor(timestamp / 1000));
-      const pk = (nostrService as any).getPublicKey();
+
+      // Only sign if Nostr is initialized
+      let sig = '';
+      let pk = '';
+      if (nostrService.isConnected()) {
+        try {
+          sig = await (nostrService as any).signData(content + timestamp + mId, Math.floor(timestamp / 1000));
+          pk = (nostrService as any).getPublicKey();
+        } catch (error) {
+          console.warn('⚠️ Failed to sign message (Nostr not ready):', error);
+        }
+      }
 
       const payload = JSON.stringify({
         content,

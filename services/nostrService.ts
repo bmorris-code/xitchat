@@ -7,6 +7,15 @@ import * as secp256k1 from '@noble/secp256k1';
 import { networkStateManager, NetworkService } from './networkStateManager';
 import { localStorageService } from './localStorageService';
 
+// Initialize SHA-256 for nostr-tools
+if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+  (nostrTools as any).utils = (nostrTools as any).utils || {};
+  (nostrTools as any).utils.sha256 = async (data: Uint8Array) => {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return new Uint8Array(hashBuffer);
+  };
+}
+
 export interface NostrPeer {
   id: string;
   publicKey: string;
@@ -283,7 +292,10 @@ class NostrService {
   }
 
   async signData(data: string, timestamp: number): Promise<string> {
-    if (!this.privateKey) throw new Error('Not initialized');
+    if (!this.privateKey || !this.isInitialized) {
+      console.warn('⚠️ signData called before Nostr initialization - skipping');
+      throw new Error('Not initialized');
+    }
     const cleanHex = this.privateKey.replace(/^0x/i, '');
     const privateKeyBytes = new Uint8Array(cleanHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
     const msg = data + timestamp;
