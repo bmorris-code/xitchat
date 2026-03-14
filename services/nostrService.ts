@@ -7,15 +7,6 @@ import * as secp256k1 from '@noble/secp256k1';
 import { networkStateManager, NetworkService } from './networkStateManager';
 import { localStorageService } from './localStorageService';
 
-// Initialize SHA-256 for nostr-tools
-if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-  (nostrTools as any).utils = (nostrTools as any).utils || {};
-  (nostrTools as any).utils.sha256 = async (data: Uint8Array) => {
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    return new Uint8Array(hashBuffer);
-  };
-}
-
 export interface NostrPeer {
   id: string;
   publicKey: string;
