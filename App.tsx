@@ -63,7 +63,8 @@ const isSystemMessage = (text: any): boolean => {
     const protocolTypes = [
       'ack', 'sync_request', 'marketplace_request', 'public_key', 
       'presence', 'handshake', 'ping', 'pong', 'mesh_sync',
-      'node_info', 'routing_update', 'status_broadcast'
+      'node_info', 'routing_update', 'status_broadcast',
+      'mesh_data', 'ai_request', 'ai_response', 'sync'
     ];
     
     // Check top level type
