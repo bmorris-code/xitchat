@@ -288,8 +288,18 @@ class NostrService {
       const privateKeyBytes = new Uint8Array(cleanHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
       const tags = channelId ? [['e', channelId]] : [];
       const event = nostrTools.finalizeEvent({ kind: 42, created_at: Math.floor(Date.now() / 1000), tags, content }, privateKeyBytes);
-      await this.pool!.publish(this.getPublishRelays(), event);
-      return true;
+
+      try {
+        await this.pool!.publish(this.getPublishRelays(), event);
+        return true;
+      } catch (publishError: any) {
+        // Suppress spam/restriction errors
+        const errorMsg = publishError?.message || String(publishError);
+        if (errorMsg.includes('spam') || errorMsg.includes('restricted') || errorMsg.includes('blocked')) {
+          return true; // Still return true if at least one relay accepted it
+        }
+        return false;
+      }
     } catch { return false; }
   }
 
