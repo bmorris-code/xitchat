@@ -41,6 +41,9 @@ export interface NostrPresenceEvent {
 }
 
 class NostrService {
+  publishNote(arg0: string) {
+      throw new Error('Method not implemented.');
+  }
   private pool: any = null;
   private privateKey: string | null = null;
   private publicKey: string | null = null;
