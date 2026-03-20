@@ -1,5 +1,14 @@
 import * as secp256k1 from '@noble/secp256k1';
+import { sha256 } from '@noble/hashes/sha256';
+import { hmac } from '@noble/hashes/hmac';
 import { localStorageService } from './localStorageService';
+
+// Configure secp256k1 with hash functions if not already set
+if (typeof secp256k1.etc !== 'undefined' && !(secp256k1.etc as any).hmacSha256Sync) {
+  (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
+    return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
+  };
+}
 
 const STORAGE_KEY = 'identity_secp256k1_sk_hex_v1';
 
@@ -17,9 +26,9 @@ function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
-async function sha256Bytes(data: Uint8Array): Promise<Uint8Array> {
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return new Uint8Array(digest);
+// Use @noble/hashes instead of crypto.subtle for better compatibility
+function sha256Bytes(data: Uint8Array): Uint8Array {
+  return sha256(data);
 }
 
 function normalizePubkeyHex(pubkey: string): string {
@@ -61,7 +70,7 @@ class IdentityService {
     const pkHex = await this.getPublicKeyHex();
     const payload = `${fields.content}|${fields.timestamp}|${fields.messageId}`;
     const msg = new TextEncoder().encode(payload);
-    const hash = await sha256Bytes(msg);
+    const hash = sha256Bytes(msg); // No await - now synchronous
     const sigBytes = await (secp256k1.schnorr as any).sign(hash, hexToBytes(skHex));
     return { pk: pkHex, sig: bytesToHex(sigBytes as Uint8Array) };
   }
@@ -74,7 +83,7 @@ class IdentityService {
       if (!/^[0-9a-f]{128}$/i.test(pkHex)) return false;
       const payload = `${fields.content}|${fields.timestamp}|${fields.messageId}`;
       const msg = new TextEncoder().encode(payload);
-      const hash = await sha256Bytes(msg);
+      const hash = sha256Bytes(msg); // No await - now synchronous
       const sigBytes = hexToBytes(sigHex);
       const pkBytes = hexToBytes(pkHex);
       return await (secp256k1.schnorr as any).verify(sigBytes, hash, pkBytes);
@@ -89,7 +98,7 @@ class IdentityService {
     const b = normalizePubkeyHex(peerPubkeyHex);
     const [p1, p2] = a < b ? [a, b] : [b, a];
     const input = new TextEncoder().encode(`xitchat-safety-v1|${p1}|${p2}`);
-    const hash = await sha256Bytes(input);
+    const hash = sha256Bytes(input); // No await - now synchronous
     // 60 bits → 5 groups of 4 digits (0000-9999-ish), stable & readable
     const view = new DataView(hash.buffer);
     const parts = [
