@@ -154,14 +154,20 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                   <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed mb-3">
                     For true serverless mesh networking (Bluetooth & WiFi Direct), download the Android app v{releaseInfo.apkVersionLabel}.
                   </p>
-                  <a
-                    href={releaseInfo.apkDownloadUrl}
-                    download={`xitchat-v${releaseInfo.apkVersionLabel}.apk`}
+                  <button
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = releaseInfo.apkDownloadUrl;
+                      link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
                     className="inline-flex items-center gap-2 bg-[#00ff41]/10 border border-[#00ff41] text-[#00ff41] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#00ff41]/20 transition-colors"
                   >
                     <i className="fa-solid fa-download"></i>
                     Download Serverless APK v{releaseInfo.apkVersionLabel}
-                  </a>
+                  </button>
                 </div>
               </div>
             )}

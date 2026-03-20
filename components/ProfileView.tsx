@@ -619,15 +619,21 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             <p className="text-[11px] opacity-60 mb-4 text-current">
               Download the native Android app to unlock high-performance Bluetooth & WiFi Direct mesh networking.
             </p>
-            <a
-              href={releaseInfo.apkDownloadUrl}
-              download={`xitchat-v${releaseInfo.apkVersionLabel}.apk`}
+            <button
+              onClick={() => {
+                const link = document.createElement('a');
+                link.href = releaseInfo.apkDownloadUrl;
+                link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
               className="w-full bg-current text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:opacity-90 transition-all flex items-center justify-center gap-2 no-underline"
               style={{ backgroundColor: theme === 'green' ? '#00ff41' : theme === 'amber' ? '#ffb000' : theme === 'cyan' ? '#00ffff' : '#ff3131' }}
             >
               <i className="fa-brands fa-android text-base"></i>
               Download Android APK v{releaseInfo.apkVersionLabel}
-            </a>
+            </button>
           </div>
 
           <button
