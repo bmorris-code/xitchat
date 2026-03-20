@@ -1,11 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+// This file serves as a mock API endpoint for Vite development
+// In production, this will be handled by the appUpdateService logic
 
-export async function GET(request: NextRequest) {
-  const baseUrl = request.nextUrl.origin;
+import { releaseInfo } from '../../services/releaseInfo';
+
+export async function GET() {
+  // Return dynamic release info based on current deployment
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   
-  const releaseInfo = {
-    version: "1.0.1",
-    versionCode: 2,
+  const dynamicReleaseInfo = {
+    version: releaseInfo.appVersion,
+    versionCode: releaseInfo.appVersionCode,
     apkUrls: {
       production: `${baseUrl}/xitchat-v1.apk`,
       staging: `${baseUrl}/xitchat-v1.apk`,
@@ -20,5 +24,11 @@ export async function GET(request: NextRequest) {
     updateCheckInterval: 21600000
   };
 
-  return NextResponse.json(releaseInfo);
+  // Return JSON response
+  return new Response(JSON.stringify(dynamicReleaseInfo), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    }
+  });
 }
