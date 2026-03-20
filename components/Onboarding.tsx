@@ -156,12 +156,26 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                   </p>
                   <button
                     onClick={() => {
-                      const link = document.createElement('a');
-                      link.href = releaseInfo.apkDownloadUrl;
-                      link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
+                      console.log('📱 Downloading APK from:', releaseInfo.apkDownloadUrl);
+                      try {
+                        // Method 1: Direct download
+                        const link = document.createElement('a');
+                        link.href = releaseInfo.apkDownloadUrl;
+                        link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
+                        link.style.display = 'none';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        // Method 2: Fallback - open in new tab
+                        setTimeout(() => {
+                          window.open(releaseInfo.apkDownloadUrl, '_blank');
+                        }, 1000);
+                      } catch (error) {
+                        console.error('❌ Download failed:', error);
+                        // Method 3: Final fallback
+                        window.location.href = releaseInfo.apkDownloadUrl;
+                      }
                     }}
                     className="inline-flex items-center gap-2 bg-[#00ff41]/10 border border-[#00ff41] text-[#00ff41] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#00ff41]/20 transition-colors"
                   >

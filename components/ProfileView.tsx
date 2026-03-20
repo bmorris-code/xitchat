@@ -621,12 +621,26 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </p>
             <button
               onClick={() => {
-                const link = document.createElement('a');
-                link.href = releaseInfo.apkDownloadUrl;
-                link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                console.log('📱 Downloading APK from:', releaseInfo.apkDownloadUrl);
+                try {
+                  // Method 1: Direct download
+                  const link = document.createElement('a');
+                  link.href = releaseInfo.apkDownloadUrl;
+                  link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
+                  link.style.display = 'none';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  
+                  // Method 2: Fallback - open in new tab
+                  setTimeout(() => {
+                    window.open(releaseInfo.apkDownloadUrl, '_blank');
+                  }, 1000);
+                } catch (error) {
+                  console.error('❌ Download failed:', error);
+                  // Method 3: Final fallback
+                  window.location.href = releaseInfo.apkDownloadUrl;
+                }
               }}
               className="w-full bg-current text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:opacity-90 transition-all flex items-center justify-center gap-2 no-underline"
               style={{ backgroundColor: theme === 'green' ? '#00ff41' : theme === 'amber' ? '#ffb000' : theme === 'cyan' ? '#00ffff' : '#ff3131' }}
