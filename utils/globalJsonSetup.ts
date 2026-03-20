@@ -23,12 +23,22 @@ if (typeof window !== 'undefined') {
   };
 }
 
-// Also configure for @noble/secp256k1 if needed
+// Also configure for @noble/secp256k1 v3.x
 import * as secp256k1 from '@noble/secp256k1';
-if (typeof secp256k1.etc !== 'undefined' && secp256k1.etc.hmacSha256Sync === undefined) {
-  secp256k1.etc.hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
-    return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
-  };
+if (typeof secp256k1.etc !== 'undefined') {
+  // Set hmacSha256Sync for general operations
+  if (!(secp256k1.etc as any).hmacSha256Sync) {
+    (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
+      return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
+    };
+  }
+
+  // Set sha256Sync for schnorr operations (v3.x requirement)
+  if (!(secp256k1.etc as any).sha256Sync) {
+    (secp256k1.etc as any).sha256Sync = (...messages: Uint8Array[]) => {
+      return sha256(secp256k1.etc.concatBytes(...messages));
+    };
+  }
 }
 
 // Override JSON.stringify globally to handle BigInt and Date objects

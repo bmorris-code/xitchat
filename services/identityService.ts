@@ -3,11 +3,22 @@ import { sha256 } from '@noble/hashes/sha256';
 import { hmac } from '@noble/hashes/hmac';
 import { localStorageService } from './localStorageService';
 
-// Configure secp256k1 with hash functions if not already set
-if (typeof secp256k1.etc !== 'undefined' && !(secp256k1.etc as any).hmacSha256Sync) {
-  (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
-    return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
-  };
+// CRITICAL: Configure secp256k1 v3.x with hash functions
+// This MUST be done before any schnorr operations
+if (typeof secp256k1.etc !== 'undefined') {
+  // Set hmacSha256Sync for general operations
+  if (!(secp256k1.etc as any).hmacSha256Sync) {
+    (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
+      return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
+    };
+  }
+
+  // Set sha256Sync for schnorr operations (v3.x requirement)
+  if (!(secp256k1.etc as any).sha256Sync) {
+    (secp256k1.etc as any).sha256Sync = (...messages: Uint8Array[]) => {
+      return sha256(secp256k1.etc.concatBytes(...messages));
+    };
+  }
 }
 
 const STORAGE_KEY = 'identity_secp256k1_sk_hex_v1';
