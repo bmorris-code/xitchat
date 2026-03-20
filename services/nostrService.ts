@@ -2,10 +2,21 @@
 // Implements decentralized global communication using Nostr relays
 // Supports presence events for global radar discovery
 
+// CRITICAL: Import hash functions BEFORE nostr-tools to prevent "hashes.sha256 not set" error
+import { sha256 } from '@noble/hashes/sha256';
+import { hmac } from '@noble/hashes/hmac';
+
 import * as nostrTools from 'nostr-tools';
 import * as secp256k1 from '@noble/secp256k1';
 import { networkStateManager, NetworkService } from './networkStateManager';
 import { localStorageService } from './localStorageService';
+
+// Configure secp256k1 with hash functions if not already set
+if (typeof secp256k1.etc !== 'undefined' && !(secp256k1.etc as any).hmacSha256Sync) {
+  (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
+    return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
+  };
+}
 
 export interface NostrPeer {
   id: string;
