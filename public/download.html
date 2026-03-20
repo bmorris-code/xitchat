@@ -93,7 +93,7 @@
         function downloadAPK() {
             // Method 1: Direct download
             const link = document.createElement('a');
-            link.href = '/public/xitchat-v1.apk';
+            link.href = '/xitchat-v1.apk';
             link.download = 'xitchat-v1.0.1.apk';
             document.body.appendChild(link);
             link.click();
@@ -102,12 +102,12 @@
         
         function downloadDirect() {
             // Method 2: Window open fallback
-            window.open('/public/xitchat-v1.apk', '_blank');
+            window.open('/xitchat-v1.apk', '_blank');
         }
         
         // Auto-redirect after 5 seconds if no action
         setTimeout(() => {
-            window.location.href = '/public/xitchat-v1.apk';
+            window.location.href = '/xitchat-v1.apk';
         }, 5000);
     </script>
 </body>
