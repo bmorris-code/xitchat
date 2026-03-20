@@ -11,11 +11,21 @@ import * as secp256k1 from '@noble/secp256k1';
 import { networkStateManager, NetworkService } from './networkStateManager';
 import { localStorageService } from './localStorageService';
 
-// Configure secp256k1 with hash functions if not already set
-if (typeof secp256k1.etc !== 'undefined' && !(secp256k1.etc as any).hmacSha256Sync) {
-  (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
-    return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
-  };
+// Configure secp256k1 v3.x with hash functions
+if (typeof secp256k1.etc !== 'undefined') {
+  // Set hmacSha256Sync for general operations
+  if (!(secp256k1.etc as any).hmacSha256Sync) {
+    (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
+      return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
+    };
+  }
+
+  // Set sha256Sync for schnorr operations (v3.x requirement)
+  if (!(secp256k1.etc as any).sha256Sync) {
+    (secp256k1.etc as any).sha256Sync = (...messages: Uint8Array[]) => {
+      return sha256(secp256k1.etc.concatBytes(...messages));
+    };
+  }
 }
 
 export interface NostrPeer {
