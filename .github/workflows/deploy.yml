@@ -1,8 +1,8 @@
-name: Deploy to GitHub Pages
+# DISABLED: Using Vercel for deployment instead of GitHub Pages
+# name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: ["main"]
+  # Disabled - using Vercel
   workflow_dispatch:
 
 permissions:
