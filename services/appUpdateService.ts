@@ -183,10 +183,11 @@ class AppUpdateService {
    */
   async downloadAndInstallUpdate(updateInfo: UpdateInfo): Promise<void> {
     if (!Capacitor.isNativePlatform()) {
-      // For web, just trigger download
+      // For web, just trigger download with proper headers
       const link = document.createElement('a');
       link.href = updateInfo.downloadUrl;
       link.download = `xitchat-v${updateInfo.version}.apk`;
+      link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

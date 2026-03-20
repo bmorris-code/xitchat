@@ -13,6 +13,11 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+      }
     },
     plugins: [
       react(),
@@ -27,7 +32,7 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
           skipWaiting: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'], // Added fonts
           navigateFallbackDenylist: [
-            /\/.*\.apk(\?.*)?$/i
+            // Removed APK denylist to allow downloads
           ],
 
           // ADD THIS - Prevent caching issues
