@@ -58,7 +58,7 @@ class AppUpdateService {
     }
 
     try {
-      // Fallback to config file
+      // Fallback to config file in public folder
       const response = await fetch('/config/release.json');
       if (!response.ok) {
         throw new Error('Failed to load release config');
