@@ -58,28 +58,6 @@ class AppUpdateService {
     }
 
     try {
-      // Try API endpoint first (for Vercel deployment)
-      const response = await fetch('/api/version-check');
-      if (response.ok) {
-        const apiData = await response.json();
-        this.releaseConfig = {
-          version: apiData.version,
-          versionCode: apiData.versionCode,
-          apkUrls: apiData.apkUrls,
-          releaseNotes: apiData.releaseNotes,
-          forceUpdate: apiData.forceUpdate,
-          apkSize: apiData.apkSize,
-          checksum: apiData.checksum,
-          minSupportedVersion: apiData.minSupportedVersion,
-          updateCheckInterval: apiData.updateCheckInterval
-        };
-        return this.releaseConfig;
-      }
-    } catch (error) {
-      console.debug('API endpoint failed, trying config file:', error);
-    }
-
-    try {
       // Fallback to config file
       const response = await fetch('/config/release.json');
       if (!response.ok) {
@@ -90,7 +68,7 @@ class AppUpdateService {
     } catch (error) {
       console.debug('Failed to load release config, using defaults:', error);
       // Fallback config with dynamic URL
-      const baseUrl = window.location.origin;
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
       return {
         version: '1.0.1',
         versionCode: 2,
