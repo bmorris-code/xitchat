@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XitChat APK Download</title>
+    <style>
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: #020202;
+            color: #00ff41;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .download-container {
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        .download-btn {
+            background: #00ff41;
+            color: #020202;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            margin: 10px 0;
+            text-transform: uppercase;
+            transition: all 0.2s;
+            width: 100%;
+            max-width: 300px;
+        }
+        .download-btn:hover {
+            background: #00cc33;
+            transform: scale(1.05);
+        }
+        .download-btn:active {
+            transform: scale(0.95);
+        }
+        .version-info {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #00ff41;
+            border-radius: 5px;
+            background: rgba(0, 255, 65, 0.1);
+        }
+        .file-size {
+            color: #00ff41;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .instructions {
+            margin-top: 20px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="download-container">
+        <h1>XitChat Android App</h1>
+        
+        <div class="version-info">
+            <h2>Version 1.0.1</h2>
+            <p>Latest stable release with bug fixes and performance improvements</p>
+            <div class="file-size">File size: ~86 MB</div>
+        </div>
+        
+        <button class="download-btn" onclick="downloadAPK()">
+            📱 Download APK
+        </button>
+        
+        <button class="download-btn" onclick="downloadDirect()">
+            🔄 Alternative Download
+        </button>
+        
+        <div class="instructions">
+            <p><strong>Installation Instructions:</strong></p>
+            <p>1. Download the APK file</p>
+            <p>2. Enable "Install from unknown sources" in Android settings</p>
+            <p>3. Tap the downloaded APK to install</p>
+        </div>
+    </div>
+
+    <script>
+        function downloadAPK() {
+            // Method 1: Direct download
+            const link = document.createElement('a');
+            link.href = '/public/xitchat-v1.apk';
+            link.download = 'xitchat-v1.0.1.apk';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        function downloadDirect() {
+            // Method 2: Window open fallback
+            window.open('/public/xitchat-v1.apk', '_blank');
+        }
+        
+        // Auto-redirect after 5 seconds if no action
+        setTimeout(() => {
+            window.location.href = '/public/xitchat-v1.apk';
+        }, 5000);
+    </script>
+</body>
+</html>

@@ -4,7 +4,8 @@
   "apkUrls": {
     "production": "https://releases.xitchat.com/xitchat-v1.0.1.apk",
     "staging": "https://staging-releases.xitchat.com/xitchat-v1.0.1.apk",
-    "development": "/public/xitchat-v1.apk"
+    "development": "/public/xitchat-v1.apk",
+    "downloadPage": "/download.html"
   },
   "releaseNotes": "Bug fixes and performance improvements",
   "forceUpdate": false,

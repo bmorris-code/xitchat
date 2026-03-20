@@ -183,14 +183,27 @@ class AppUpdateService {
    */
   async downloadAndInstallUpdate(updateInfo: UpdateInfo): Promise<void> {
     if (!Capacitor.isNativePlatform()) {
-      // For web, just trigger download with proper headers
-      const link = document.createElement('a');
-      link.href = updateInfo.downloadUrl;
-      link.download = `xitchat-v${updateInfo.version}.apk`;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // For web, redirect to dedicated download page
+      try {
+        // Check if download page URL exists
+        const downloadPageUrl = updateInfo.downloadUrl?.includes('downloadPage') 
+          ? '/download.html' 
+          : updateInfo.downloadUrl;
+          
+        // Method 1: Redirect to download page
+        window.location.href = downloadPageUrl;
+        
+      } catch (error) {
+        console.error('Download redirect failed, trying direct:', error);
+        // Fallback: Direct download
+        const link = document.createElement('a');
+        link.href = updateInfo.downloadUrl;
+        link.download = `xitchat-v${updateInfo.version}.apk`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
       return;
     }
 
