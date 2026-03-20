@@ -12,6 +12,8 @@ import { hybridMeshWebRTC as ablyWebRTC } from './ablyWebRTC';
 import { networkStateManager } from './networkStateManager';
 import { androidPermissions } from './androidPermissions';
 import { presenceBeacon } from './presenceBeacon';
+import { identityService } from './identityService';
+import { trustStore } from './trustStore';
 
 export type MeshConnectionType = 'bluetooth' | 'webrtc' | 'broadcast' | 'wifi' | 'nostr';
 
@@ -43,6 +45,9 @@ export interface HybridMeshMessage {
   encryptedData?: any;
   sig?: string;
   pk?: string;
+  sig2?: string; // identityService schnorr signature
+  pk2?: string;  // identityService pubkey hex (x||y)
+  verified?: boolean;
 }
 
 class HybridMeshService {
@@ -289,7 +294,7 @@ class HybridMeshService {
     content: string,
     from: string,
     connectionType: MeshConnectionType,
-    metadata?: { messageId?: string; timestamp?: number; senderHandle?: string; senderName?: string, encryptedData?: any, sig?: string, pk?: string }
+    metadata?: { messageId?: string; timestamp?: number; senderHandle?: string; senderName?: string, encryptedData?: any, sig?: string, pk?: string, sig2?: string, pk2?: string, verified?: boolean }
   ) {
     const hybridMessage: HybridMeshMessage = {
       id: metadata?.messageId || Math.random().toString(36).substr(2, 9),
@@ -304,7 +309,10 @@ class HybridMeshService {
       senderHandle: metadata?.senderHandle,
       senderName: metadata?.senderName,
       sig: metadata?.sig,
-      pk: metadata?.pk
+      pk: metadata?.pk,
+      sig2: metadata?.sig2,
+      pk2: metadata?.pk2,
+      verified: metadata?.verified
     };
 
     this.notifyListeners('messageReceived', hybridMessage);
@@ -364,10 +372,24 @@ class HybridMeshService {
             messageId: parsed.messageId,
             encryptedData: parsed.encryptedData,
             sig: parsed.sig,
-            pk: parsed.pk
+            pk: parsed.pk,
+            sig2: parsed.sig2,
+            pk2: parsed.pk2
           };
 
-          if (metadata.sig && metadata.pk) {
+          // Prefer device identity signatures (works offline).
+          if (metadata.sig2 && metadata.pk2) {
+            const ok = await identityService.verifyEnvelope({
+              content,
+              timestamp: metadata.timestamp,
+              messageId: metadata.messageId,
+              pk: metadata.pk2,
+              sig: metadata.sig2
+            });
+            if (!ok) return;
+            metadata.verified = await trustStore.isVerified(metadata.pk2);
+          } else if (metadata.sig && metadata.pk) {
+            // Legacy Nostr-based signature (best-effort).
             const verified = await (nostrService as any).verifyData(
               content + metadata.timestamp + metadata.messageId,
               metadata.sig,
@@ -375,6 +397,10 @@ class HybridMeshService {
               Math.floor(metadata.timestamp / 1000)
             );
             if (!verified) return;
+          } else {
+            // Unsigned JSON-wrapped envelopes are spoofable; reject.
+            // Plaintext chat is still allowed when it isn't JSON-wrapped (legacy compatibility).
+            return;
           }
         } else if (!parsed) {
           const recovered = this.extractWrappedContentFallback(content);
@@ -444,15 +470,18 @@ class HybridMeshService {
       const mId = messageId || Math.random().toString(36).substr(2, 9);
       const torStatus = realTorService.getStatus().connected;
 
-      // Only sign if Nostr is initialized
+      // Always sign with device identity (works offline).
+      const signed = await identityService.signEnvelope({ content, timestamp, messageId: mId });
+
+      // Optional legacy signature when Nostr is connected.
       let sig = '';
       let pk = '';
       if (nostrService.isConnected()) {
         try {
           sig = await (nostrService as any).signData(content + timestamp + mId, Math.floor(timestamp / 1000));
           pk = (nostrService as any).getPublicKey();
-        } catch (error) {
-          console.warn('⚠️ Failed to sign message (Nostr not ready):', error);
+        } catch {
+          // no-op
         }
       }
 
@@ -463,7 +492,9 @@ class HybridMeshService {
         timestamp,
         messageId: mId,
         sig,
-        pk
+        pk,
+        sig2: signed.sig,
+        pk2: signed.pk
       });
 
       let sentSuccessfully = false;

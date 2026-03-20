@@ -13,6 +13,7 @@ interface MessageListProps {
   onForward: (msg: Message) => void;
   onReaction: (messageId: string, emoji: string) => void;
   onDelete?: (messageId: string) => void;
+  onVerifyPeer?: (peerPk: string, peerLabel?: string) => void;
   getUserColor: (senderId: string) => string;
   reactingToMessageId: string | null;
   setReactingToMessageId: (id: string | null) => void;
@@ -29,6 +30,7 @@ const MessageList: React.FC<MessageListProps> = ({
   onForward,
   onReaction,
   onDelete,
+  onVerifyPeer,
   getUserColor,
   reactingToMessageId,
   setReactingToMessageId,
@@ -169,6 +171,13 @@ const MessageList: React.FC<MessageListProps> = ({
     return 'text-amber-400 border-amber-500/40 bg-amber-500/10';
   };
 
+  const getVerificationTag = (msg: Message): { label: string; className: string } | null => {
+    if (msg.senderId === 'me') return null;
+    if (!msg.signerPk) return null;
+    if (msg.verified) return { label: 'VERIFIED', className: 'text-[#00ff41] border-[#00ff41]/40 bg-[#00ff41]/10' };
+    return { label: 'UNVERIFIED', className: 'text-amber-400 border-amber-500/40 bg-amber-500/10' };
+  };
+
   const isProtocolNoise = (text?: string): boolean => {
     const value = (text || '').trim();
     if (!value) return false;
@@ -207,6 +216,20 @@ const MessageList: React.FC<MessageListProps> = ({
                 <span className={`text-[7px] font-black border px-1 uppercase tracking-tighter ml-1 ${getDeliveryClass(msg)}`}>
                   {getDeliveryLabel(msg)}
                 </span>
+              )}
+              {getVerificationTag(msg) && (
+                <span className={`text-[7px] font-black border px-1 uppercase tracking-tighter ml-1 ${getVerificationTag(msg)!.className}`}>
+                  {getVerificationTag(msg)!.label}
+                </span>
+              )}
+              {getVerificationTag(msg)?.label === 'UNVERIFIED' && msg.signerPk && onVerifyPeer && (
+                <button
+                  onClick={() => onVerifyPeer(msg.signerPk!, msg.senderHandle || chat.participant.handle)}
+                  className="text-[7px] font-black border px-1 uppercase tracking-tighter ml-1 text-amber-300 border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10"
+                  title="Verify this contact"
+                >
+                  VERIFY
+                </button>
               )}
               {msg.tor && <span className="text-[7px] font-black border border-purple-500 text-purple-500 px-1 uppercase tracking-tighter bg-purple-500/10 ml-1">TOR</span>}
               {msg.pow && <span className="text-[7px] font-black border border-amber-500 text-amber-500 px-1 uppercase tracking-tighter bg-amber-500/10 ml-1">POW</span>}

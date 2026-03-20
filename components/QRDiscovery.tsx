@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { enhancedDiscovery, DiscoveredPeer } from '../services/enhancedDiscovery';
 import { nostrService } from '../services/nostrService';
+import { identityService } from '../services/identityService';
+import { trustStore } from '../services/trustStore';
 
 interface QRDiscoveryProps {
   onPeerConnected: (peer: DiscoveredPeer) => void;
@@ -19,17 +21,19 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
   }, []);
 
   const generateMyQRCode = () => {
-    const pubKey = nostrService.getPublicKey();
-    const myData = {
-      id: pubKey || generatePeerId(),
+    void (async () => {
+      const pubKey = await identityService.getPublicKeyHex();
+      const myData = {
+        id: pubKey,
       name: localStorage.getItem('xitchat_handle') || 'XitChat User',
       handle: `@${localStorage.getItem('xitchat_handle') || 'user'}`,
       timestamp: Date.now(),
       type: 'xitchat-identity'
     };
 
-    const qrString = JSON.stringify(myData);
-    setMyQRData(qrString);
+      const qrString = JSON.stringify(myData);
+      setMyQRData(qrString);
+    })();
   };
 
   const generatePeerId = (): string => {
@@ -54,6 +58,9 @@ const QRDiscovery: React.FC<QRDiscoveryProps> = ({ onPeerConnected }) => {
 
   const addPeerFromQR = async (peerData: any) => {
     try {
+      if (peerData?.id) {
+        await trustStore.verify(peerData.id, peerData.handle || peerData.name);
+      }
       await enhancedDiscovery.addPeerManually({
         id: peerData.id,
         name: peerData.name,

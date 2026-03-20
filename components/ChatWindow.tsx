@@ -8,6 +8,7 @@ import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import MediaGallery from './MediaGallery';
 import ForwardModal from './ForwardModal';
+import VerifyPeerModal from './verify-peer-modal';
 import { getGeohashChannelsInstance, GeohashMessage } from '../services/geohashChannels';
 
 // Initialize the service instance
@@ -63,6 +64,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
+  const [verifyPeerPk, setVerifyPeerPk] = useState<string | null>(null);
+  const [verifyPeerLabel, setVerifyPeerLabel] = useState<string | undefined>(undefined);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -224,6 +227,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         onForward={setShowForwardTarget}
         onReaction={onReaction}
         onDelete={onDeleteMessage}
+        onVerifyPeer={(peerPk, peerLabel) => {
+          setVerifyPeerPk(peerPk);
+          setVerifyPeerLabel(peerLabel);
+        }}
         getUserColor={getUserColor}
         reactingToMessageId={reactingToMessageId}
         setReactingToMessageId={setReactingToMessageId}
@@ -282,6 +289,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           onBackgroundChange={setChatBackground}
         />
       )}
+
+      <VerifyPeerModal
+        isOpen={!!verifyPeerPk}
+        peerPk={verifyPeerPk}
+        peerLabel={verifyPeerLabel}
+        onClose={() => {
+          setVerifyPeerPk(null);
+          setVerifyPeerLabel(undefined);
+        }}
+      />
     </div>
   );
 };

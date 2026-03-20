@@ -42,6 +42,8 @@ export interface Message {
   text: string;
   deliveryStatus?: 'sending' | 'delivered' | 'failed';
   deliveryDetail?: string;
+  verified?: boolean;
+  signerPk?: string;
   imageUrl?: string;
   videoUrl?: string;
   replyTo?: {

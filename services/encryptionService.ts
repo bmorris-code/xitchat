@@ -17,6 +17,7 @@ class LocalEncryptionService {
   private static instance: LocalEncryptionService;
   private keyPairs: Map<string, CryptoKeyPair> = new Map();
   private symmetricKeys: Map<string, CryptoKey> = new Map();
+  private deviceMasterKeyPromise: Promise<CryptoKey> | null = null;
 
   static getInstance(): LocalEncryptionService {
     if (!LocalEncryptionService.instance) {
@@ -27,6 +28,50 @@ class LocalEncryptionService {
 
   private get isSupported(): boolean {
     return typeof window !== 'undefined' && !!window.crypto && !!window.crypto.subtle;
+  }
+
+  private async getDeviceMasterKey(): Promise<CryptoKey> {
+    if (!this.isSupported) {
+      throw new Error('Web Crypto API not available');
+    }
+    if (!this.deviceMasterKeyPromise) {
+      this.deviceMasterKeyPromise = import('./secure-key-store')
+        .then((m) => m.getOrCreateDeviceMasterKey())
+        .catch((error) => {
+          this.deviceMasterKeyPromise = null;
+          throw error;
+        });
+    }
+    return this.deviceMasterKeyPromise;
+  }
+
+  private packEncryptedPayload(encryptedKey: ArrayBuffer, ciphertext: ArrayBuffer): ArrayBuffer {
+    const keyBytes = new Uint8Array(encryptedKey);
+    const ctBytes = new Uint8Array(ciphertext);
+    if (keyBytes.byteLength > 65535) throw new Error('Encrypted key too large');
+
+    const header = new Uint8Array(2);
+    header[0] = (keyBytes.byteLength >> 8) & 0xff;
+    header[1] = keyBytes.byteLength & 0xff;
+
+    const out = new Uint8Array(2 + keyBytes.byteLength + ctBytes.byteLength);
+    out.set(header, 0);
+    out.set(keyBytes, 2);
+    out.set(ctBytes, 2 + keyBytes.byteLength);
+    return out.buffer;
+  }
+
+  private unpackEncryptedPayload(packed: ArrayBuffer): { encryptedKey: ArrayBuffer; ciphertext: ArrayBuffer } {
+    const bytes = new Uint8Array(packed);
+    if (bytes.byteLength < 3) throw new Error('Invalid encrypted payload');
+    const keyLen = (bytes[0] << 8) | bytes[1];
+    const keyStart = 2;
+    const keyEnd = keyStart + keyLen;
+    if (keyLen <= 0 || keyEnd >= bytes.byteLength) throw new Error('Invalid encrypted payload header');
+    return {
+      encryptedKey: bytes.slice(keyStart, keyEnd).buffer,
+      ciphertext: bytes.slice(keyEnd).buffer
+    };
   }
 
   // Generate key pair for a user
@@ -140,24 +185,22 @@ class LocalEncryptionService {
       );
 
       // Encrypt symmetric key with recipient's public key
+      const rawSymmetricKey = await window.crypto.subtle.exportKey('raw', symmetricKey);
       const encryptedSymmetricKey = await window.crypto.subtle.encrypt(
         {
           name: 'RSA-OAEP',
         },
         recipientKeyPair.publicKey,
-        await window.crypto.subtle.exportKey('raw', symmetricKey)
+        rawSymmetricKey
       );
 
-      // Combine all data
-      const combinedData = new Uint8Array([
-        ...new Uint8Array(encryptedSymmetricKey),
-        ...new Uint8Array(encryptedData)
-      ]);
+      const combinedData = this.packEncryptedPayload(encryptedSymmetricKey, encryptedData);
 
       return {
-        data: this.arrayBufferToBase64(combinedData.buffer),
+        data: this.arrayBufferToBase64(combinedData),
         iv: this.arrayBufferToBase64(iv.buffer),
-        salt: this.arrayBufferToBase64(await window.crypto.subtle.exportKey('raw', symmetricKey)),
+        // Version marker; MUST NOT contain key material.
+        salt: 'v2',
         timestamp: Date.now()
       };
     } catch (error) {
@@ -185,9 +228,7 @@ class LocalEncryptionService {
       const combinedData = this.base64ToArrayBuffer(encryptedData.data);
       const iv = this.base64ToArrayBuffer(encryptedData.iv);
 
-      // Extract encrypted symmetric key (first 256 bytes for RSA-2048)
-      const encryptedSymmetricKey = combinedData.slice(0, 256);
-      const encryptedMessage = combinedData.slice(256);
+      const { encryptedKey: encryptedSymmetricKey, ciphertext: encryptedMessage } = this.unpackEncryptedPayload(combinedData);
 
       // Decrypt symmetric key with my private key
       const symmetricKeyBuffer = await window.crypto.subtle.decrypt(
@@ -267,23 +308,21 @@ class LocalEncryptionService {
       );
 
       // Encrypt symmetric key with recipient's public key
+      const rawSymmetricKey = await window.crypto.subtle.exportKey('raw', symmetricKey);
       const encryptedSymmetricKey = await window.crypto.subtle.encrypt(
         {
           name: 'RSA-OAEP',
         },
         recipientKeyPair.publicKey,
-        await window.crypto.subtle.exportKey('raw', symmetricKey)
+        rawSymmetricKey
       );
 
-      const combinedData = new Uint8Array([
-        ...new Uint8Array(encryptedSymmetricKey),
-        ...new Uint8Array(encryptedData)
-      ]);
+      const combinedData = this.packEncryptedPayload(encryptedSymmetricKey, encryptedData);
 
       return {
-        data: this.arrayBufferToBase64(combinedData.buffer),
+        data: this.arrayBufferToBase64(combinedData),
         iv: this.arrayBufferToBase64(iv.buffer),
-        salt: this.arrayBufferToBase64(await window.crypto.subtle.exportKey('raw', symmetricKey)),
+        salt: 'v2',
         timestamp: Date.now()
       };
     } catch (error) {
@@ -307,8 +346,7 @@ class LocalEncryptionService {
       const combinedData = this.base64ToArrayBuffer(encryptedData.data);
       const iv = this.base64ToArrayBuffer(encryptedData.iv);
 
-      const encryptedSymmetricKey = combinedData.slice(0, 256);
-      const encryptedImage = combinedData.slice(256);
+      const { encryptedKey: encryptedSymmetricKey, ciphertext: encryptedImage } = this.unpackEncryptedPayload(combinedData);
 
       // Decrypt symmetric key
       const symmetricKeyBuffer = await window.crypto.subtle.decrypt(
@@ -500,12 +538,7 @@ class LocalEncryptionService {
   }
 
   async encryptSymmetric(data: string, key?: CryptoKey): Promise<EncryptedData> {
-    const targetKey = key || this.masterKey;
-    if (!targetKey) {
-      // If no master key set, use a deterministic "session" key for temporary storage
-      // This is still better than plaintext as it requires knowledge of the app's internal logic
-      return { data: btoa(data), iv: 'session', salt: 'session', timestamp: Date.now() };
-    }
+    const targetKey = key || this.masterKey || await this.getDeviceMasterKey();
 
     if (!this.isSupported) {
       return { data: btoa(data), iv: 'mock', salt: 'mock', timestamp: Date.now() };
@@ -524,7 +557,7 @@ class LocalEncryptionService {
       return {
         data: this.arrayBufferToBase64(encryptedData),
         iv: this.arrayBufferToBase64(iv.buffer),
-        salt: 'symmetric',
+        salt: 'device',
         timestamp: Date.now()
       };
     } catch (error) {
@@ -534,10 +567,7 @@ class LocalEncryptionService {
   }
 
   async decryptSymmetric(encryptedData: EncryptedData, key?: CryptoKey): Promise<string> {
-    const targetKey = key || this.masterKey;
-    if (!targetKey || encryptedData.iv === 'session') {
-      try { return atob(encryptedData.data); } catch { return ''; }
-    }
+    const targetKey = key || this.masterKey || await this.getDeviceMasterKey();
 
     if (!this.isSupported) {
       try { return atob(encryptedData.data); } catch { return ''; }
@@ -565,6 +595,7 @@ class LocalEncryptionService {
     this.keyPairs.clear();
     this.symmetricKeys.clear();
     this.masterKey = null;
+    this.deviceMasterKeyPromise = null;
   }
 }
 

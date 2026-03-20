@@ -7,6 +7,8 @@ import { nostrService } from '../services/nostrService';
 import { bluetoothMesh } from '../services/bluetoothMesh';
 import { hybridAI } from '../services/hybridAI';
 import { encryptionService } from '../services/encryptionService';
+import VerifyPeerModal from './verify-peer-modal';
+import { trustStore } from '../services/trustStore';
 
 interface ChatHeaderProps {
     chat: Chat;
@@ -42,6 +44,9 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
     const [isTransmitting, setIsTransmitting] = useState(false);
     const [isPeerOnline, setIsPeerOnline] = useState(false);
     const [hasE2EEKeys, setHasE2EEKeys] = useState(false);
+    const [peerVerified, setPeerVerified] = useState<boolean>(false);
+    const [showVerifyModal, setShowVerifyModal] = useState(false);
+    const [peerPk2, setPeerPk2] = useState<string | null>(null);
 
     useEffect(() => {
         const updateStatuses = () => {
@@ -73,6 +78,13 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                 // Check for E2EE keys
                 const hasKeys = encryptionService.hasUserKeys(chat.participant.id);
                 setHasE2EEKeys(hasKeys);
+
+                // Check verification status from last incoming signed message.
+                const lastIncoming = [...(chat.messages || [])].reverse().find(m => m.senderId !== 'me' && !!(m as any).signerPk);
+                const maybePk2 = (lastIncoming as any)?.signerPk || null;
+                setPeerPk2(maybePk2);
+                if (maybePk2) void trustStore.isVerified(maybePk2).then(setPeerVerified);
+                else setPeerVerified(false);
             }
         };
 
@@ -136,16 +148,16 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
 
                 {/* Security Status Indicator */}
                 <div
-                    onClick={onToggleSecureMode}
+                    onClick={() => setShowVerifyModal(true)}
                     className={`cursor-pointer flex items-center justify-center w-6 h-6 sm:w-auto sm:px-2 sm:py-1 rounded text-[8px] font-bold uppercase tracking-widest transition-all ${secureMode && encryptionEnabled && hasE2EEKeys
                         ? 'bg-green-500/20 text-green-400 border border-green-500/50'
                         : secureMode && encryptionEnabled
                             ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
                             : 'bg-red-500/20 text-red-400 border border-red-500/50'
                         }`}
-                    title={secureMode && encryptionEnabled && hasE2EEKeys ? '🔒 End-to-end encrypted active' : secureMode && encryptionEnabled ? '⏳ Waiting for peer handshake...' : '🔓 Insecure mode'}
+                    title={peerVerified ? '✅ Verified contact' : '⚠️ Unverified contact (tap to verify)'}
                 >
-                    {secureMode && encryptionEnabled && hasE2EEKeys ? '🔒' : secureMode && encryptionEnabled ? '⏳' : '🔓'}
+                    {peerVerified ? '✅' : (secureMode && encryptionEnabled && hasE2EEKeys ? '🔒' : secureMode && encryptionEnabled ? '⏳' : '🔓')}
                 </div>
 
                 {/* WebRTC Mesh Status */}
@@ -220,6 +232,14 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
 
                 {onClose && <button onClick={onClose} className="terminal-btn text-[10px] sm:text-xs px-1 sm:px-2 py-0 h-6 sm:h-8 min-h-0 uppercase whitespace-nowrap">close</button>}
             </div>
+
+            <VerifyPeerModal
+              isOpen={showVerifyModal}
+              peerPk={peerPk2 || (chat.type === 'private' ? chat.participant.id : null)}
+              peerLabel={chat.participant.handle}
+              onClose={() => setShowVerifyModal(false)}
+              onVerified={() => setPeerVerified(true)}
+            />
         </div>
     );
 };

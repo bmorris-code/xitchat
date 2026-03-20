@@ -1,23 +1,5 @@
 {
   "rewrites": [
     { "source": "/((?!.*\\.[^/]+$).*)", "destination": "/index.html" }
-  ],
-  "headers": [
-    {
-      "source": "/xitchat-v1.apk",
-      "headers": [
-        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
-        { "key": "Content-Disposition", "value": "attachment; filename=\"xitchat-v1.apk\"" },
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" }
-      ]
-    },
-    {
-      "source": "/xitchat.apk",
-      "headers": [
-        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
-        { "key": "Content-Disposition", "value": "attachment; filename=\"xitchat.apk\"" },
-        { "key": "Cache-Control", "value": "public, max-age=300, must-revalidate" }
-      ]
-    }
   ]
 }

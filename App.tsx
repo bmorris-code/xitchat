@@ -590,7 +590,9 @@ const App: React.FC = () => {
                 senderHandle: message.senderHandle || targetChat.participant.handle,
                 text: message.content,
                 timestamp: message.timestamp || Date.now(),
-                encryptedData: message.encryptedData
+                encryptedData: message.encryptedData,
+                signerPk: message.pk2 || message.pk,
+                verified: !!message.verified
               };
 
               // Real-time Decryption attempt

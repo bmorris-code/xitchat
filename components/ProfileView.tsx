@@ -5,6 +5,7 @@ import { realTorService } from '../services/realTorService';
 import { realPowService } from '../services/realPowService';
 import { nostrService } from '../services/nostrService';
 import { releaseInfo } from '../services/releaseInfo';
+import { trustStore, type VerifiedPeer } from '../services/trustStore';
 
 interface ProfileViewProps {
   myHandle: string;
@@ -54,6 +55,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   const [powStats, setPowStats] = useState<any>(null);
   const [showNostrKeys, setShowNostrKeys] = useState(false);
   const [nostrKeys, setNostrKeys] = useState({ pub: '' });
+  const [verifiedPeers, setVerifiedPeers] = useState<VerifiedPeer[]>([]);
+  const [showVerifiedPeers, setShowVerifiedPeers] = useState(false);
   // Load saved uplink core from localStorage
   useEffect(() => {
     const savedUplinkCore = localStorage.getItem('xitchat_uplink_core');
@@ -65,6 +68,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
     setNostrKeys({
       pub: nostrService.getPublicKey() || ''
     });
+
+    void trustStore.list().then(setVerifiedPeers);
   }, []);
 
   // Initialize TOR and POW services
@@ -311,6 +316,60 @@ const ProfileView: React.FC<ProfileViewProps> = ({
                 <p className="text-[9px] opacity-40 italic">Public key is shareable. Private keys are intentionally not exposed in-app.</p>
               </div>
             )}
+        </div>
+
+        {/* Verified Contacts */}
+        <div className="space-y-4 border-t border-current border-opacity-10 pt-10">
+          <div className="flex justify-between items-center">
+            <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#006600]">VERIFIED_CONTACTS</h4>
+            <button
+              onClick={async () => {
+                const next = !showVerifiedPeers;
+                setShowVerifiedPeers(next);
+                if (next) setVerifiedPeers(await trustStore.list());
+              }}
+              className="text-[9px] uppercase font-bold text-current opacity-60 hover:opacity-100"
+            >
+              {showVerifiedPeers ? 'hide_list' : `show_list (${verifiedPeers.length})`}
+            </button>
+          </div>
+
+          {showVerifiedPeers && (
+            <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
+              {verifiedPeers.length === 0 ? (
+                <div className="bg-[#080808] border border-current border-opacity-20 p-4">
+                  <p className="text-[10px] opacity-50">No verified contacts yet.</p>
+                  <p className="text-[9px] opacity-40 mt-2">
+                    Verify peers from chat by tapping <span className="text-amber-300">UNVERIFIED</span> → <span className="text-amber-300">VERIFY</span>.
+                  </p>
+                </div>
+              ) : (
+                verifiedPeers.map((peer) => (
+                  <div key={peer.pubkey} className="bg-[#080808] border border-current border-opacity-20 p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/70 truncate">
+                        {peer.label || 'verified_peer'}
+                      </p>
+                      <p className="text-[9px] opacity-40 break-all">{peer.pubkey}</p>
+                      <p className="text-[8px] opacity-30 uppercase tracking-widest mt-1">
+                        verified: {new Date(peer.verifiedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Remove verification for this peer?')) return;
+                        await trustStore.unverify(peer.pubkey);
+                        setVerifiedPeers(await trustStore.list());
+                      }}
+                      className="terminal-btn px-3 py-2 text-[10px] uppercase font-bold"
+                    >
+                      remove
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         {/* Feature Highlights Section */}

@@ -4,8 +4,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Build outputs
-dist/
+# Build outputs - DO NOT ignore dist/ as Vercel needs it!
+# dist/
 build/
 
 # Development files
@@ -23,6 +23,14 @@ ios/
 *.zip
 *.tar.gz
 *.rar
+
+# APK files (too large for Vercel)
+*.apk
+*.aab
+public/*.apk
+public/*.aab
+dist/*.apk
+dist/*.aab
 
 # Source maps
 *.map
