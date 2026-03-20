@@ -58,6 +58,29 @@ class AppUpdateService {
     }
 
     try {
+      // Try API endpoint first (for Vercel deployment)
+      const response = await fetch('/api/version-check');
+      if (response.ok) {
+        const apiData = await response.json();
+        this.releaseConfig = {
+          version: apiData.version,
+          versionCode: apiData.versionCode,
+          apkUrls: apiData.apkUrls,
+          releaseNotes: apiData.releaseNotes,
+          forceUpdate: apiData.forceUpdate,
+          apkSize: apiData.apkSize,
+          checksum: apiData.checksum,
+          minSupportedVersion: apiData.minSupportedVersion,
+          updateCheckInterval: apiData.updateCheckInterval
+        };
+        return this.releaseConfig;
+      }
+    } catch (error) {
+      console.debug('API endpoint failed, trying config file:', error);
+    }
+
+    try {
+      // Fallback to config file
       const response = await fetch('/config/release.json');
       if (!response.ok) {
         throw new Error('Failed to load release config');
@@ -66,18 +89,19 @@ class AppUpdateService {
       return this.releaseConfig;
     } catch (error) {
       console.debug('Failed to load release config, using defaults:', error);
-      // Fallback config
+      // Fallback config with dynamic URL
+      const baseUrl = window.location.origin;
       return {
         version: '1.0.1',
         versionCode: 2,
         apkUrls: {
-          production: 'https://releases.xitchat.com/xitchat-v1.0.1.apk',
-          staging: 'https://staging-releases.xitchat.com/xitchat-v1.0.1.apk',
-          development: '/xitchat-v1.apk'
+          production: `${baseUrl}/xitchat-v1.apk`,
+          staging: `${baseUrl}/xitchat-v1.apk`,
+          development: `${baseUrl}/xitchat-v1.apk`
         },
         releaseNotes: 'Bug fixes and performance improvements',
         forceUpdate: false,
-        apkSize: 59105864,
+        apkSize: 179840673,
         checksum: 'sha256:a1b2c3d4e5f6...',
         minSupportedVersion: '1.0.0',
         updateCheckInterval: 21600000

@@ -1,5 +1,16 @@
 {
   "rewrites": [
-    { "source": "/((?!.*\\.[^/]+$).*)", "destination": "/index.html" }
+    { "source": "/((?!.*\\.[^/]+$).*)", "destination": "/index.html" },
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*\\.apk)$",
+      "headers": [
+        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
   ]
 }
