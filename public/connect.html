@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open XitChat</title>
+    <style>
+        body {
+            font-family: 'JetBrains Mono', monospace;
+            background: #020202;
+            color: #00ff41;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .card {
+            width: min(420px, 100%);
+            border: 1px solid rgba(0, 255, 65, 0.4);
+            background: rgba(0, 255, 65, 0.06);
+            padding: 24px;
+            text-align: center;
+        }
+        .btn {
+            display: inline-block;
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 12px;
+            padding: 14px 18px;
+            text-decoration: none;
+            border: 1px solid #00ff41;
+            color: #020202;
+            background: #00ff41;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .btn.secondary {
+            background: transparent;
+            color: #00ff41;
+        }
+        p {
+            font-size: 13px;
+            line-height: 1.6;
+            opacity: 0.85;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Opening XitChat</h1>
+        <p>If XitChat is installed, it will open and import this contact. If not, you will be redirected to the install page.</p>
+        <a id="open-app" class="btn" href="/">Open XitChat</a>
+        <a id="download-app" class="btn secondary" href="/download.html">Install XitChat</a>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const inviteCode = params.get('c') || '';
+        const deepLink = inviteCode
+            ? `xitchat://connect?c=${encodeURIComponent(inviteCode)}`
+            : 'xitchat://connect';
+        const downloadUrl = inviteCode
+            ? `/download.html?c=${encodeURIComponent(inviteCode)}`
+            : '/download.html';
+
+        document.getElementById('open-app').href = deepLink;
+        document.getElementById('download-app').href = downloadUrl;
+
+        const startedAt = Date.now();
+        const fallbackDelayMs = 1400;
+        const fallbackTimer = window.setTimeout(() => {
+            window.location.replace(downloadUrl);
+        }, fallbackDelayMs);
+
+        document.getElementById('open-app').addEventListener('click', () => {
+            window.location.href = deepLink;
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden || Date.now() - startedAt < fallbackDelayMs) {
+                window.clearTimeout(fallbackTimer);
+            }
+        });
+
+        window.location.href = deepLink;
+    </script>
+</body>
+</html>

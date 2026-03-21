@@ -19,13 +19,15 @@
         }
         .download-container {
             text-align: center;
-            max-width: 400px;
+            max-width: 420px;
             width: 100%;
         }
         .download-btn {
+            display: inline-block;
+            box-sizing: border-box;
             background: #00ff41;
             color: #020202;
-            border: none;
+            border: 1px solid #00ff41;
             padding: 15px 30px;
             font-size: 16px;
             font-weight: bold;
@@ -33,16 +35,25 @@
             border-radius: 5px;
             margin: 10px 0;
             text-transform: uppercase;
+            text-decoration: none;
             transition: all 0.2s;
             width: 100%;
-            max-width: 300px;
+            max-width: 320px;
+        }
+        .download-btn.secondary {
+            background: transparent;
+            color: #00ff41;
         }
         .download-btn:hover {
             background: #00cc33;
-            transform: scale(1.05);
+            transform: scale(1.03);
+        }
+        .download-btn.secondary:hover {
+            background: rgba(0, 255, 65, 0.12);
+            color: #00ff41;
         }
         .download-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.98);
         }
         .version-info {
             margin: 20px 0;
@@ -61,37 +72,59 @@
             font-size: 12px;
             opacity: 0.8;
         }
+        .invite-copy {
+            font-size: 13px;
+            line-height: 1.6;
+            opacity: 0.85;
+        }
     </style>
 </head>
 <body>
     <div class="download-container">
         <h1>XitChat Android App</h1>
-        
+        <p class="invite-copy" id="invite-copy">Install XitChat, then open it to import the contact from your QR invite.</p>
+
         <div class="version-info">
             <h2 id="version-label">Version 1.0.1</h2>
             <p id="release-notes">Latest stable release with bug fixes and performance improvements</p>
             <div class="file-size" id="file-size">File size: checking...</div>
         </div>
-        
+
         <button class="download-btn" onclick="downloadAPK()">
-            📱 Download APK
+            Download APK
         </button>
-        
-        <button class="download-btn" onclick="downloadDirect()">
-            🔄 Alternative Download
+
+        <a id="open-app-btn" class="download-btn secondary" href="xitchat://connect" style="display: none;">
+            Open in XitChat
+        </a>
+
+        <button class="download-btn secondary" onclick="downloadDirect()">
+            Alternative Download
         </button>
-        
+
         <div class="instructions">
             <p><strong>Installation Instructions:</strong></p>
             <p>1. Download the APK file</p>
             <p>2. Enable "Install from unknown sources" in Android settings</p>
-            <p>3. Tap the downloaded APK to install</p>
+            <p>3. Install the APK</p>
+            <p>4. Tap "Open in XitChat" to finish importing the contact</p>
         </div>
     </div>
 
     <script>
         let apkUrl = '/xitchat-v1.apk';
         let apkFileName = 'xitchat-v1.0.1.apk';
+        const params = new URLSearchParams(window.location.search);
+        const inviteCode = params.get('c') || '';
+        const openAppBtn = document.getElementById('open-app-btn');
+        const inviteCopy = document.getElementById('invite-copy');
+
+        if (inviteCode) {
+            openAppBtn.href = `xitchat://connect?c=${encodeURIComponent(inviteCode)}`;
+            openAppBtn.style.display = 'inline-block';
+        } else {
+            inviteCopy.textContent = 'Download and install the latest XitChat Android APK.';
+        }
 
         fetch('/config/release.json')
             .then((response) => response.json())
@@ -116,14 +149,10 @@
             link.click();
             document.body.removeChild(link);
         }
-        
+
         function downloadDirect() {
             window.open(apkUrl, '_blank');
         }
-        
-        setTimeout(() => {
-            window.location.href = apkUrl;
-        }, 5000);
     </script>
 </body>
 </html>

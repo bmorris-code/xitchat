@@ -1,5 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { App as CapacitorApp } from '@capacitor/app';
 import { View, Chat, User, Message, Reaction } from './types';
 import { INITIAL_CHATS } from './constants';
 import { streamXitBotResponse, hybridAI } from './services/hybridAI';
@@ -40,6 +41,7 @@ import { appUpdateService } from './services/appUpdateService';
 import { persistChats, loadPersistedChats } from './services/chatPersistence';
 import { defaultRoomsService } from './services/defaultRooms';
 import { isStandalonePwa, type BeforeInstallPromptEvent } from './services/installFlow';
+import { importContactInvite, parseInviteParamFromUrl } from './services/contactInvite';
 const mapTransportForAck = (connectionType?: string): 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' => {
   switch (connectionType) {
     case 'webrtc': return 'webrtc';
@@ -138,6 +140,7 @@ const App: React.FC = () => {
   const radarPeersRef = useRef<RadarPeer[]>([]);
   const activeChatIdRef = useRef<string | null>(null);
   const botRequestCounterRef = useRef(0);
+  const processedInviteCodesRef = useRef<Set<string>>(new Set());
   const [botStreamState, setBotStreamState] = useState<{ active: boolean; provider: string }>({
     active: false,
     provider: 'auto'
@@ -153,6 +156,30 @@ const App: React.FC = () => {
   useEffect(() => {
     activeChatIdRef.current = activeChatId;
   }, [activeChatId]);
+
+  const handleIncomingContactInvite = useCallback(async (input: string) => {
+    const inviteCode = parseInviteParamFromUrl(input);
+    if (!inviteCode || processedInviteCodesRef.current.has(inviteCode)) {
+      return false;
+    }
+
+    processedInviteCodesRef.current.add(inviteCode);
+
+    try {
+      const peer = await importContactInvite(input);
+      window.dispatchEvent(new CustomEvent('newTransmission', {
+        detail: {
+          message: `CONTACT: ${peer.handle} added from invite link.`,
+          type: 'system'
+        }
+      }));
+      return true;
+    } catch (error) {
+      processedInviteCodesRef.current.delete(inviteCode);
+      console.error('Failed to import contact invite:', error);
+      return false;
+    }
+  }, []);
 
   // Initialize XC economy
   useEffect(() => {
@@ -307,6 +334,39 @@ const App: React.FC = () => {
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const imported = await handleIncomingContactInvite(window.location.href);
+      if (!imported) return;
+
+      try {
+        const currentUrl = new URL(window.location.href);
+        if (currentUrl.searchParams.has('c')) {
+          currentUrl.searchParams.delete('c');
+          window.history.replaceState({}, document.title, `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+        }
+      } catch {
+        // Ignore malformed browser URLs.
+      }
+    })();
+  }, [handleIncomingContactInvite]);
+
+  useEffect(() => {
+    let appUrlListener: { remove: () => Promise<void>; } | null = null;
+
+    void CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+      void handleIncomingContactInvite(url);
+    }).then((listener) => {
+      appUrlListener = listener;
+    });
+
+    return () => {
+      if (appUrlListener) {
+        void appUrlListener.remove();
+      }
+    };
+  }, [handleIncomingContactInvite]);
 
   // Handle PWA Install
   const handleInstallApp = async () => {
