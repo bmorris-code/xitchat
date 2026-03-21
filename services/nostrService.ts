@@ -11,19 +11,17 @@ import * as secp256k1 from '@noble/secp256k1';
 import { networkStateManager, NetworkService } from './networkStateManager';
 import { localStorageService } from './localStorageService';
 
-// Configure secp256k1 v3.x with hash functions
-if (typeof secp256k1.etc !== 'undefined') {
-  // Set hmacSha256Sync for general operations
-  if (!(secp256k1.etc as any).hmacSha256Sync) {
-    (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
-      return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
-    };
+if (typeof (secp256k1 as any).hashes !== 'undefined') {
+  const hashes = (secp256k1 as any).hashes;
+  const concatBytes = (secp256k1 as any).etc?.concatBytes;
+
+  if (!hashes.sha256 && concatBytes) {
+    hashes.sha256 = (...messages: Uint8Array[]) => sha256(concatBytes(...messages));
   }
 
-  // Set sha256Sync for schnorr operations (v3.x requirement)
-  if (!(secp256k1.etc as any).sha256Sync) {
-    (secp256k1.etc as any).sha256Sync = (...messages: Uint8Array[]) => {
-      return sha256(secp256k1.etc.concatBytes(...messages));
+  if (!hashes.hmacSha256 && concatBytes) {
+    hashes.hmacSha256 = (key: Uint8Array, ...messages: Uint8Array[]) => {
+      return hmac(sha256, key, concatBytes(...messages));
     };
   }
 }
@@ -90,7 +88,6 @@ class NostrService {
     'wss://relay.snort.social',
     'wss://relay.primal.net',
     'wss://nostr.bitcoiner.social',
-    'wss://relay.nostr.band',
     'wss://nostr.mom'
   ];
 
