@@ -2,10 +2,13 @@
   "version": "1.0.1",
   "versionCode": 2,
   "apkUrls": {
-    "production": "https://your-vercel-app.vercel.app/xitchat-v1.apk",
-    "staging": "https://your-staging-app.vercel.app/xitchat-v1.apk",
+    "production": "https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.apk",
+    "staging": "https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.apk",
     "development": "/xitchat-v1.apk",
     "downloadPage": "/download.html"
+  },
+  "aabUrls": {
+    "production": "https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.aab"
   },
   "releaseNotes": "Bug fixes and performance improvements",
   "forceUpdate": false,

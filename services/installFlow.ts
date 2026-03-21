@@ -1,4 +1,4 @@
-import { releaseInfo } from './releaseInfo';
+import { loadRuntimeReleaseInfo, releaseInfo } from './releaseInfo';
 
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -24,9 +24,10 @@ export const isAndroidBrowser = (): boolean => {
   return /android/i.test(navigator.userAgent) && !isNativePlatform();
 };
 
-export const downloadApk = () => {
+export const downloadApk = async () => {
+  const runtimeReleaseInfo = await loadRuntimeReleaseInfo();
   const link = document.createElement('a');
-  link.href = releaseInfo.apkDownloadUrl;
+  link.href = runtimeReleaseInfo.apkDownloadUrl;
   link.download = releaseInfo.apkFileName;
   link.rel = 'noopener';
   link.style.display = 'none';
