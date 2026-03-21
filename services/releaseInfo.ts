@@ -11,6 +11,7 @@ const DEFAULT_APP_VERSION = '1.0.1';
 const DEFAULT_APP_VERSION_CODE = 2;
 const DEFAULT_APK_PATH = '/xitchat-v1.apk';
 const DEFAULT_DOWNLOAD_PAGE_PATH = '/download.html';
+const DEFAULT_GITHUB_APK_URL = 'https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.apk';
 const parsedVersionCode = Number.parseInt(import.meta.env.VITE_APP_VERSION_CODE || '', 10);
 
 export const RELEASE_VERSION = import.meta.env.VITE_APP_VERSION || DEFAULT_APP_VERSION;
@@ -28,7 +29,7 @@ const getAbsoluteUrl = (path: string) => {
 };
 
 const getSafeConfiguredApkUrl = () => {
-  const configured = import.meta.env.VITE_APK_DOWNLOAD_URL;
+  const configured = import.meta.env.VITE_APK_DOWNLOAD_URL || DEFAULT_GITHUB_APK_URL;
   if (!configured) return getAbsoluteUrl(APK_PATH);
 
   try {
@@ -43,6 +44,54 @@ const getSafeConfiguredApkUrl = () => {
   } catch {
     return getAbsoluteUrl(APK_PATH);
   }
+};
+
+const resolveRuntimeUrl = (value: string, fallback: string) => {
+  try {
+    if (typeof window !== 'undefined') {
+      const resolved = new URL(value, window.location.origin);
+      if (window.location.protocol === 'https:' && resolved.protocol !== 'https:') {
+        return fallback;
+      }
+      return resolved.toString();
+    }
+    return value;
+  } catch {
+    return fallback;
+  }
+};
+
+let runtimeReleaseConfigPromise: Promise<{ apkDownloadUrl: string; downloadPageUrl: string; } | null> | null = null;
+
+export const loadRuntimeReleaseInfo = async () => {
+  if (typeof window === 'undefined') {
+    return {
+      apkDownloadUrl: releaseInfo.apkDownloadUrl,
+      downloadPageUrl: releaseInfo.downloadPageUrl
+    };
+  }
+
+  if (!runtimeReleaseConfigPromise) {
+    runtimeReleaseConfigPromise = fetch('/config/release.json', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Failed to load release config');
+        const config = await response.json();
+        const apkUrl = config?.apkUrls?.production || config?.apkUrl || releaseInfo.apkDownloadUrl;
+        const downloadPage = config?.apkUrls?.downloadPage || DOWNLOAD_PAGE_PATH;
+
+        return {
+          apkDownloadUrl: resolveRuntimeUrl(apkUrl, releaseInfo.apkDownloadUrl),
+          downloadPageUrl: resolveRuntimeUrl(downloadPage, releaseInfo.downloadPageUrl)
+        };
+      })
+      .catch(() => null);
+  }
+
+  const runtimeConfig = await runtimeReleaseConfigPromise;
+  return runtimeConfig || {
+    apkDownloadUrl: releaseInfo.apkDownloadUrl,
+    downloadPageUrl: releaseInfo.downloadPageUrl
+  };
 };
 
 export const releaseInfo: ReleaseInfo = {
