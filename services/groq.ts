@@ -9,7 +9,7 @@ const getClientEnv = (key: string): string => {
   return metaEnv?.[key] || processEnv?.[key] || '';
 };
 
-const groqApiKey = getClientEnv('VITE_GROQ_API_KEY') || getClientEnv('GROQ_API_KEY');
+const groqApiKey = getClientEnv('GROQ_API_KEY') || getClientEnv('GROQ_API_KEY');
 console.log(' Groq API Key loaded:', !!groqApiKey, 'length:', groqApiKey?.length || 0);
 const groq = groqApiKey
   ? new Groq({

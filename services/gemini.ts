@@ -6,7 +6,7 @@ const getClientEnv = (key: string): string => {
   return metaEnv?.[key] || processEnv?.[key] || '';
 };
 
-const geminiApiKey = getClientEnv('VITE_GEMINI_API_KEY') || getClientEnv('GEMINI_API_KEY');
+const geminiApiKey = getClientEnv('GEMINI_API_KEY') || getClientEnv('GEMINI_API_KEY');
 const ai: GoogleGenAI | null = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
 
 const chatCache = new Map<string, { response: string; timestamp: number }>();

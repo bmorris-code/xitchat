@@ -50,8 +50,8 @@
 3. Setup environment variables:
    Create a `.env` file in the root:
    ```env
-   VITE_GROQ_API_KEY=your_key_here
-   VITE_GEMINI_API_KEY=your_key_here
+   GROQ_API_KEY=your_key_here
+   GEMINI_API_KEY=your_key_here
    ```
 
 4. Start the development server:
