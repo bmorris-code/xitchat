@@ -6,6 +6,7 @@ import { realPowService } from '../services/realPowService';
 import { nostrService } from '../services/nostrService';
 import { releaseInfo } from '../services/releaseInfo';
 import { trustStore, type VerifiedPeer } from '../services/trustStore';
+import { downloadApk } from '../services/installFlow';
 
 interface ProfileViewProps {
   myHandle: string;
@@ -46,6 +47,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   isInstalled,
   onInstallApp,
 }) => {
+  const isWeb = !(window as any).Capacitor?.isNativePlatform?.();
+  const hasInstallPrompt = Boolean(installPrompt);
   const avatarInputRef = React.useRef<HTMLInputElement>(null);
   const [appearance, setAppearance] = useState<'system' | 'light' | 'dark'>('dark');
   const [pow, setPow] = useState(false);
@@ -234,7 +237,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="flex justify-between items-start mb-6">
           <div className="flex items-baseline gap-2">
             <h1 className="text-4xl font-bold text-current lowercase tracking-tighter">xitchat</h1>
-            <span className="text-[10px] opacity-40 font-mono">v1.0.0</span>
+            <span className="text-[10px] opacity-40 font-mono">v{releaseInfo.appVersion}</span>
           </div>
           <button
             onClick={onClose}
@@ -565,22 +568,27 @@ const ProfileView: React.FC<ProfileViewProps> = ({
         < div className="pt-10 space-y-4 border-t border-current border-opacity-10" >
           {/* PWA Install Section */}
           {
-            !isInstalled && installPrompt && (
+            !isInstalled && isWeb && (
               <div className="mb-6 p-4 border border-[#00ff41] border-opacity-30 bg-[#00ff41]/5 rounded-lg">
                 <div className="flex items-center gap-3 mb-3">
                   <i className="fa-solid fa-download text-[#00ff41] text-lg"></i>
                   <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">install_node</h4>
                 </div>
                 <p className="text-[11px] opacity-60 mb-4 text-current">
-                  Install XitChat to your home screen for instant access and a native app experience.
+                  Install XitChat as a web app (PWA) on your home screen for instant access.
                 </p>
                 <button
-                  onClick={onInstallApp}
+                  onClick={hasInstallPrompt ? onInstallApp : () => window.location.href = releaseInfo.downloadPageUrl}
                   className="w-full bg-[#00ff41] text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:bg-[#00cc33] transition-all flex items-center justify-center gap-2"
                 >
                   <i className="fa-solid fa-mobile-alt"></i>
-                  Install Node to Home Screen
+                  {hasInstallPrompt ? 'Install Web App (PWA)' : 'Open PWA Install Help'}
                 </button>
+                {!hasInstallPrompt && (
+                  <p className="text-[10px] opacity-50 mt-3 text-current">
+                    If your browser does not show the install prompt, open the browser menu and choose Add to Home Screen or Install App.
+                  </p>
+                )}
               </div>
             )
           }
@@ -611,35 +619,25 @@ const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
 
           {/* Android APK Download Section */}
+          {isWeb && (
           <div className="mb-6 p-4 border border-[#00ff41] border-opacity-30 bg-[#00ff41]/5 rounded-lg">
             <div className="flex items-center gap-3 mb-3">
               <i className="fa-solid fa-robot text-[#00ff41] text-lg"></i>
               <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-[#00ff41]">native_mesh_upgrade</h4>
             </div>
             <p className="text-[11px] opacity-60 mb-4 text-current">
-              Download the native Android app to unlock high-performance Bluetooth & WiFi Direct mesh networking.
+              Download the Android APK to unlock high-performance Bluetooth and WiFi Direct mesh networking.
             </p>
             <button
               onClick={() => {
                 console.log('📱 Downloading APK from:', releaseInfo.apkDownloadUrl);
                 try {
                   // Method 1: Direct download
-                  const link = document.createElement('a');
-                  link.href = releaseInfo.apkDownloadUrl;
-                  link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
-                  link.style.display = 'none';
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  
-                  // Method 2: Fallback - open in new tab
-                  setTimeout(() => {
-                    window.open(releaseInfo.apkDownloadUrl, '_blank');
-                  }, 1000);
+                  downloadApk();
                 } catch (error) {
                   console.error('❌ Download failed:', error);
                   // Method 3: Final fallback
-                  window.location.href = releaseInfo.apkDownloadUrl;
+                  window.location.href = releaseInfo.downloadPageUrl;
                 }
               }}
               className="w-full bg-current text-black py-3 font-black uppercase text-xs tracking-[0.4em] hover:opacity-90 transition-all flex items-center justify-center gap-2 no-underline"
@@ -649,6 +647,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
               Download Android APK v{releaseInfo.apkVersionLabel}
             </button>
           </div>
+          )}
 
           <button
             onClick={onSOS}

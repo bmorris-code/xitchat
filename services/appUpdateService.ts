@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { APK_PATH, DOWNLOAD_PAGE_PATH, releaseInfo } from './releaseInfo';
 
 export interface UpdateInfo {
   version: string;
@@ -70,12 +71,12 @@ class AppUpdateService {
       // Fallback config with dynamic URL
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
       return {
-        version: '1.0.1',
-        versionCode: 2,
+        version: releaseInfo.appVersion,
+        versionCode: releaseInfo.appVersionCode,
         apkUrls: {
-          production: `${baseUrl}/xitchat-v1.apk`,
-          staging: `${baseUrl}/xitchat-v1.apk`,
-          development: `${baseUrl}/xitchat-v1.apk`
+          production: `${baseUrl}${APK_PATH}`,
+          staging: `${baseUrl}${APK_PATH}`,
+          development: `${baseUrl}${APK_PATH}`
         },
         releaseNotes: 'Bug fixes and performance improvements',
         forceUpdate: false,
@@ -94,15 +95,15 @@ class AppUpdateService {
     // For web, use package.json version
     if (!Capacitor.isNativePlatform()) {
       return {
-        version: '1.0.0',
-        versionCode: 1
+        version: releaseInfo.appVersion,
+        versionCode: releaseInfo.appVersionCode
       };
     }
 
     // For native apps, get from build config
     return {
-      version: '1.0.0',
-      versionCode: 1
+      version: releaseInfo.appVersion,
+      versionCode: releaseInfo.appVersionCode
     };
   }
 
@@ -189,7 +190,7 @@ class AppUpdateService {
       try {
         // Check if download page URL exists
         const downloadPageUrl = updateInfo.downloadUrl?.includes('downloadPage') 
-          ? '/download.html' 
+          ? DOWNLOAD_PAGE_PATH
           : updateInfo.downloadUrl;
           
         // Method 1: Redirect to download page

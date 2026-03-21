@@ -104,6 +104,7 @@ if [ "$BUILD_TYPE" = "release" ]; then
             echo "Building release APK..."
             if ./gradlew assembleRelease; then
                 print_success "Release APK built successfully!"
+                node ../scripts/sync-public-apk.cjs
                 echo ""
                 echo "📱 APK Location:"
                 echo "   android/app/build/outputs/apk/release/app-release.apk"
@@ -128,6 +129,7 @@ if [ "$BUILD_TYPE" = "release" ]; then
             echo "Building both APK and AAB..."
             if ./gradlew assembleRelease bundleRelease; then
                 print_success "Both APK and AAB built successfully!"
+                node ../scripts/sync-public-apk.cjs
                 echo ""
                 echo "📱 Build Outputs:"
                 echo "   APK: android/app/build/outputs/apk/release/app-release.apk"
@@ -147,6 +149,7 @@ else
     echo "Building debug APK..."
     if ./gradlew assembleDebug; then
         print_success "Debug APK built successfully!"
+        node ../scripts/sync-public-apk.cjs
         echo ""
         echo "📱 APK Location:"
         echo "   android/app/build/outputs/apk/debug/app-debug.apk"

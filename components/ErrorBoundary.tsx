@@ -82,7 +82,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                         </div>
 
                         <p className="text-white/10 text-[8px] uppercase tracking-widest mt-6 text-center">
-                            xitchat v1.0.0 // error_logged
+                            xitchat v1.0.1 // error_logged
                         </p>
                     </div>
                 </div>

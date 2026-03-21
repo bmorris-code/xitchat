@@ -1,20 +1,17 @@
 // This file serves as a mock API endpoint for Vite development
 // In production, this will be handled by the appUpdateService logic
 
-import { releaseInfo } from '../../services/releaseInfo';
+import { APK_PATH, DOWNLOAD_PAGE_PATH, releaseInfo } from '../../services/releaseInfo';
 
 export async function GET() {
-  // Return dynamic release info based on current deployment
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  
   const dynamicReleaseInfo = {
     version: releaseInfo.appVersion,
     versionCode: releaseInfo.appVersionCode,
     apkUrls: {
-      production: `${baseUrl}/xitchat-v1.apk`,
-      staging: `${baseUrl}/xitchat-v1.apk`,
-      development: `${baseUrl}/xitchat-v1.apk`,
-      downloadPage: `${baseUrl}/download.html`
+      production: APK_PATH,
+      staging: APK_PATH,
+      development: APK_PATH,
+      downloadPage: DOWNLOAD_PAGE_PATH
     },
     releaseNotes: "Bug fixes and performance improvements",
     forceUpdate: false,

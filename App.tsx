@@ -39,6 +39,7 @@ import { handshakePersistence, HandshakeNode } from './services/handshakePersist
 import { appUpdateService } from './services/appUpdateService';
 import { persistChats, loadPersistedChats } from './services/chatPersistence';
 import { defaultRoomsService } from './services/defaultRooms';
+import { isStandalonePwa, type BeforeInstallPromptEvent } from './services/installFlow';
 const mapTransportForAck = (connectionType?: string): 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' => {
   switch (connectionType) {
     case 'webrtc': return 'webrtc';
@@ -121,7 +122,7 @@ const App: React.FC = () => {
   const [bootLogs, setBootLogs] = useState<string[]>([]);
   const [theme, setTheme] = useState<'green' | 'amber' | 'cyan' | 'red'>('green');
   const [balance, setBalance] = useState(1240);
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [transmissions, setTransmissions] = useState<Array<{ id: string, message: string, type: 'buzz' | 'chat' | 'system' | 'update', timestamp: number }>>([]);
   const [nostrConnected, setNostrConnected] = useState(false);
@@ -284,12 +285,12 @@ const App: React.FC = () => {
   // PWA Install Detection
   useEffect(() => {
     // Check if app is already installed
-    setIsInstalled(window.matchMedia('(display-mode: standalone)').matches);
+    setIsInstalled(isStandalonePwa());
 
     // Listen for install prompt
-    const handleBeforeInstallPrompt = (e: any) => {
+    const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      setInstallPrompt(e);
+      setInstallPrompt(e as BeforeInstallPromptEvent);
     };
 
     // Listen for app install
@@ -312,8 +313,12 @@ const App: React.FC = () => {
     if (!installPrompt) return;
 
     try {
-      const result = await installPrompt.prompt();
-      console.log('Install prompt result:', result);
+      await installPrompt.prompt();
+      const choiceResult = await installPrompt.userChoice;
+      console.log('Install prompt result:', choiceResult.outcome);
+      if (choiceResult.outcome === 'accepted') {
+        setIsInstalled(true);
+      }
       setInstallPrompt(null);
     } catch (error) {
       console.error('Install prompt failed:', error);
@@ -2137,7 +2142,14 @@ const App: React.FC = () => {
   }
 
   if (showOnboarding) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
+    return (
+      <Onboarding
+        onComplete={handleOnboardingComplete}
+        installPrompt={installPrompt}
+        isInstalled={isInstalled}
+        onInstallApp={handleInstallApp}
+      />
+    );
   }
 
   return (

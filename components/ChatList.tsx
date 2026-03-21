@@ -134,7 +134,7 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
 
       <div className="p-4 border-t border-[#004400] hidden md:block">
         <div className="flex gap-2 text-[8px] font-mono opacity-20 uppercase tracking-widest">
-          <span>v1.0.0_mesh_protocol</span>
+          <span>v1.0.1_mesh_protocol</span>
         </div>
       </div>
     </div>

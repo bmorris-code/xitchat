@@ -24,12 +24,9 @@ ios/
 *.tar.gz
 *.rar
 
-# APK files (too large for Vercel)
-*.apk
+# Native build outputs not needed on Vercel
+android/app/build/
 *.aab
-public/*.apk
-public/*.aab
-dist/*.apk
 dist/*.aab
 
 # Source maps

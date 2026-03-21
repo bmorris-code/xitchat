@@ -1,7 +1,7 @@
 {
   "name": "xitchat",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,7 @@
     "dev:auto": "node scripts/dev-with-auto-update.cjs",
     "// BUILD COMMANDS": "------------------------------------------------",
     "build": "vite build",
-    "build:mobile": "cross-env IS_MOBILE=true vite build",
+    "build:mobile": "cross-env IS_MOBILE=true vite build && node scripts/strip-mobile-apks.cjs",
     "// DEPLOYMENT SHORTCUTS": "-----------------------------------------",
     "sync": "npm run build:mobile && npx cap sync",
     "sync:ios": "npm run build:mobile && npx cap sync ios",
@@ -17,6 +17,7 @@
     "android": "npx cap open android",
     "release:all": "npm run sync:android && cd android && gradlew.bat assembleDebug",
     "auto-update-apk": "node scripts/auto-update-apk.cjs",
+    "sync:apk-public": "node scripts/sync-public-apk.cjs",
     "preview": "vite preview",
     "vercel-build": "vite build"
   },

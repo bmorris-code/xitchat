@@ -1,28 +1,31 @@
-
 import React from 'react';
 import { androidPermissions } from '../services/androidPermissions';
 import { releaseInfo } from '../services/releaseInfo';
+import { downloadApk } from '../services/installFlow';
 
 interface OnboardingProps {
   onComplete: () => void;
+  installPrompt?: unknown;
+  isInstalled?: boolean;
+  onInstallApp?: () => void;
 }
 
-const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
+const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isInstalled, onInstallApp }) => {
+  const isWeb = !(window as any).Capacitor?.isNativePlatform?.();
+  const hasInstallPrompt = Boolean(installPrompt);
+
   const handleGrant = async () => {
     try {
-      console.log('🔐 Starting comprehensive permission requests...');
-
-      // Request all critical permissions using the new service
+      console.log('Starting comprehensive permission requests...');
       const results = await androidPermissions.requestAllCriticalPermissions();
 
-      // Check if any permissions are permanently denied
       if (androidPermissions.hasPermanentDenials(results)) {
-        console.log('⚠️ Some permissions are permanently denied. User may need to enable them in settings.');
+        console.log('Some permissions are permanently denied. User may need to enable them in settings.');
       }
 
-      console.log('✅ Permission handshake completed');
+      console.log('Permission handshake completed');
     } catch (e) {
-      console.log("⚠️ Permission handshake completed with some errors:", e);
+      console.log('Permission handshake completed with some errors:', e);
     }
 
     localStorage.setItem('xitchat_onboarded', 'true');
@@ -31,10 +34,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
   return (
     <div className="h-full w-full bg-black flex flex-col font-mono selection:bg-[#00ff41] selection:text-black relative overflow-hidden">
-      {/* Scrollable Content Area */}
       <div className="flex-1 overflow-y-auto no-scrollbar pt-12 px-6 pb-32">
         <div className="max-w-md mx-auto w-full">
-          {/* Brand Header */}
           <div className="mb-10">
             <h1 className="text-4xl font-bold text-[#00ff41] mb-2 lowercase tracking-tighter">xitchat</h1>
             <p className="text-[11px] text-[#00ff41] leading-relaxed opacity-80 font-medium">
@@ -42,7 +43,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             </p>
           </div>
 
-          {/* Privacy Card */}
           <div className="bg-[#111111] rounded-2xl p-6 mb-10 border border-white/5 shadow-xl">
             <div className="flex items-center gap-4 mb-4">
               <div className="text-[#00ff41] text-xl">
@@ -70,12 +70,9 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
             </ul>
           </div>
 
-          {/* Permissions Header */}
           <h4 className="text-[11px] font-bold text-[#00ff41] uppercase tracking-[0.2em] mb-8 opacity-40">permissions</h4>
 
-          {/* Permission Items */}
           <div className="space-y-10">
-            {/* Bluetooth */}
             <div className="flex items-start gap-5">
               <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
                 <i className="fa-solid fa-bluetooth"></i>
@@ -88,7 +85,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </div>
             </div>
 
-            {/* Location */}
             <div className="flex items-start gap-5">
               <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
                 <i className="fa-solid fa-location-dot"></i>
@@ -105,7 +101,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </div>
             </div>
 
-            {/* Camera */}
             <div className="flex items-start gap-5">
               <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
                 <i className="fa-solid fa-camera"></i>
@@ -118,7 +113,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </div>
             </div>
 
-            {/* Notifications */}
             <div className="flex items-start gap-5">
               <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
                 <i className="fa-solid fa-bell"></i>
@@ -131,7 +125,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               </div>
             </div>
 
-            {/* Battery */}
             <div className="flex items-start gap-5">
               <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
                 <i className="fa-solid fa-plug"></i>
@@ -143,53 +136,67 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 </p>
               </div>
             </div>
-            {/* Download App - Web Only */}
-            {!(window as any).Capacitor?.isNativePlatform() && (
-              <div className="flex items-start gap-5 pt-8 border-t border-[#00ff41]/20">
-                <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
-                  <i className="fa-brands fa-android"></i>
+
+            {isWeb && (
+              <>
+                {!isInstalled && (
+                  <div className="flex items-start gap-5 pt-8 border-t border-[#00ff41]/20">
+                    <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
+                      <i className="fa-solid fa-mobile-screen-button"></i>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Install Web App (PWA)</h3>
+                      <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed mb-3">
+                        Install XitChat from this browser for quick launch from your home screen.
+                      </p>
+                      <button
+                        onClick={hasInstallPrompt ? onInstallApp : () => window.location.href = releaseInfo.downloadPageUrl}
+                        className="inline-flex items-center gap-2 bg-[#00ff41] text-black px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:opacity-90 transition-colors"
+                      >
+                        <i className="fa-solid fa-download"></i>
+                        {hasInstallPrompt ? 'Install Web App (PWA)' : 'Open PWA Install Help'}
+                      </button>
+                      {!hasInstallPrompt && (
+                        <p className="text-[10px] text-[#00ff41] opacity-50 leading-relaxed mt-3">
+                          If the browser does not show the install prompt, use your browser menu and choose Add to Home Screen or Install App.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-start gap-5 pt-8 border-t border-[#00ff41]/20">
+                  <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
+                    <i className="fa-brands fa-android"></i>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Download Android APK</h3>
+                    <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed mb-3">
+                      Download the Android APK v{releaseInfo.apkVersionLabel} for Bluetooth and WiFi Direct mesh support.
+                    </p>
+                    <button
+                      onClick={() => {
+                        console.log('Downloading APK from:', releaseInfo.apkDownloadUrl);
+                        try {
+                          downloadApk();
+                        } catch (error) {
+                          console.error('APK download failed:', error);
+                          window.location.href = releaseInfo.downloadPageUrl;
+                        }
+                      }}
+                      className="inline-flex items-center gap-2 bg-[#00ff41]/10 border border-[#00ff41] text-[#00ff41] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#00ff41]/20 transition-colors"
+                    >
+                      <i className="fa-solid fa-download"></i>
+                      Download Android APK v{releaseInfo.apkVersionLabel}
+                    </button>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Get the App</h3>
-                  <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed mb-3">
-                    For true serverless mesh networking (Bluetooth & WiFi Direct), download the Android app v{releaseInfo.apkVersionLabel}.
-                  </p>
-                  <button
-                    onClick={() => {
-                      console.log('📱 Downloading APK from:', releaseInfo.apkDownloadUrl);
-                      try {
-                        // Method 1: Direct download
-                        const link = document.createElement('a');
-                        link.href = releaseInfo.apkDownloadUrl;
-                        link.download = `xitchat-v${releaseInfo.apkVersionLabel}.apk`;
-                        link.style.display = 'none';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        
-                        // Method 2: Fallback - open in new tab
-                        setTimeout(() => {
-                          window.open(releaseInfo.apkDownloadUrl, '_blank');
-                        }, 1000);
-                      } catch (error) {
-                        console.error('❌ Download failed:', error);
-                        // Method 3: Final fallback
-                        window.location.href = releaseInfo.apkDownloadUrl;
-                      }
-                    }}
-                    className="inline-flex items-center gap-2 bg-[#00ff41]/10 border border-[#00ff41] text-[#00ff41] px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-[#00ff41]/20 transition-colors"
-                  >
-                    <i className="fa-solid fa-download"></i>
-                    Download Serverless APK v{releaseInfo.apkVersionLabel}
-                  </button>
-                </div>
-              </div>
+              </>
             )}
           </div>
         </div>
       </div>
 
-      {/* Fixed Bottom Button Area */}
       <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black to-transparent pt-12">
         <div className="max-w-md mx-auto w-full">
           <button

@@ -68,9 +68,9 @@
         <h1>XitChat Android App</h1>
         
         <div class="version-info">
-            <h2>Version 1.0.1</h2>
-            <p>Latest stable release with bug fixes and performance improvements</p>
-            <div class="file-size">File size: ~86 MB</div>
+            <h2 id="version-label">Version 1.0.1</h2>
+            <p id="release-notes">Latest stable release with bug fixes and performance improvements</p>
+            <div class="file-size" id="file-size">File size: checking...</div>
         </div>
         
         <button class="download-btn" onclick="downloadAPK()">
@@ -90,24 +90,39 @@
     </div>
 
     <script>
+        let apkUrl = '/xitchat-v1.apk';
+        let apkFileName = 'xitchat-v1.0.1.apk';
+
+        fetch('/config/release.json')
+            .then((response) => response.json())
+            .then((config) => {
+                apkUrl = config?.apkUrls?.production || apkUrl;
+                apkFileName = config?.apkFileName || apkFileName;
+                document.getElementById('version-label').textContent = `Version ${config?.version || '1.0.1'}`;
+                document.getElementById('release-notes').textContent = config?.releaseNotes || 'Latest stable release';
+
+                if (typeof config?.apkSize === 'number' && config.apkSize > 0) {
+                    const sizeMb = (config.apkSize / (1024 * 1024)).toFixed(1);
+                    document.getElementById('file-size').textContent = `File size: ~${sizeMb} MB`;
+                }
+            })
+            .catch(() => {});
+
         function downloadAPK() {
-            // Method 1: Direct download
             const link = document.createElement('a');
-            link.href = '/xitchat-v1.apk';
-            link.download = 'xitchat-v1.0.1.apk';
+            link.href = apkUrl;
+            link.download = apkFileName;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
         
         function downloadDirect() {
-            // Method 2: Window open fallback
-            window.open('/xitchat-v1.apk', '_blank');
+            window.open(apkUrl, '_blank');
         }
         
-        // Auto-redirect after 5 seconds if no action
         setTimeout(() => {
-            window.location.href = '/xitchat-v1.apk';
+            window.location.href = apkUrl;
         }, 5000);
     </script>
 </body>

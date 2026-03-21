@@ -6,7 +6,7 @@
 ```bash
 # In public directory
 ls -la public/xitchat-v1.apk
-# Should show: 179840673 bytes
+# Should show: 179840607 bytes
 ```
 
 ### 2. Test Direct URL
@@ -65,7 +65,7 @@ Check browser Network tab for:
 - [ ] Console shows download URL
 - [ ] Network tab shows 200 response
 - [ ] Download starts on button click
-- [ ] APK file size matches (179MB)
+- [ ] APK file size matches (~171MB)
 - [ ] Android can install the APK
 
 ## 🔧 If Still Not Working

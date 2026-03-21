@@ -102,6 +102,7 @@ if "%BUILD_TYPE%"=="release" (
         )
         echo.
         echo [OK] Release APK built successfully!
+        call node scripts\sync-public-apk.cjs
         echo.
         echo APK Location:
         echo   android\app\build\outputs\apk\release\app-release.apk
@@ -128,6 +129,7 @@ if "%BUILD_TYPE%"=="release" (
         )
         echo.
         echo [OK] Both APK and AAB built successfully!
+        call node scripts\sync-public-apk.cjs
         echo.
         echo Build Outputs:
         echo   APK: android\app\build\outputs\apk\release\app-release.apk
@@ -147,6 +149,7 @@ if "%BUILD_TYPE%"=="release" (
     )
     echo.
     echo [OK] Debug APK built successfully!
+    call node scripts\sync-public-apk.cjs
     echo.
     echo APK Location:
     echo   android\app\build\outputs\apk\debug\app-debug.apk
