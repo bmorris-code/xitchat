@@ -1,15 +1,17 @@
 name: XitChat Production CI/CD
 
 on:
-
   push:
     branches:
       - main
-
   workflow_dispatch:
 
-env:
+# Least-privilege permissions
+permissions:
+  contents: write   # needed for github-release
+  id-token: write
 
+env:
   NODE_VERSION: 18
   JAVA_VERSION: 17
 
@@ -21,29 +23,29 @@ jobs:
 # =========================
 
   build-web:
-
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
-
     - uses: actions/checkout@v4
-
 
     - uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
 
-
     - run: npm ci
 
-
-    - run: npm run build
-
+    - name: Build
+      run: npm run build
+      env:
+        VITE_ABLY_API_KEY: ${{ secrets.VITE_ABLY_API_KEY }}
+        VITE_GROQ_API_KEY: ${{ secrets.VITE_GROQ_API_KEY }}
+        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 
     - name: Install Vercel CLI
       if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
       run: npm install -g vercel
-
 
     - name: Deploy to Vercel
       if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
@@ -53,81 +55,66 @@ jobs:
         VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 
-
 # =========================
 # BUILD ANDROID
 # =========================
 
   build-android:
-
     runs-on: ubuntu-latest
-
     needs: build-web
+    permissions:
+      contents: read
 
     steps:
-
     - uses: actions/checkout@v4
-
 
     - uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
 
-
     - run: npm ci
 
-
-    - run: npm run build
-
+    - name: Build
+      run: npm run build
+      env:
+        VITE_ABLY_API_KEY: ${{ secrets.VITE_ABLY_API_KEY }}
+        VITE_GROQ_API_KEY: ${{ secrets.VITE_GROQ_API_KEY }}
+        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
 
     - run: npx cap sync android
-
 
     - uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: ${{ env.JAVA_VERSION }}
 
-
     - name: Decode Keystore
       if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
-      run: |
-        echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > android/app/release.keystore
+      run: echo "${{ secrets.KEYSTORE_FILE }}" | base64 --decode > android/app/release.keystore
 
     - name: Create Keystore Properties
       if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       run: |
-        cat > android/keystore.properties << 'EOF'
+        cat > android/keystore.properties << EOF
         storePassword=${{ secrets.KEYSTORE_PASSWORD }}
         keyPassword=${{ secrets.KEY_PASSWORD }}
         keyAlias=${{ secrets.KEY_ALIAS }}
         storeFile=app/release.keystore
         EOF
 
-
-    - name: Grant permission
+    - name: Grant Gradle permission
       run: chmod +x android/gradlew
 
-
     - name: Build Debug APK
-      run: |
-        cd android
-        ./gradlew assembleDebug
-
+      run: cd android && ./gradlew assembleDebug
 
     - name: Build Release APK
       if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
-      run: |
-        cd android
-        ./gradlew assembleRelease
+      run: cd android && ./gradlew assembleRelease
 
-
-    - name: Build App Bundle
+    - name: Build App Bundle (AAB)
       if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
-      run: |
-        cd android
-        ./gradlew bundleRelease
-
+      run: cd android && ./gradlew bundleRelease
 
     - name: Upload Debug APK
       uses: actions/upload-artifact@v4
@@ -135,14 +122,12 @@ jobs:
         name: xitchat-apk-debug
         path: android/app/build/outputs/apk/debug/app-debug.apk
 
-
-    - name: Upload APK
+    - name: Upload Release APK
       if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
       uses: actions/upload-artifact@v4
       with:
         name: xitchat-apk
         path: android/app/build/outputs/apk/release/app-release.apk
-
 
     - name: Upload AAB
       if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
@@ -152,20 +137,25 @@ jobs:
         path: android/app/build/outputs/bundle/release/app-release.aab
 
 
-
 # =========================
 # PLAY STORE DEPLOY
+# Only runs on workflow_dispatch (manual) to prevent accidental releases
 # =========================
 
   deploy-playstore:
-    if: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON != '' && secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
-
+    if: >
+      github.event_name == 'workflow_dispatch' &&
+      secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON != '' &&
+      secrets.KEYSTORE_FILE != '' &&
+      secrets.KEYSTORE_PASSWORD != '' &&
+      secrets.KEY_PASSWORD != '' &&
+      secrets.KEY_ALIAS != ''
     runs-on: ubuntu-latest
-
     needs: build-android
+    permissions:
+      contents: read
 
     steps:
-
     - uses: actions/checkout@v4
 
     - name: Download AAB Artifact
@@ -174,37 +164,34 @@ jobs:
         name: xitchat-aab
         path: artifacts
 
-
-    - name: Upload to Play Store
+    - name: Upload to Play Store (internal track)
       uses: r0adkll/upload-google-play@v1
-
       with:
-
         serviceAccountJsonPlainText: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
-
         packageName: com.xitchat.app
-
         releaseFiles: artifacts/app-release.aab
-
-        track: production
-
+        track: internal
         status: completed
-
 
 
 # =========================
 # CREATE GITHUB RELEASE
+# Only runs on version tags (e.g. v1.0.2), not every push
 # =========================
 
   github-release:
-    if: ${{ secrets.KEYSTORE_FILE != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_PASSWORD != '' && secrets.KEY_ALIAS != '' }}
-
+    if: >
+      github.event_name == 'workflow_dispatch' &&
+      secrets.KEYSTORE_FILE != '' &&
+      secrets.KEYSTORE_PASSWORD != '' &&
+      secrets.KEY_PASSWORD != '' &&
+      secrets.KEY_ALIAS != ''
     runs-on: ubuntu-latest
-
     needs: build-android
+    permissions:
+      contents: write
 
     steps:
-
     - uses: actions/checkout@v4
 
     - name: Download APK Artifact
@@ -219,23 +206,17 @@ jobs:
         name: xitchat-aab
         path: artifacts/aab
 
+    - name: Rename APK for release
+      run: cp artifacts/apk/app-release.apk artifacts/apk/xitchat-v1.apk
 
-    - name: Create Release
-
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
-
       with:
-
-        tag_name: v1.${{ github.run_number }}
-
-        name: XitChat v1.${{ github.run_number }}
-
+        tag_name: v1.0.${{ github.run_number }}
+        name: XitChat v1.0.${{ github.run_number }}
+        generate_release_notes: true
         files: |
-
-          artifacts/apk/app-release.apk
-
+          artifacts/apk/xitchat-v1.apk
           artifacts/aab/app-release.aab
-
       env:
-
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

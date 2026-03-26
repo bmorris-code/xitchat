@@ -1,20 +1,14 @@
-# This workflow is deprecated - we use Vercel for deployment now
-# Please use Vercel instead of GitHub Pages for APK hosting
+# Deprecated - using Vercel for all deployments
+# This workflow is disabled (manual trigger only, does nothing)
 
 name: Deprecated - Use Vercel
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   deprecated:
     runs-on: ubuntu-latest
     steps:
-    - name: Deprecation Notice
-      run: |
-        echo "⚠️  This workflow is deprecated"
-        echo "📱 Please use Vercel for deployment instead"
-        echo "🔗 Deploy to Vercel: https://vercel.com"
-        exit 1
+    - name: Notice
+      run: echo "Use Vercel for deployment. This workflow is disabled."
