@@ -6,7 +6,7 @@ const getClientEnv = (key: string): string => {
   return metaEnv?.[key] || processEnv?.[key] || '';
 };
 
-const geminiApiKey = getClientEnv('GEMINI_API_KEY') || getClientEnv('GEMINI_API_KEY');
+const geminiApiKey = getClientEnv('VITE_GEMINI_API_KEY');
 const ai: GoogleGenAI | null = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
 
 const chatCache = new Map<string, { response: string; timestamp: number }>();
@@ -43,7 +43,6 @@ export const getXitBotResponse = async (userMessage: string): Promise<string> =>
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) return cached.response;
 
   if (now - lastGlobalApiCall < GLOBAL_API_COOLDOWN || now - lastChatApiCall < CHAT_API_COOLDOWN) {
-    console.debug('Gemini soft cooldown active, continuing for real-time chat');
   }
 
   try {
@@ -65,7 +64,6 @@ export const getXitBotResponse = async (userMessage: string): Promise<string> =>
     chatCache.set(cacheKey, { response: result, timestamp: now });
     return result;
   } catch (error) {
-    console.error('Gemini Error:', error);
     return getFallbackChatResponse(userMessage);
   }
 };
@@ -121,7 +119,6 @@ export const streamXitBotResponseGemini = async (
     chatCache.set(cacheKey, { response: fullText, timestamp: now });
     return fullText;
   } catch (error) {
-    console.error('Gemini stream error, falling back to non-stream:', error);
     return getXitBotResponse(userMessage);
   }
 };
@@ -164,7 +161,6 @@ Format as a JSON array of strings.`,
     });
     return JSON.parse((response as any).text || '[]');
   } catch (error) {
-    console.error('Quick Replies Error:', error);
     return ['Rad!', 'On it.', '10-4'];
   }
 };
@@ -223,7 +219,6 @@ Return JSON with fields title, time, snippet, category.`,
     buzzCache.set(cacheKey, { data: result, timestamp: now });
     return result;
   } catch (error) {
-    console.error('Buzz Fetch Error:', error);
     return getFallbackBuzz();
   }
 };

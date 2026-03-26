@@ -35,6 +35,12 @@ android/app/debug/
 !public/xitchat-v1.apk
 !public/xitchat.apk
 
+# Keystores and signing keys — NEVER commit these
+*.keystore
+*.jks
+*.p12
+android/keystore.properties
+
 # iOS specific
 ios/App/Pods/
 ios/App/build/

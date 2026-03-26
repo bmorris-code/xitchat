@@ -6,9 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     // This allows the app to fetch data safely
-    androidScheme: 'https',
-    // Allows connecting to http:// (non-secure) servers during development
-    cleartext: true
+    androidScheme: 'https'
   },
   plugins: {
     // NOTE: Camera and Geolocation permissions must be set in 

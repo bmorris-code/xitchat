@@ -129,11 +129,9 @@ class RealtimeRadarService {
     // Notify listeners
     this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
     
-    console.log(`🗼 Radar: Added global peer from Nostr: ${presenceData.pubkey.substring(0, 8)}...`);
   }
 
   private handlePresencePeersUpdate(presencePeers: PresenceBeaconPeer[]): void {
-    console.log(`🗼 Updating radar with ${presencePeers.length} presence peers`);
 
     const now = Date.now();
     const updatedPeers: RadarPeer[] = [];
@@ -186,7 +184,6 @@ class RealtimeRadarService {
     // Notify listeners
     this.notifyListeners('peersUpdated', updatedPeers);
     
-    console.log(`🗼 Radar now shows ${this.peers.size} visible peers (TTL-filtered)`);
   }
 
   private calculateRoutingInfo(radarPeer: RadarPeer, presencePeer: PresenceBeaconPeer): void {
@@ -214,11 +211,9 @@ class RealtimeRadarService {
           radarPeer.connectionType = decision.transport as any;
         })
         .catch(error => {
-          console.debug('Routing calculation failed:', error);
           // Fallback to basic inference
         });
     } catch (error) {
-      console.debug('Error calculating routing info:', error);
     }
   }
 
@@ -250,8 +245,6 @@ class RealtimeRadarService {
   }
 
   private handleLifecycleEvent(event: any): void {
-    console.log('📱 Radar handling lifecycle event:', event);
-
     switch (event.data.action) {
       case 'resume_mesh':
         this.resumeRadarOperations();
@@ -269,8 +262,6 @@ class RealtimeRadarService {
   }
 
   private handleNetworkChange(event: any): void {
-    console.log('🌐 Radar handling network change:', event);
-
     if (event.state === 'offline') {
       // Switch to offline mode
       this.enableOfflineMode();
@@ -303,7 +294,6 @@ class RealtimeRadarService {
     });
 
     if (expiredPeers.length > 0) {
-      console.log(`🗼 Cleaned up ${expiredPeers.length} expired peers from radar`);
       this.updateGeohashZones();
       this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
     }
@@ -343,35 +333,21 @@ class RealtimeRadarService {
     });
   }
 
-  private resumeRadarOperations(): void {
-    console.log('📡 Resuming radar operations');
-  }
+  private resumeRadarOperations(): void {}
 
-  private pauseRadarOperations(): void {
-    console.log('⏸️ Pausing radar operations');
-  }
+  private pauseRadarOperations(): void {}
 
   private cleanupAllPeers(): void {
-    console.log('🧹 Cleaning up all radar peers');
     this.peers.clear();
     this.updateGeohashZones();
     this.notifyListeners('peersUpdated', []);
   }
 
-  private triggerPresenceUpdate(): void {
-    console.log('📡 Triggering presence update from radar');
-    // This will be handled by presence beacon
-  }
+  private triggerPresenceUpdate(): void {}
 
-  private enableOfflineMode(): void {
-    console.log('📴 Radar switching to offline mode');
-    // Enable offline simulation in presence beacon
-  }
+  private enableOfflineMode(): void {}
 
-  private resumeOnlineOperations(): void {
-    console.log('🌐 Radar resuming online operations');
-    // Resume normal operations
-  }
+  private resumeOnlineOperations(): void {}
 
   private loadUserInfo(): void {
     const savedName = localStorage.getItem('xitchat_name');
@@ -427,10 +403,7 @@ class RealtimeRadarService {
 
   private updateMyLocation(): void {
     // Update my location for presence beacon
-    if (this.myCurrentLocation) {
-      // This will be picked up by presence beacon
-      console.log('📍 Updating my location for presence beacon');
-    }
+    // location picked up by presence beacon when set
   }
 
   private notifyListeners(event: string, data: any): void {
@@ -487,58 +460,31 @@ private setupDiscovery(): void {
         return true;
       }
 
-      console.log('📡 Initializing SERVERLESS Mobile Mesh Radar...');
-
-      // Initialize presence beacon first
-      const presenceInitialized = await presenceBeacon.initialize();
-      if (!presenceInitialized) {
-        console.warn('⚠️ Presence beacon initialization failed');
-      }
-
-      // Start presence beacon
+      // Initialize and start presence beacon
+      await presenceBeacon.initialize();
       await presenceBeacon.start();
 
       // Update my location
       this.updateMyLocation();
 
-      // SERVERLESS: Skip server connection test - use direct P2P only
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
-      
-      if (isNativeAndroid) {
-        console.log('📱 Android: Using SERVERLESS mesh (Bluetooth + WiFi Direct + Nostr)');
-        console.log('🔥 No signaling server needed - direct P2P connections only');
-      } else {
-        console.log('🌐 Web: Testing optional signaling server...');
+      if (!isNativeAndroid) {
         await this.testSignalingServerConnection();
       }
 
-      console.log('✅ Serverless Mobile Mesh Radar initialized successfully');
+      // Wire up Bluetooth/WiFi scan events so discovered devices appear on the radar
+      this.setupDiscovery();
+
       this.isInitialized = true;
       return true;
     } catch (error) {
-      console.error('❌ Failed to initialize serverless radar:', error);
       return false;
     }
   }
 
   private async testSignalingServerConnection(): Promise<void> {
-    // ANDROID SERVERLESS: Skip all WebSocket connections - use true P2P only
-    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
-    
-    if (isNativeAndroid) {
-      console.log('📱 Android: SKIPPING WebSocket server connections - using serverless P2P only');
-      console.log('🔥 True serverless mesh - no signaling servers needed');
-      return;
-    }
-
-    // Web-only: Optional WebSocket testing (but skip for serverless deployment)
-    if (window.location.protocol === 'https:') {
-      console.log('🌐 HTTPS detected: Skipping WebSocket connections for security');
-      return;
-    }
-
-    console.log('🌐 Web: WebSocket connections disabled in serverless mode');
-    return;
+    // Skip WebSocket connections in HTTPS / serverless mode
+    if (window.location.protocol === 'https:') return;
   }
 
   getPeers(): RadarPeer[] {
@@ -578,8 +524,6 @@ private setupDiscovery(): void {
 
   // Cleanup
   destroy(): void {
-    console.log('🧹 Destroying Mobile Mesh Radar');
-    
     // Clear cleanup interval
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);

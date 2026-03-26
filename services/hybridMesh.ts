@@ -151,24 +151,24 @@ class HybridMeshService {
 
       const initializedTypes: MeshConnectionType[] = [];
 
+      // Broadcast works on all platforms (same-device/tab messaging)
       const broadcastSuccess = await this.startBroadcastMesh();
       if (broadcastSuccess) initializedTypes.push('broadcast');
 
+      // Nostr + WebRTC work on ALL platforms (web, Android, iOS)
+      const nostrSuccess = await this.startNostr();
+      if (nostrSuccess) initializedTypes.push('nostr');
+
+      const webrtcSuccess = await this.startWebRTC();
+      if (webrtcSuccess) initializedTypes.push('webrtc');
+
+      // On Android, also attempt native Bluetooth and WiFi Direct (graceful fallback if plugins missing)
       if (isNativeAndroid) {
         const wifiSuccess = await this.startWiFiP2P();
         if (wifiSuccess) initializedTypes.push('wifi');
 
         const bluetoothSuccess = await this.startBluetooth();
         if (bluetoothSuccess) initializedTypes.push('bluetooth');
-
-        const nostrSuccess = await this.startNostr();
-        if (nostrSuccess) initializedTypes.push('nostr');
-      } else {
-        const nostrSuccess = await this.startNostr();
-        if (nostrSuccess) initializedTypes.push('nostr');
-
-        const webrtcSuccess = await this.startWebRTC();
-        if (webrtcSuccess) initializedTypes.push('webrtc');
       }
 
       this.isInitialized = true;
@@ -514,11 +514,9 @@ class HybridMeshService {
 
         // If still not found and looks like a Nostr ID, try sending directly via Nostr
         if (!peer && this.isLikelyNostrId(targetId)) {
-          console.log(`📤 Target ${targetId.substring(0, 8)}... not in peers map, attempting direct Nostr send...`);
           try {
             sentSuccessfully = await nostrService.sendDirectMessage(targetId, payload);
             if (sentSuccessfully) {
-              console.log(`✅ Message sent successfully via Nostr to ${targetId.substring(0, 8)}...`);
               this.notifyListeners('messageSent', {
                 messageId: mId,
                 to: targetId,
@@ -527,14 +525,13 @@ class HybridMeshService {
               });
               return true;
             }
-          } catch (error) {
-            console.error(`❌ Direct Nostr send failed:`, error);
+          } catch {
+            // direct Nostr send failed, fall through to broadcast
           }
         }
 
         if (peer) {
           connectionType = peer.connectionType;
-          console.log(`📤 Sending message to ${targetId} via ${peer.connectionType}...`);
 
           try {
             switch (peer.connectionType) {
@@ -569,30 +566,22 @@ class HybridMeshService {
             }
 
             if (sentSuccessfully) {
-              console.log(`✅ Message sent successfully via ${peer.connectionType} to ${targetId}`);
-              // Emit success event for delivery tracking
               this.notifyListeners('messageSent', {
                 messageId: mId,
                 to: targetId,
                 connectionType: peer.connectionType,
                 timestamp
               });
-            } else {
-              console.warn(`⚠️ Failed to send message to ${targetId} via ${peer.connectionType}`);
             }
 
             return sentSuccessfully;
-          } catch (error) {
-            console.error(`❌ Error sending to ${targetId} via ${peer.connectionType}:`, error);
-            // Fall through to broadcast if targeted send fails
+          } catch {
+            // fall through to broadcast if targeted send fails
           }
-        } else {
-          console.warn(`⚠️ Peer ${targetId} not found in peers map. Attempting broadcast...`);
         }
       }
 
       // Broadcast to all available services if no target or targeted send failed
-      console.log('📡 Broadcasting message to all active services...');
       let broadcastSuccess = false;
 
       if (this.activeServices.bluetooth) {
@@ -601,9 +590,7 @@ class HybridMeshService {
           try {
             await workingBluetoothMesh.sendMessage(p.serviceId!, payload);
             broadcastSuccess = true;
-          } catch (e) {
-            console.debug(`Bluetooth send to ${p.id} failed:`, e);
-          }
+          } catch { /* peer unavailable */ }
         }
       }
 
@@ -613,9 +600,7 @@ class HybridMeshService {
           try {
             await wifiP2P.sendMessage(p.serviceId!, payload);
             broadcastSuccess = true;
-          } catch (e) {
-            console.debug(`WiFi send to ${p.id} failed:`, e);
-          }
+          } catch { /* peer unavailable */ }
         }
       }
 
@@ -623,19 +608,14 @@ class HybridMeshService {
         try {
           await nostrService.broadcastMessage(payload);
           broadcastSuccess = true;
-          console.log('✅ Message broadcast via Nostr');
-        } catch (e) {
-          console.debug('Nostr broadcast failed:', e);
-        }
+        } catch { /* relay unavailable */ }
       }
 
       if (this.activeServices.broadcast) {
         try {
           await broadcastMesh.broadcastMessage(payload);
           broadcastSuccess = true;
-        } catch (e) {
-          console.debug('Broadcast mesh failed:', e);
-        }
+        } catch { /* channel unavailable */ }
       }
 
       if (broadcastSuccess) {

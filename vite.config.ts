@@ -8,6 +8,9 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
   const isMobile = process.env.IS_MOBILE === 'true';
 
   return {
+    esbuild: {
+      drop: mode === 'production' ? ['console', 'debugger'] : [],
+    },
     base: env.VITE_BASE_URL || (isMobile ? './' : '/'),
 
     server: {
@@ -102,19 +105,20 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
     },
 
     build: {
-      target: 'esnext', // CHANGED from es2015 for modern BigInt support
+      target: 'esnext',
       outDir: 'dist',
       assetsDir: 'assets',
       sourcemap: false,
       emptyOutDir: true,
-      chunkSizeWarningLimit: 1000,
+      chunkSizeWarningLimit: 1500,
       rollupOptions: {
         output: {
           manualChunks: {
             vendor: ['react', 'react-dom'],
             nostr: ['nostr-tools', '@noble/secp256k1'],
             ably: ['ably'],
-            capacitor: ['@capacitor/core']
+            capacitor: ['@capacitor/core'],
+            ai: ['groq-sdk', '@google/genai']
           }
         }
       }

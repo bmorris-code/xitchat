@@ -9,16 +9,13 @@ const getClientEnv = (key: string): string => {
   return metaEnv?.[key] || processEnv?.[key] || '';
 };
 
-const groqApiKey = getClientEnv('GROQ_API_KEY') || getClientEnv('GROQ_API_KEY');
-console.log(' Groq API Key loaded:', !!groqApiKey, 'length:', groqApiKey?.length || 0);
+const groqApiKey = getClientEnv('VITE_GROQ_API_KEY');
 const groq = groqApiKey
   ? new Groq({
       apiKey: groqApiKey,
       dangerouslyAllowBrowser: true
     })
   : null;
-
-console.log(' Groq client initialized:', !!groq);
 
 const SYSTEM_PROMPT = `You are XitBot, the helpful and witty mascot for XitChat.
 XitChat is a modern chat application inspired by the nostalgic Mxit and BitChat.
@@ -66,7 +63,6 @@ export const getXitBotResponseGroq = async (userMessage: string): Promise<string
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) return cached.response;
 
   if (now - lastGlobalApiCall < GLOBAL_API_COOLDOWN || now - lastChatApiCall < CHAT_API_COOLDOWN) {
-    console.debug('Groq soft cooldown active');
   }
 
   try {
@@ -87,7 +83,6 @@ export const getXitBotResponseGroq = async (userMessage: string): Promise<string
     chatCache.set(cacheKey, { response: result, timestamp: now });
     return result;
   } catch (error) {
-    console.error('Groq Error:', error);
     return getFallbackChatResponse(userMessage);
   }
 };
@@ -137,7 +132,6 @@ export const streamXitBotResponseGroq = async (
     chatCache.set(cacheKey, { response: fullText, timestamp: now });
     return fullText;
   } catch (error: any) {
-    console.error('Groq Stream Error:', error);
     // fallback on any error
     return getXitBotResponseGroq(userMessage);
   }
@@ -165,7 +159,6 @@ export const getQuickRepliesGroq = async (lastMessage: string): Promise<string[]
     const parsed = JSON.parse(content);
     return Array.isArray(parsed) ? parsed : ['Rad!', 'On it.', '10-4'];
   } catch (error) {
-    console.error('Groq Quick Replies Error:', error);
     return ['Rad!', 'On it.', '10-4'];
   }
 };
@@ -211,7 +204,6 @@ export const getLatestBuzzGroq = async (): Promise<BuzzItem[]> => {
     buzzCache.set(cacheKey, { data: result, timestamp: now });
     return result;
   } catch (error) {
-    console.error('Groq Buzz Fetch Error:', error);
     return getFallbackBuzz();
   }
 };
@@ -255,7 +247,6 @@ export const checkGroqHealth = async (): Promise<boolean> => {
     });
     return !!response.choices[0]?.message?.content;
   } catch (error) {
-    console.debug('Groq health check failed:', (error as any)?.message || error);
     return false;
   }
 };

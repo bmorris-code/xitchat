@@ -186,8 +186,6 @@ class WiFiP2PService {
   private handlePeerAnnouncement(message: WiFiMessage): void {
     if (this.peers.has(message.from)) return;
 
-    console.log('📡 Received peer announcement from:', message.from);
-
     try {
       const peerData = JSON.parse(message.content);
       const peer: WiFiPeer = {
@@ -223,8 +221,6 @@ class WiFiP2PService {
     const peer = this.peers.get(peerId);
     if (!peer || peer.connection) return;
 
-    console.log(`🤝 Initiating WebRTC connection to ${peerId}...`);
-
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -250,7 +246,6 @@ class WiFiP2PService {
   }
 
   private async handleWebRTCOffer(message: WiFiMessage, source: 'local' | 'nostr'): Promise<void> {
-    console.log(`📥 Received WebRTC offer from ${message.from} via ${source}`);
 
     let peer = this.peers.get(message.from);
     if (!peer) {
@@ -304,7 +299,6 @@ class WiFiP2PService {
     if (peer && peer.connection) {
       const answer = JSON.parse(message.content).answer;
       await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
-      console.log(`✅ WebRTC answer applied for ${message.from}`);
 
       const queued = this.pendingCandidates.get(message.from) || [];
       for (const c of queued) {
@@ -336,7 +330,6 @@ class WiFiP2PService {
     peer.dataChannel = dc;
 
     dc.onopen = () => {
-      console.log(`🟢 WebRTC Data Channel OPEN with ${peer.id}`);
       peer.isConnected = true;
       this.emit('peerConnected', peer);
       this.emit('peersUpdated', Array.from(this.peers.values()));
@@ -352,7 +345,6 @@ class WiFiP2PService {
     };
 
     dc.onclose = () => {
-      console.log(`🔴 WebRTC Data Channel CLOSED with ${peer.id}`);
       peer.isConnected = false;
       this.emit('peerDisconnected', peer);
       this.emit('peersUpdated', Array.from(this.peers.values()));
@@ -397,19 +389,22 @@ class WiFiP2PService {
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
       
       if (isNativeAndroid) {
-        console.log('📱 Android: Using native WiFi Direct plugin for local P2P discovery');
-        const { registerPlugin } = await import('@capacitor/core');
-        const WiFiDirect = registerPlugin<any>('WiFiDirect');
-        this.WiFiDirectPlugin = WiFiDirect;
-        await WiFiDirect.initialize();
-        this.setupNativeWiFiDirectListeners(WiFiDirect);
-      } else {
-        console.log('🌐 Web: Using WebRTC + Nostr for WiFi P2P');
+        // Try native WiFi Direct plugin — not bundled by default, so handle gracefully
+        try {
+          const { registerPlugin } = await import('@capacitor/core');
+          const WiFiDirect = registerPlugin<any>('WiFiDirect');
+          await WiFiDirect.initialize();
+          this.WiFiDirectPlugin = WiFiDirect;
+          this.setupNativeWiFiDirectListeners(WiFiDirect);
+        } catch (error) {
+          // Plugin not installed — fall through to WebRTC + Nostr signaling path
+          console.warn('WiFiDirect plugin missing or failed to initialize, falling back to WebRTC + Nostr:', error);
+          this.WiFiDirectPlugin = null;
+        }
       }
 
-      // Web fallback - use WebRTC with Nostr signaling
+      // Web or Android fallback — use WebRTC with Nostr signaling
       if (!isNativeAndroid && !('RTCPeerConnection' in window)) {
-        console.warn('WebRTC not supported - WiFi P2P disabled');
         return false;
       }
 
