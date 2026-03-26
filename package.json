@@ -44,6 +44,10 @@
     "react-dom": "^19.2.3",
     "ws": "^8.19.0"
   },
+  "overrides": {
+    "tar": "^7.5.13",
+    "serialize-javascript": "^7.0.5"
+  },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-legacy": "^6.1.1",
