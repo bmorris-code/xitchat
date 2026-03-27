@@ -26,7 +26,7 @@ export interface HybridMeshPeer {
   lastSeen: number;
   signalStrength?: number;
   capabilities: string[];
-  serviceId?: string; // Original ID in the specific service
+  serviceId?: string;
 }
 
 export interface HybridMeshMessage {
@@ -45,13 +45,12 @@ export interface HybridMeshMessage {
   encryptedData?: any;
   sig?: string;
   pk?: string;
-  sig2?: string; // identityService schnorr signature
-  pk2?: string;  // identityService pubkey hex (x||y)
+  sig2?: string;
+  pk2?: string;
   verified?: boolean;
 }
 
 class HybridMeshService {
-  // Track active state of each service
   private activeServices = {
     bluetooth: false,
     webrtc: false,
@@ -69,14 +68,12 @@ class HybridMeshService {
 
   private fallbackHandle(id?: string): string {
     const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    const shortId = source.slice(0, 8) || 'peer';
-    return `@${shortId}`;
+    return `@${source.slice(0, 8) || 'peer'}`;
   }
 
   private fallbackName(id?: string): string {
     const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '');
-    const shortId = source.slice(0, 8) || 'peer';
-    return `Peer ${shortId}`;
+    return `Peer ${source.slice(0, 8) || 'peer'}`;
   }
 
   private isLikelyNostrId(id?: string): boolean {
@@ -86,17 +83,13 @@ class HybridMeshService {
 
   private normalizePeerName(name: any, id: string): string {
     const text = typeof name === 'string' ? name.trim() : '';
-    if (!text || /^unknown$/i.test(text) || /^null$/i.test(text)) {
-      return this.fallbackName(id);
-    }
+    if (!text || /^unknown$/i.test(text) || /^null$/i.test(text)) return this.fallbackName(id);
     return text;
   }
 
   private normalizePeerHandle(handle: any, id: string): string {
     const text = typeof handle === 'string' ? handle.trim() : '';
-    if (!text || /^@?unknown$/i.test(text) || /^@?null$/i.test(text)) {
-      return this.fallbackHandle(id);
-    }
+    if (!text || /^@?unknown$/i.test(text) || /^@?null$/i.test(text)) return this.fallbackHandle(id);
     return text.startsWith('@') ? text : `@${text}`;
   }
 
@@ -137,11 +130,10 @@ class HybridMeshService {
 
   async initialize(): Promise<MeshConnectionType[]> {
     try {
-      const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+      const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() &&
+        (window as any).Capacitor?.getPlatform() === 'android';
 
-      if (isNativeAndroid) {
-        await androidPermissions.requestAllCriticalPermissions();
-      }
+      if (isNativeAndroid) await androidPermissions.requestAllCriticalPermissions();
 
       try {
         const handle = localStorage.getItem('xitchat_handle') || 'anon';
@@ -151,18 +143,15 @@ class HybridMeshService {
 
       const initializedTypes: MeshConnectionType[] = [];
 
-      // Broadcast works on all platforms (same-device/tab messaging)
       const broadcastSuccess = await this.startBroadcastMesh();
       if (broadcastSuccess) initializedTypes.push('broadcast');
 
-      // Nostr + WebRTC work on ALL platforms (web, Android, iOS)
       const nostrSuccess = await this.startNostr();
       if (nostrSuccess) initializedTypes.push('nostr');
 
       const webrtcSuccess = await this.startWebRTC();
       if (webrtcSuccess) initializedTypes.push('webrtc');
 
-      // On Android, also attempt native Bluetooth and WiFi Direct (graceful fallback if plugins missing)
       if (isNativeAndroid) {
         const wifiSuccess = await this.startWiFiP2P();
         if (wifiSuccess) initializedTypes.push('wifi');
@@ -189,7 +178,7 @@ class HybridMeshService {
         return true;
       }
       return false;
-    } catch (e) { return false; }
+    } catch { return false; }
   }
 
   private async startWiFiP2P(): Promise<boolean> {
@@ -203,7 +192,7 @@ class HybridMeshService {
         return true;
       }
       return false;
-    } catch (e) { return false; }
+    } catch { return false; }
   }
 
   private async startNostr(): Promise<boolean> {
@@ -219,7 +208,7 @@ class HybridMeshService {
         return true;
       }
       return false;
-    } catch (e) { return false; }
+    } catch { return false; }
   }
 
   private async startBluetooth(): Promise<boolean> {
@@ -233,7 +222,7 @@ class HybridMeshService {
         return true;
       }
       return false;
-    } catch (e) { return false; }
+    } catch { return false; }
   }
 
   private async startWebRTC(): Promise<boolean> {
@@ -247,7 +236,7 @@ class HybridMeshService {
         return true;
       }
       return false;
-    } catch (e) { return false; }
+    } catch { return false; }
   }
 
   private updatePeers(servicePeers: any[], type: MeshConnectionType) {
@@ -294,15 +283,18 @@ class HybridMeshService {
     content: string,
     from: string,
     connectionType: MeshConnectionType,
-    metadata?: { messageId?: string; timestamp?: number; senderHandle?: string; senderName?: string, encryptedData?: any, sig?: string, pk?: string, sig2?: string, pk2?: string, verified?: boolean }
+    metadata?: {
+      messageId?: string; timestamp?: number; senderHandle?: string; senderName?: string;
+      encryptedData?: any; sig?: string; pk?: string; sig2?: string; pk2?: string; verified?: boolean;
+    }
   ) {
     const hybridMessage: HybridMeshMessage = {
       id: metadata?.messageId || Math.random().toString(36).substr(2, 9),
-      from: from,
+      from,
       to: 'me',
-      content: content,
+      content,
       timestamp: metadata?.timestamp || Date.now(),
-      connectionType: connectionType,
+      connectionType,
       encrypted: !!metadata?.encryptedData,
       encryptedData: metadata?.encryptedData,
       isBridged: false,
@@ -347,12 +339,33 @@ class HybridMeshService {
   }
 
   private isTransportControlPayload(content: string): boolean {
-    const value = (content || '').trim();
-    if (!value) return true;
-    return value.startsWith('xitchat-broadcast-v1-') || value.startsWith('xitchat-wifi:') || value.startsWith('xitchat-economy-sync:');
+    const v = (content || '').trim();
+    if (!v) return true;
+    return v.startsWith('xitchat-broadcast-v1-') ||
+      v.startsWith('xitchat-wifi:') ||
+      v.startsWith('xitchat-economy-sync:');
   }
 
   private async handleMessage(connectionType: MeshConnectionType, message: any) {
+    // ── FIX #2: Guard against re-bridged messages at the wire level ──────────
+    // Check in-memory flag first (fast path for local messages)
+    if (message.isBridged === true) return;
+    // Then check if the flag is serialized inside message.content (wire path)
+    if (typeof message.content === 'string' && message.content.startsWith('{')) {
+      try {
+        const quick = JSON.parse(message.content);
+        if (quick?.isBridged === true) return;
+        // Also check one level deeper — inner wrapped content
+        if (typeof quick?.content === 'string' && quick.content.startsWith('{')) {
+          try {
+            const inner = JSON.parse(quick.content);
+            if (inner?.isBridged === true) return;
+          } catch {}
+        }
+      } catch {}
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     let content = message.content;
     let metadata: any = {};
 
@@ -377,7 +390,6 @@ class HybridMeshService {
             pk2: parsed.pk2
           };
 
-          // Prefer device identity signatures (works offline).
           if (metadata.sig2 && metadata.pk2) {
             const ok = await identityService.verifyEnvelope({
               content,
@@ -389,7 +401,6 @@ class HybridMeshService {
             if (!ok) return;
             metadata.verified = await trustStore.isVerified(metadata.pk2);
           } else if (metadata.sig && metadata.pk) {
-            // Legacy Nostr-based signature (best-effort).
             const verified = await (nostrService as any).verifyData(
               content + metadata.timestamp + metadata.messageId,
               metadata.sig,
@@ -398,8 +409,6 @@ class HybridMeshService {
             );
             if (!verified) return;
           } else {
-            // Unsigned JSON-wrapped envelopes are spoofable; reject.
-            // Plaintext chat is still allowed when it isn't JSON-wrapped (legacy compatibility).
             return;
           }
         } else if (!parsed) {
@@ -414,24 +423,26 @@ class HybridMeshService {
           const inner = this.tryParseJsonWithRecovery(content);
           if (!inner) return;
 
+          // ── FIX #2 (deep): also catch isBridged on unwrapped inner object ──
+          if (inner.isBridged === true) return;
+
           if (inner.type === 'chat_message') {
-            const text = (typeof inner.data === 'string' && inner.data) || (typeof inner.data?.text === 'string' && inner.data.text) || '';
+            const text = (typeof inner.data === 'string' && inner.data) ||
+              (typeof inner.data?.text === 'string' && inner.data.text) || '';
             const senderHandle = inner.data?.senderHandle || inner.senderHandle;
             const senderName = inner.data?.senderName || inner.senderName;
 
             if (senderHandle || senderName) {
               this.updatePeerIdentityFromMessage(message.from, message.from, senderHandle, senderName);
             }
-
             if (!text) return;
             this.handleChatMessage(text, message.from, connectionType, { ...metadata, senderHandle, senderName });
             return;
           }
-          
-          // REAL-TIME: Allow typing and other events to pass to messageReceived
+
           if (typeof inner.type === 'string') {
-             this.notifyListeners('messageReceived', { ...message, ...inner, connectionType });
-             return;
+            this.notifyListeners('messageReceived', { ...message, ...inner, connectionType });
+            return;
           }
           if (!inner.type && !inner.content && !inner.text) return;
         }
@@ -444,22 +455,41 @@ class HybridMeshService {
   }
 
   private handleBridging(message: HybridMeshMessage) {
-    const activeCount = Object.values(this.activeServices).filter(v => v).length;
-    if (activeCount < 2 || message.isBridged) return;
+    // ── FIX #2: Must be the very first check — stops the bridge feedback loop ─
+    if (message.isBridged === true) return;
+    // ─────────────────────────────────────────────────────────────────────────
 
-    if ((message.connectionType === 'bluetooth' || message.connectionType === 'wifi') && this.activeServices.nostr) {
+    const activeCount = Object.values(this.activeServices).filter(v => v).length;
+    if (activeCount < 2) return;
+
+    const isLocalSource =
+      message.connectionType === 'bluetooth' ||
+      message.connectionType === 'wifi';
+
+    // Bridge local → Nostr (ONE broadcast only — duplicate block removed)
+    if (isLocalSource && this.activeServices.nostr) {
+      console.log(`📡 Bridging message from ${message.from} to Nostr layer`);
       this.bridgeStats.bridgedOut++;
-      void nostrService.broadcastMessage(JSON.stringify({ ...message, isBridged: true }));
+      void nostrService.broadcastMessage(
+        JSON.stringify({ ...message, isBridged: true })
+      ).catch((error) => {
+        console.debug('Bridge to Nostr skipped:', error);
+      });
     }
 
+    // Bridge Nostr → local mesh
     if (message.connectionType === 'nostr' && (this.activeServices.bluetooth || this.activeServices.wifi)) {
       this.bridgeStats.bridgedIn++;
       const bridged = JSON.stringify({ ...message, isBridged: true });
       if (this.activeServices.bluetooth) {
-        Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth').forEach(p => workingBluetoothMesh.sendMessage(p.serviceId!, bridged).catch(() => {}));
+        Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'bluetooth')
+          .forEach(p => workingBluetoothMesh.sendMessage(p.serviceId!, bridged).catch(() => {}));
       }
       if (this.activeServices.wifi) {
-        Array.from(this.peers.values()).filter(p => p.connectionType === 'wifi' && !!p.serviceId).forEach(p => wifiP2P.sendMessage(p.serviceId!, bridged).catch(() => {}));
+        Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'wifi' && !!p.serviceId)
+          .forEach(p => wifiP2P.sendMessage(p.serviceId!, bridged).catch(() => {}));
       }
     }
   }
@@ -470,19 +500,15 @@ class HybridMeshService {
       const mId = messageId || Math.random().toString(36).substr(2, 9);
       const torStatus = realTorService.getStatus().connected;
 
-      // Always sign with device identity (works offline).
       const signed = await identityService.signEnvelope({ content, timestamp, messageId: mId });
 
-      // Optional legacy signature when Nostr is connected.
       let sig = '';
       let pk = '';
       if (nostrService.isConnected()) {
         try {
           sig = await (nostrService as any).signData(content + timestamp + mId, Math.floor(timestamp / 1000));
           pk = (nostrService as any).getPublicKey();
-        } catch {
-          // no-op
-        }
+        } catch {}
       }
 
       const payload = JSON.stringify({
@@ -502,50 +528,31 @@ class HybridMeshService {
 
       if (targetId) {
         let peer = this.peers.get(targetId);
-
-        // If peer not found by exact ID, try to find by handle or serviceId
         if (!peer) {
           peer = Array.from(this.peers.values()).find(p =>
-            p.serviceId === targetId ||
-            p.handle === targetId ||
-            p.id === targetId
+            p.serviceId === targetId || p.handle === targetId || p.id === targetId
           );
         }
 
-        // If still not found and looks like a Nostr ID, try sending directly via Nostr
         if (!peer && this.isLikelyNostrId(targetId)) {
           try {
             sentSuccessfully = await nostrService.sendDirectMessage(targetId, payload);
             if (sentSuccessfully) {
-              this.notifyListeners('messageSent', {
-                messageId: mId,
-                to: targetId,
-                connectionType: 'nostr',
-                timestamp
-              });
+              this.notifyListeners('messageSent', { messageId: mId, to: targetId, connectionType: 'nostr', timestamp });
               return true;
             }
-          } catch {
-            // direct Nostr send failed, fall through to broadcast
-          }
+          } catch {}
         }
 
         if (peer) {
           connectionType = peer.connectionType;
-
           try {
             switch (peer.connectionType) {
               case 'bluetooth':
-                if (peer.serviceId) {
-                  await workingBluetoothMesh.sendMessage(peer.serviceId, payload);
-                  sentSuccessfully = true;
-                }
+                if (peer.serviceId) { await workingBluetoothMesh.sendMessage(peer.serviceId, payload); sentSuccessfully = true; }
                 break;
               case 'wifi':
-                if (peer.serviceId) {
-                  await wifiP2P.sendMessage(peer.serviceId, payload);
-                  sentSuccessfully = true;
-                }
+                if (peer.serviceId) { await wifiP2P.sendMessage(peer.serviceId, payload); sentSuccessfully = true; }
                 break;
               case 'nostr':
                 const nostrTarget = peer.serviceId || peer.id;
@@ -554,68 +561,38 @@ class HybridMeshService {
                 }
                 break;
               case 'broadcast':
-                if (peer.serviceId) {
-                  await broadcastMesh.sendMessage(peer.serviceId, payload);
-                  sentSuccessfully = true;
-                }
+                if (peer.serviceId) { await broadcastMesh.sendMessage(peer.serviceId, payload); sentSuccessfully = true; }
                 break;
               case 'webrtc':
                 await ablyWebRTC.sendMessage(payload);
                 sentSuccessfully = true;
                 break;
             }
-
             if (sentSuccessfully) {
-              this.notifyListeners('messageSent', {
-                messageId: mId,
-                to: targetId,
-                connectionType: peer.connectionType,
-                timestamp
-              });
+              this.notifyListeners('messageSent', { messageId: mId, to: targetId, connectionType: peer.connectionType, timestamp });
             }
-
             return sentSuccessfully;
-          } catch {
-            // fall through to broadcast if targeted send fails
-          }
+          } catch {}
         }
       }
 
-      // Broadcast to all available services if no target or targeted send failed
       let broadcastSuccess = false;
 
       if (this.activeServices.bluetooth) {
-        const bluetoothPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth' && p.isConnected);
-        for (const p of bluetoothPeers) {
-          try {
-            await workingBluetoothMesh.sendMessage(p.serviceId!, payload);
-            broadcastSuccess = true;
-          } catch { /* peer unavailable */ }
+        for (const p of Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth' && p.isConnected)) {
+          try { await workingBluetoothMesh.sendMessage(p.serviceId!, payload); broadcastSuccess = true; } catch {}
         }
       }
-
       if (this.activeServices.wifi) {
-        const wifiPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'wifi' && p.isConnected);
-        for (const p of wifiPeers) {
-          try {
-            await wifiP2P.sendMessage(p.serviceId!, payload);
-            broadcastSuccess = true;
-          } catch { /* peer unavailable */ }
+        for (const p of Array.from(this.peers.values()).filter(p => p.connectionType === 'wifi' && p.isConnected)) {
+          try { await wifiP2P.sendMessage(p.serviceId!, payload); broadcastSuccess = true; } catch {}
         }
       }
-
       if (this.activeServices.nostr) {
-        try {
-          await nostrService.broadcastMessage(payload);
-          broadcastSuccess = true;
-        } catch { /* relay unavailable */ }
+        try { await nostrService.broadcastMessage(payload); broadcastSuccess = true; } catch {}
       }
-
       if (this.activeServices.broadcast) {
-        try {
-          await broadcastMesh.broadcastMessage(payload);
-          broadcastSuccess = true;
-        } catch { /* channel unavailable */ }
+        try { await broadcastMesh.broadcastMessage(payload); broadcastSuccess = true; } catch {}
       }
 
       if (broadcastSuccess) {
@@ -634,6 +611,32 @@ class HybridMeshService {
     }
   }
 
+  // ── FIX #3: addExternalPeer — skip notify when nothing meaningful changed ──
+  addExternalPeer(peer: any, type: MeshConnectionType) {
+    const peerId = peer.id || 'peer';
+    const existing = this.peers.get(peerId);
+
+    // Compute what the new entry would look like
+    const nextHandle = this.normalizePeerHandle(peer.handle, peerId);
+    const nextConnected = peer.isConnected !== undefined ? peer.isConnected : true;
+
+    if (
+      existing &&
+      existing.isConnected === nextConnected &&
+      existing.connectionType === type &&
+      existing.handle === nextHandle
+    ) {
+      // Nothing meaningful changed — silently refresh lastSeen only, no event fired
+      this.peers.set(peerId, { ...existing, lastSeen: peer.lastSeen || Date.now() });
+      return;
+    }
+
+    // Genuinely new or changed peer — update and notify
+    this.updateSinglePeer(peer, type);
+    this.notifyPeersUpdated();
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   getConnectionInfo() {
     const active = this.getActiveServices();
     return {
@@ -643,18 +646,8 @@ class HybridMeshService {
     };
   }
 
-  isConnectedToMesh() {
-    return this.getActiveServices().length > 0;
-  }
-
-  getBridgeStats() {
-    return { ...this.bridgeStats };
-  }
-
-  addExternalPeer(peer: any, type: MeshConnectionType) {
-    this.updateSinglePeer(peer, type);
-    this.notifyPeersUpdated();
-  }
+  isConnectedToMesh() { return this.getActiveServices().length > 0; }
+  getBridgeStats() { return { ...this.bridgeStats }; }
 
   async refreshLocalMeshConnectivity() {
     if (this.activeServices.bluetooth) await workingBluetoothMesh.startScanning().catch(() => {});
