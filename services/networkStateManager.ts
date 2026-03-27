@@ -28,6 +28,11 @@ class NetworkStateManager {
   private healthCheckInterval: NodeJS.Timeout | null = null;
   private reconnectIntervals: Map<string, NodeJS.Timeout> = new Map();
   private isOnline = navigator.onLine;
+
+  // ── FIX #1: store bound handlers for cleanup ──
+  private onlineHandler: () => void;
+  private offlineHandler: () => void;
+
   private status: NetworkStatus = {
     isOnline: this.isOnline,
     overallHealth: 'offline',
@@ -38,37 +43,40 @@ class NetworkStateManager {
   };
 
   constructor() {
+    this.onlineHandler = () => {
+      this.isOnline = true;
+      this.attemptAllReconnections();
+      this.updateOverallStatus();
+      this.emit('networkOnline');
+    };
+    this.offlineHandler = () => {
+      this.isOnline = false;
+      this.updateOverallStatus();
+      this.emit('networkOffline');
+    };
     this.setupNetworkChangeDetection();
     this.startHealthChecks();
   }
 
-  // Register a network service for monitoring
   registerService(service: NetworkService): void {
     this.services.set(service.name, service);
     this.updateOverallStatus();
-    console.log(`📊 Registered network service: ${service.name}`);
   }
 
-  // Unregister a service
   unregisterService(serviceName: string): void {
     this.services.delete(serviceName);
     this.stopReconnectAttempts(serviceName);
     this.updateOverallStatus();
-    console.log(`📊 Unregistered network service: ${serviceName}`);
   }
 
-  // Update service connection status
   updateServiceStatus(serviceName: string, isConnected: boolean, isHealthy?: boolean): void {
     const service = this.services.get(serviceName);
     if (!service) return;
 
     service.isConnected = isConnected;
-    if (isHealthy !== undefined) {
-      service.isHealthy = isHealthy;
-    }
+    if (isHealthy !== undefined) service.isHealthy = isHealthy;
     service.lastCheck = Date.now();
 
-    // Reset reconnect attempts on successful connection
     if (isConnected && isHealthy !== false) {
       service.reconnectAttempts = 0;
       this.stopReconnectAttempts(serviceName);
@@ -78,36 +86,22 @@ class NetworkStateManager {
     this.emit('serviceStatusChanged', { serviceName, isConnected, isHealthy });
   }
 
-  // Setup browser network change detection
+  // ── FIX #1: use stored bound handlers ──
   private setupNetworkChangeDetection(): void {
-    const handleOnline = () => {
-      console.log('🌐 Network connection restored');
-      this.isOnline = true;
-      this.attemptAllReconnections();
-      this.updateOverallStatus();
-      this.emit('networkOnline');
-    };
-
-    const handleOffline = () => {
-      console.log('📵 Network connection lost');
-      this.isOnline = false;
-      this.updateOverallStatus();
-      this.emit('networkOffline');
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', this.onlineHandler);
+    window.addEventListener('offline', this.offlineHandler);
   }
 
-  // Start periodic health checks
   private startHealthChecks(): void {
     this.healthCheckInterval = setInterval(async () => {
       await this.performHealthChecks();
-    }, 10000); // Check every 10 seconds
+    }, 10000);
   }
 
-  // Perform health checks on all services
+  // ── FIX #4: skip health checks when offline ──
   private async performHealthChecks(): Promise<void> {
+    if (!this.isOnline) return;
+
     for (const [name, service] of this.services) {
       if (service.healthCheck && service.isConnected) {
         try {
@@ -122,27 +116,30 @@ class NetworkStateManager {
     }
   }
 
-  // Attempt to reconnect a specific service
+  // ── FIX #2: cancel existing timer before creating new one ──
   private async attemptReconnection(serviceName: string): Promise<void> {
     const service = this.services.get(serviceName);
     if (!service || !service.reconnect) return;
 
     if (service.reconnectAttempts >= service.maxReconnectAttempts) {
-      console.error(`Max reconnection attempts reached for ${serviceName}`);
       this.emit('serviceReconnectFailed', { serviceName });
       return;
     }
 
-    service.reconnectAttempts++;
-    const delay = Math.min(service.reconnectDelay * Math.pow(2, service.reconnectAttempts - 1), 30000);
+    // Cancel any in-flight timer for this service before scheduling a new one
+    this.stopReconnectAttempts(serviceName);
 
-    console.log(`🔄 Attempting to reconnect ${serviceName} (attempt ${service.reconnectAttempts}/${service.maxReconnectAttempts}) in ${delay}ms`);
+    service.reconnectAttempts++;
+    const delay = Math.min(
+      service.reconnectDelay * Math.pow(2, service.reconnectAttempts - 1),
+      30000
+    );
 
     const timeoutId = setTimeout(async () => {
+      this.reconnectIntervals.delete(serviceName);
       try {
         const success = await service.reconnect!();
         if (success) {
-          console.log(`✅ Successfully reconnected ${serviceName}`);
           this.updateServiceStatus(serviceName, true, true);
           this.emit('serviceReconnected', { serviceName });
         } else {
@@ -157,7 +154,6 @@ class NetworkStateManager {
     this.reconnectIntervals.set(serviceName, timeoutId);
   }
 
-  // Stop reconnection attempts for a service
   private stopReconnectAttempts(serviceName: string): void {
     const timeoutId = this.reconnectIntervals.get(serviceName);
     if (timeoutId) {
@@ -166,30 +162,25 @@ class NetworkStateManager {
     }
   }
 
-  // Attempt to reconnect all services
   private async attemptAllReconnections(): Promise<void> {
     for (const [name, service] of this.services) {
       if (!service.isConnected) {
-        service.reconnectAttempts = 0; // Reset attempts when network comes back
+        service.reconnectAttempts = 0;
         this.attemptReconnection(name);
       }
     }
   }
 
-  // Update overall network status
   private updateOverallStatus(): void {
     const activeServices = Array.from(this.services.values())
       .filter(s => s.isConnected && s.isHealthy)
       .map(s => s.name);
 
-    const totalPeers = this.calculateTotalPeers();
-    const overallHealth = this.calculateOverallHealth(activeServices);
-
     this.status = {
       isOnline: this.isOnline,
-      overallHealth,
+      overallHealth: this.calculateOverallHealth(activeServices),
       activeServices,
-      totalPeers,
+      totalPeers: this.status.totalPeers, // preserved from updatePeerCount()
       lastUpdate: Date.now(),
       services: new Map(this.services)
     };
@@ -197,13 +188,12 @@ class NetworkStateManager {
     this.emit('statusUpdated', this.status);
   }
 
-  // Calculate total peers across all services (placeholder)
-  private calculateTotalPeers(): number {
-    // This would need to be implemented by querying actual services
-    return 0;
+  // ── FIX #3: allow callers to inject real peer count ──
+  updatePeerCount(count: number): void {
+    this.status.totalPeers = count;
+    this.emit('statusUpdated', this.status);
   }
 
-  // Calculate overall network health
   private calculateOverallHealth(activeServices: string[]): NetworkStatus['overallHealth'] {
     if (!this.isOnline || activeServices.length === 0) return 'offline';
     if (activeServices.length >= 4) return 'excellent';
@@ -212,62 +202,37 @@ class NetworkStateManager {
     return 'poor';
   }
 
-  // Get current network status
-  getStatus(): NetworkStatus {
-    return { ...this.status };
-  }
-
-  // Get service-specific status
-  getServiceStatus(serviceName: string): NetworkService | undefined {
-    return this.services.get(serviceName);
-  }
-
-  // Check if any service is connected
-  hasAnyConnection(): boolean {
-    return Array.from(this.services.values()).some(s => s.isConnected && s.isHealthy);
-  }
-
-  // Check if specific service is healthy
+  getStatus(): NetworkStatus { return { ...this.status }; }
+  getServiceStatus(serviceName: string): NetworkService | undefined { return this.services.get(serviceName); }
+  hasAnyConnection(): boolean { return Array.from(this.services.values()).some(s => s.isConnected && s.isHealthy); }
   isServiceHealthy(serviceName: string): boolean {
-    const service = this.services.get(serviceName);
-    return service?.isHealthy && service?.isConnected || false;
+    const s = this.services.get(serviceName);
+    return !!(s?.isHealthy && s?.isConnected);
   }
 
-  // Event handling
   on(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-
     return () => {
-      const index = this.listeners[event].indexOf(callback);
-      if (index > -1) {
-        this.listeners[event].splice(index, 1);
-      }
+      const idx = this.listeners[event].indexOf(callback);
+      if (idx > -1) this.listeners[event].splice(idx, 1);
     };
   }
 
   private emit(event: string, data?: any): void {
-    const callbacks = this.listeners[event] || [];
-    callbacks.forEach(callback => callback(data));
+    (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
-  // Cleanup
+  // ── FIX #1: remove window listeners in destroy() ──
   destroy(): void {
-    if (this.healthCheckInterval) {
-      clearInterval(this.healthCheckInterval);
-    }
-
-    for (const timeoutId of this.reconnectIntervals.values()) {
-      clearTimeout(timeoutId);
-    }
-
+    if (this.healthCheckInterval) { clearInterval(this.healthCheckInterval); this.healthCheckInterval = null; }
+    for (const timeoutId of this.reconnectIntervals.values()) clearTimeout(timeoutId);
     this.reconnectIntervals.clear();
     this.services.clear();
     this.listeners = {};
+    window.removeEventListener('online', this.onlineHandler);
+    window.removeEventListener('offline', this.offlineHandler);
   }
 }
 
-// Export singleton instance
 export const networkStateManager = new NetworkStateManager();
