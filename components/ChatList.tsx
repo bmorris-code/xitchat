@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Chat } from '../types';
 import { nostrService } from '../services/nostrService';
@@ -31,8 +30,9 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
   useEffect(() => {
     const updateMeshStatus = () => {
       const info = hybridMesh.getConnectionInfo();
+      // ── FIX #1: use isRealConnection + peerCount — isConnected doesn't exist on this shape ──
       setMeshStatus({
-        connected: info.isConnected,
+        connected: !!(info.isRealConnection || info.peerCount > 0),
         peerCount: info.peerCount
       });
     };
@@ -40,14 +40,18 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
     updateMeshStatus();
     const unsubscribeMesh = hybridMesh.subscribe('peersUpdated', updateMeshStatus);
 
-    // Listen for typing events from the mesh
-    const unsubscribeTyping = hybridMesh.subscribe('typing', (data: any) => {
+    // ── FIX #3: listen to messageReceived and filter for type === 'typing' ──
+    // hybridMesh emits messageReceived with message.type === 'typing', not a 'typing' event
+    const unsubscribeTyping = hybridMesh.subscribe('messageReceived', (data: any) => {
+      if (data?.type !== 'typing') return;
+      const chatId = data.chatId || data.from;
+      if (!chatId) return;
       if (data.isTyping) {
-        setTypingPeers(prev => new Set(prev).add(data.chatId));
+        setTypingPeers(prev => new Set(prev).add(chatId));
       } else {
         setTypingPeers(prev => {
           const next = new Set(prev);
-          next.delete(data.chatId);
+          next.delete(chatId);
           return next;
         });
       }
@@ -58,6 +62,9 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
       unsubscribeTyping();
     };
   }, []);
+
+  // ── FIX #2: hoist nostrPeers lookup outside map — avoids O(n) alloc per chat per render ──
+  const nostrPeers = nostrService.getPeers();
 
   return (
     <div className={`w-full md:w-80 h-full overflow-hidden border-r border-[#004400] flex flex-col bg-black pt-safe ${className}`}>
@@ -91,19 +98,27 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
         </div>
 
         {chats.map((chat) => {
-          const isOnline = chat.participant.status === 'Online' || nostrService.getPeers().some(p => (p.id === chat.participant.id || p.publicKey === chat.participant.id) && p.isConnected);
+          // ── FIX #2: use hoisted nostrPeers instead of calling getPeers() per chat ──
+          const isOnline =
+            chat.participant.status === 'Online' ||
+            nostrPeers.some(p =>
+              (p.id === chat.participant.id || p.publicKey === chat.participant.id) &&
+              p.isConnected
+            );
           const isTyping = typingPeers.has(chat.id);
 
           return (
             <button
               key={chat.id}
               onClick={() => onChatSelect(chat.id)}
-              className={`w-full px-4 py-4 flex items-start gap-4 transition-all border-b border-transparent group hover:bg-white/[0.03] ${activeChatId === chat.id ? 'bg-white/[0.05] border-[#00ff4122]' : ''
-                }`}
+              className={`w-full px-4 py-4 flex items-start gap-4 transition-all border-b border-transparent group hover:bg-white/[0.03] ${
+                activeChatId === chat.id ? 'bg-white/[0.05] border-[#00ff4122]' : ''
+              }`}
             >
               <div className="relative shrink-0">
-                <div className={`w-3 h-3 rounded-sm transition-all duration-500 ${isOnline ? 'bg-[#00ff41] shadow-[0_0_8px_#00ff41]' : 'bg-[#004400]'
-                  }`}></div>
+                <div className={`w-3 h-3 rounded-sm transition-all duration-500 ${
+                  isOnline ? 'bg-[#00ff41] shadow-[0_0_8px_#00ff41]' : 'bg-[#004400]'
+                }`}></div>
                 {chat.participant.moodEmoji && (
                   <div className="absolute -top-1 -right-2 text-[10px] opacity-80">
                     {chat.participant.moodEmoji}
@@ -112,18 +127,24 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
               </div>
               <div className="flex-1 text-left min-w-0">
                 <div className="flex justify-between items-baseline gap-2">
-                  <span className={`text-sm font-bold truncate group-hover:text-white transition-colors flex items-center gap-1 ${chat.participant.id === 'xit-bot' ? 'text-cyan-400' : 'text-orange-400'
-                    }`}>
+                  <span className={`text-sm font-bold truncate group-hover:text-white transition-colors flex items-center gap-1 ${
+                    chat.participant.id === 'xit-bot' ? 'text-cyan-400' : 'text-orange-400'
+                  }`}>
                     {chat.isEncrypted && <i className="fa-solid fa-lock text-[10px] text-[#00ff41]"></i>}
                     &lt;{chat.participant.handle}&gt;
                   </span>
                   <div className="flex items-center gap-1">
-                    {chat.unreadCount > 0 && <span className="text-[10px] animate-pulse text-[#00ff41] shrink-0">[{chat.unreadCount}]</span>}
+                    {chat.unreadCount > 0 && (
+                      <span className="text-[10px] animate-pulse text-[#00ff41] shrink-0">
+                        [{chat.unreadCount}]
+                      </span>
+                    )}
                     {isTyping && <span className="text-[8px] text-[#00ff41] animate-bounce">...</span>}
                   </div>
                 </div>
-                <p className={`text-[11px] truncate mt-0.5 transition-colors ${isTyping ? 'text-[#00ff41] italic' : 'text-[#006600] group-hover:text-[#00aa22]'
-                  }`}>
+                <p className={`text-[11px] truncate mt-0.5 transition-colors ${
+                  isTyping ? 'text-[#00ff41] italic' : 'text-[#006600] group-hover:text-[#00aa22]'
+                }`}>
                   &gt; {isTyping ? 'typing...' : sanitizePreview(chat.lastMessage)}
                 </p>
               </div>
