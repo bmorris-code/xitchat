@@ -1,295 +1,238 @@
-// XitChat Hybrid Mesh WebRTC - Production Ready
-import * as Ably from 'ably';
-import { ICE_SERVERS } from './iceConfig';
+// Unified Network State Manager for XitChat
+// Centralized connection monitoring and health checks
 
-export interface AblyWebRTCPeer {
-  id: string;
+export interface NetworkService {
   name: string;
-  handle: string;
-  connection: RTCPeerConnection;
-  dataChannel: RTCDataChannel;
   isConnected: boolean;
-  lastSeen: Date;
+  isHealthy: boolean;
+  lastCheck: number;
+  reconnectAttempts: number;
+  maxReconnectAttempts: number;
+  reconnectDelay: number;
+  healthCheck?: () => Promise<boolean>;
+  reconnect?: () => Promise<boolean>;
 }
 
-export class HybridMeshWebRTC {
-  private peers: Map<string, AblyWebRTCPeer> = new Map();
-  private ably: any = null;
-  private channel: any = null;
-  private myPeerId: string | null = null;
-  private listeners: { [key: string]: ((data?: any) => void)[] } = {};
-  private currentRoom: string = 'xitchat-mesh';
+export interface NetworkStatus {
+  isOnline: boolean;
+  overallHealth: 'excellent' | 'good' | 'fair' | 'poor' | 'offline';
+  activeServices: string[];
+  totalPeers: number;
+  lastUpdate: number;
+  services: Map<string, NetworkService>;
+}
 
-  async initialize(apiKey?: string): Promise<boolean> {
-    if (!('RTCPeerConnection' in window)) {
-      console.warn('WebRTC not supported in this browser.');
-      return false;
+class NetworkStateManager {
+  private services: Map<string, NetworkService> = new Map();
+  private listeners: { [key: string]: ((data: any) => void)[] } = {};
+  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private reconnectIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private isOnline = navigator.onLine;
+
+  // ── FIX #1: store bound handlers for cleanup ──
+  private onlineHandler: () => void;
+  private offlineHandler: () => void;
+
+  private status: NetworkStatus = {
+    isOnline: this.isOnline,
+    overallHealth: 'offline',
+    activeServices: [],
+    totalPeers: 0,
+    lastUpdate: Date.now(),
+    services: new Map()
+  };
+
+  constructor() {
+    this.onlineHandler = () => {
+      this.isOnline = true;
+      this.attemptAllReconnections();
+      this.updateOverallStatus();
+      this.emit('networkOnline');
+    };
+    this.offlineHandler = () => {
+      this.isOnline = false;
+      this.updateOverallStatus();
+      this.emit('networkOffline');
+    };
+    this.setupNetworkChangeDetection();
+    this.startHealthChecks();
+  }
+
+  registerService(service: NetworkService): void {
+    this.services.set(service.name, service);
+    this.updateOverallStatus();
+  }
+
+  unregisterService(serviceName: string): void {
+    this.services.delete(serviceName);
+    this.stopReconnectAttempts(serviceName);
+    this.updateOverallStatus();
+  }
+
+  updateServiceStatus(serviceName: string, isConnected: boolean, isHealthy?: boolean): void {
+    const service = this.services.get(serviceName);
+    if (!service) return;
+
+    service.isConnected = isConnected;
+    if (isHealthy !== undefined) service.isHealthy = isHealthy;
+    service.lastCheck = Date.now();
+
+    if (isConnected && isHealthy !== false) {
+      service.reconnectAttempts = 0;
+      this.stopReconnectAttempts(serviceName);
     }
 
-    try {
-      this.myPeerId = this.generatePeerId();
-
-      // Security hardening: require explicit runtime key/token; do not read bundled env secrets.
-      const ablyKey = apiKey;
-      if (!ablyKey) {
-        console.debug('⚠️ Ably API key not provided - skipping WebRTC mesh');
-        return false;
-      }
-
-      this.ably = new Ably.Realtime(ablyKey);
-      this.channel = this.ably.channels.get(this.currentRoom);
-
-      // Setup error handling for Ably connection
-      this.ably.connection.on('failed', (error) => {
-        console.debug('⚠️ Ably connection failed (handled):', error);
-      });
-
-      this.ably.connection.on('disconnected', () => {
-        console.debug('⚠️ Ably disconnected (handled)');
-      });
-
-      // Subscribe to channels
-      await this.channel.subscribe('signal', (msg: any) => this.handleSignalingMessage(msg.data));
-      await this.channel.subscribe('peer-joined', (msg: any) => this.handlePeerJoined(msg.data));
-      await this.channel.subscribe('peer-left', (msg: any) => this.handlePeerLeft(msg.data));
-
-      // Announce presence
-      await this.channel.publish('peer-joined', { peerId: this.myPeerId });
-
-      // Create local peer connection
-      await this.createLocalPeer();
-
-      console.log('✅ Ably WebRTC Hybrid Mesh initialized');
-      return true;
-
-    } catch (error) {
-      console.debug('⚠️ Ably WebRTC initialization failed (handled):', error);
-      return false;
-    }
+    this.updateOverallStatus();
+    this.emit('serviceStatusChanged', { serviceName, isConnected, isHealthy });
   }
 
-  // Generate unique peer ID
-  generatePeerId(): string {
-    return 'peer_' + Math.random().toString(36).substring(2, 12);
+  // ── FIX #1: use stored bound handlers ──
+  private setupNetworkChangeDetection(): void {
+    window.addEventListener('online', this.onlineHandler);
+    window.addEventListener('offline', this.offlineHandler);
   }
 
-  // Generate unique message ID
-  generateMessageId(): string {
-    return 'msg_' + Math.random().toString(36).substring(2, 12);
+  private startHealthChecks(): void {
+    this.healthCheckInterval = setInterval(async () => {
+      await this.performHealthChecks();
+    }, 10000);
   }
 
-  // Create local RTCPeerConnection and data channel
-  async createLocalPeer() {
-    if (!this.myPeerId) return;
+  // ── FIX #4: skip health checks when offline ──
+  private async performHealthChecks(): Promise<void> {
+    if (!this.isOnline) return;
 
-    const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS
-    });
-
-    const dc = pc.createDataChannel('messages', { ordered: true });
-    this.setupDataChannel(dc, this.myPeerId);
-
-    pc.onicecandidate = async (event) => {
-      if (event.candidate) {
-        await this.channel?.publish('signal', {
-          type: 'ice-candidate',
-          candidate: event.candidate,
-          fromPeerId: this.myPeerId
-        });
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log('Local connection state:', pc.connectionState);
-    };
-
-    // Add self to peers
-    this.addPeer(this.myPeerId, pc, dc);
-  }
-
-  private async handlePeerJoined(data: any) {
-    if (data.peerId === this.myPeerId) return;
-    console.log('Peer joined:', data.peerId);
-    this.emit('peerJoined', data);
-    await this.connectToPeer(data.peerId);
-  }
-
-  private handlePeerLeft(data: any) {
-    if (!data.peerId) return;
-    console.log('Peer left:', data.peerId);
-    this.removePeer(data.peerId);
-    this.emit('peerLeft', data);
-  }
-
-  private async connectToPeer(peerId: string) {
-    if (!this.myPeerId || this.peers.has(peerId)) return;
-
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    const dc = pc.createDataChannel('messages', { ordered: true });
-    this.setupDataChannel(dc, peerId);
-
-    pc.onicecandidate = async (event) => {
-      if (event.candidate) {
-        await this.channel?.publish('signal', {
-          type: 'ice-candidate',
-          candidate: event.candidate,
-          fromPeerId: this.myPeerId,
-          toPeerId: peerId
-        });
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      console.log(`Connection state with ${peerId}:`, pc.connectionState);
-    };
-
-    this.addPeer(peerId, pc, dc);
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    await this.channel?.publish('signal', {
-      type: 'offer',
-      offer,
-      fromPeerId: this.myPeerId,
-      toPeerId: peerId
-    });
-  }
-
-  private async handleSignalingMessage(data: any) {
-    if (!this.myPeerId || data.fromPeerId === this.myPeerId) return;
-    if (data.toPeerId && data.toPeerId !== this.myPeerId) return;
-
-    let pc: RTCPeerConnection;
-    let peer: AblyWebRTCPeer;
-
-    if (!this.peers.has(data.fromPeerId)) {
-      pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-      pc.ondatachannel = (event) => this.setupDataChannel(event.channel, data.fromPeerId);
-
-      pc.onicecandidate = async (event) => {
-        if (event.candidate) {
-          await this.channel.publish('signal', {
-            type: 'ice-candidate',
-            candidate: event.candidate,
-            fromPeerId: this.myPeerId,
-            toPeerId: data.fromPeerId
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => console.log(`Connection state with ${data.fromPeerId}:`, pc.connectionState);
-
-      peer = { id: data.fromPeerId, name: data.fromPeerId, handle: `@${data.fromPeerId}`, connection: pc, dataChannel: null as any, isConnected: false, lastSeen: new Date() };
-      this.peers.set(data.fromPeerId, peer);
-    } else {
-      peer = this.peers.get(data.fromPeerId)!;
-      pc = peer.connection;
-    }
-
-    switch (data.type) {
-      case 'offer':
+    for (const [name, service] of this.services) {
+      if (service.healthCheck && service.isConnected) {
         try {
-          if (pc.signalingState !== 'stable' && pc.signalingState !== 'have-remote-offer') {
-            if (this.myPeerId && this.myPeerId > data.fromPeerId) {
-              console.debug(`Ignoring colliding offer from ${data.fromPeerId}`);
-              return;
-            }
-          }
-          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-          if (pc.signalingState === 'have-remote-offer' || pc.signalingState === 'have-local-pranswer') {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            await this.channel.publish('signal', { type: 'answer', answer, fromPeerId: this.myPeerId, toPeerId: data.fromPeerId });
-          }
-        } catch (e) {
-          console.warn('WebRTC offer error:', e);
+          const isHealthy = await service.healthCheck();
+          this.updateServiceStatus(name, service.isConnected, isHealthy);
+        } catch (error) {
+          console.warn(`Health check failed for ${name}:`, error);
+          this.updateServiceStatus(name, false, false);
+          this.attemptReconnection(name);
         }
-        break;
-      case 'answer':
-        try {
-          if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-pranswer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-          }
-        } catch (e) {
-          console.warn('WebRTC answer error:', e);
-        }
-        break;
-      case 'ice-candidate':
-        if (data.candidate && pc.remoteDescription) await pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
-        break;
+      }
     }
   }
 
-  private setupDataChannel(channel: RTCDataChannel, peerId: string) {
-    channel.onopen = () => {
-      console.log(`Data channel open with ${peerId}`);
-      const peer = this.peers.get(peerId);
-      if (peer) peer.isConnected = true;
-      this.emit('dataChannelOpen', peerId);
-    };
+  // ── FIX #2: cancel existing timer before creating new one ──
+  private async attemptReconnection(serviceName: string): Promise<void> {
+    const service = this.services.get(serviceName);
+    if (!service || !service.reconnect) return;
 
-    channel.onmessage = (event) => {
+    if (service.reconnectAttempts >= service.maxReconnectAttempts) {
+      this.emit('serviceReconnectFailed', { serviceName });
+      return;
+    }
+
+    // Cancel any in-flight timer for this service before scheduling a new one
+    this.stopReconnectAttempts(serviceName);
+
+    service.reconnectAttempts++;
+    const delay = Math.min(
+      service.reconnectDelay * Math.pow(2, service.reconnectAttempts - 1),
+      30000
+    );
+
+    const timeoutId = setTimeout(async () => {
+      this.reconnectIntervals.delete(serviceName);
       try {
-        const message = JSON.parse(event.data);
-        this.emit('messageReceived', message);
-      } catch (err) {
-        console.error('Failed to parse message:', err);
+        const success = await service.reconnect!();
+        if (success) {
+          this.updateServiceStatus(serviceName, true, true);
+          this.emit('serviceReconnected', { serviceName });
+        } else {
+          this.attemptReconnection(serviceName);
+        }
+      } catch (error) {
+        console.error(`Reconnection failed for ${serviceName}:`, error);
+        this.attemptReconnection(serviceName);
       }
-    };
+    }, delay);
 
-    channel.onclose = () => {
-      console.log(`Data channel closed with ${peerId}`);
-      const peer = this.peers.get(peerId);
-      if (peer) peer.isConnected = false;
-      this.emit('dataChannelClose', peerId);
-    };
+    this.reconnectIntervals.set(serviceName, timeoutId);
   }
 
-  sendMessage(content: string) {
-    const message = { id: this.generateMessageId(), from: this.myPeerId, content, timestamp: new Date(), type: 'direct' };
-    this.peers.forEach(peer => {
-      if (peer.dataChannel && peer.dataChannel.readyState === 'open') peer.dataChannel.send(JSON.stringify(message));
-    });
-  }
-
-  private addPeer(peerId: string, connection: RTCPeerConnection, dataChannel: RTCDataChannel) {
-    if (!this.peers.has(peerId)) {
-      this.peers.set(peerId, { id: peerId, name: peerId, handle: `@${peerId}`, connection, dataChannel, isConnected: dataChannel.readyState === 'open', lastSeen: new Date() });
+  private stopReconnectAttempts(serviceName: string): void {
+    const timeoutId = this.reconnectIntervals.get(serviceName);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      this.reconnectIntervals.delete(serviceName);
     }
   }
 
-  private removePeer(peerId: string) {
-    const peer = this.peers.get(peerId);
-    if (peer) peer.connection.close();
-    this.peers.delete(peerId);
+  private async attemptAllReconnections(): Promise<void> {
+    for (const [name, service] of this.services) {
+      if (!service.isConnected) {
+        service.reconnectAttempts = 0;
+        this.attemptReconnection(name);
+      }
+    }
   }
 
-  isConnectedToMesh(): boolean {
-    return this.peers.size > 0;
+  private updateOverallStatus(): void {
+    const activeServices = Array.from(this.services.values())
+      .filter(s => s.isConnected && s.isHealthy)
+      .map(s => s.name);
+
+    this.status = {
+      isOnline: this.isOnline,
+      overallHealth: this.calculateOverallHealth(activeServices),
+      activeServices,
+      totalPeers: this.status.totalPeers, // preserved from updatePeerCount()
+      lastUpdate: Date.now(),
+      services: new Map(this.services)
+    };
+
+    this.emit('statusUpdated', this.status);
   }
 
-  getPeers(): AblyWebRTCPeer[] {
-    return Array.from(this.peers.values());
+  // ── FIX #3: allow callers to inject real peer count ──
+  updatePeerCount(count: number): void {
+    this.status.totalPeers = count;
+    this.emit('statusUpdated', this.status);
   }
 
-  subscribe(event: string, callback: (data?: any) => void): () => void {
+  private calculateOverallHealth(activeServices: string[]): NetworkStatus['overallHealth'] {
+    if (!this.isOnline || activeServices.length === 0) return 'offline';
+    if (activeServices.length >= 4) return 'excellent';
+    if (activeServices.length >= 3) return 'good';
+    if (activeServices.length >= 2) return 'fair';
+    return 'poor';
+  }
+
+  getStatus(): NetworkStatus { return { ...this.status }; }
+  getServiceStatus(serviceName: string): NetworkService | undefined { return this.services.get(serviceName); }
+  hasAnyConnection(): boolean { return Array.from(this.services.values()).some(s => s.isConnected && s.isHealthy); }
+  isServiceHealthy(serviceName: string): boolean {
+    const s = this.services.get(serviceName);
+    return !!(s?.isHealthy && s?.isConnected);
+  }
+
+  on(event: string, callback: (data: any) => void): () => void {
     if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-    return () => { this.listeners[event] = this.listeners[event].filter(cb => cb !== callback); };
+    return () => {
+      const idx = this.listeners[event].indexOf(callback);
+      if (idx > -1) this.listeners[event].splice(idx, 1);
+    };
   }
 
-  private emit(event: string, data?: any) {
+  private emit(event: string, data?: any): void {
     (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
-  async disconnect() {
-    if (!this.myPeerId) return;
-    await this.channel?.publish('peer-left', { peerId: this.myPeerId });
-    this.ably?.close();
-    this.peers.forEach(peer => peer.connection.close());
-    this.emit('disconnected');
+  // ── FIX #1: remove window listeners in destroy() ──
+  destroy(): void {
+    if (this.healthCheckInterval) { clearInterval(this.healthCheckInterval); this.healthCheckInterval = null; }
+    for (const timeoutId of this.reconnectIntervals.values()) clearTimeout(timeoutId);
+    this.reconnectIntervals.clear();
+    this.services.clear();
+    this.listeners = {};
+    window.removeEventListener('online', this.onlineHandler);
+    window.removeEventListener('offline', this.offlineHandler);
   }
 }
 
-export const hybridMeshWebRTC = new HybridMeshWebRTC();
+export const networkStateManager = new NetworkStateManager();
