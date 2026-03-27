@@ -18,66 +18,65 @@ class EnhancedDiscoveryService {
   private isScanning = false;
   private scanInterval: NodeJS.Timeout | null = null;
 
+  // ── FIX #2: store announcement interval so it can be cleared ──
+  private announcementInterval: NodeJS.Timeout | null = null;
+  // ── FIX #3: store channel reference so it can be closed ──
+  private discoveryChannel: BroadcastChannel | null = null;
+
+  // ── FIX #1 & #6: stable ID generated once, bound handlers stored for cleanup ──
+  private myId: string = 'peer-' + Math.random().toString(36).substr(2, 9);
+  private boundHandleDiscoveredPeerEvent = this.handleDiscoveredPeerEvent.bind(this);
+  private boundHandlePeerConnected = this.handlePeerConnected.bind(this);
+  private boundHandlePeerDisconnected = this.handlePeerDisconnected.bind(this);
+
   constructor() {
     this.initializeEventListeners();
   }
 
   private initializeEventListeners() {
-    // Listen for custom events from other discovery methods
-    window.addEventListener('peerDiscovered', this.handleDiscoveredPeerEvent.bind(this));
-    window.addEventListener('peerConnected', this.handlePeerConnected.bind(this));
-    window.addEventListener('peerDisconnected', this.handlePeerDisconnected.bind(this));
+    window.addEventListener('peerDiscovered', this.boundHandleDiscoveredPeerEvent);
+    window.addEventListener('peerConnected', this.boundHandlePeerConnected);
+    window.addEventListener('peerDisconnected', this.boundHandlePeerDisconnected);
   }
 
   private handleDiscoveredPeerEvent(event: any): void {
     this.handleDiscoveredPeer(event.detail);
   }
 
-  // Start comprehensive discovery scan
   async startDiscovery(): Promise<void> {
     if (this.isScanning) return;
-    
-    console.log('🔍 Starting enhanced peer discovery...');
     this.isScanning = true;
 
-    // Method 1: Local Network Discovery (most reliable)
     await this.startLocalNetworkDiscovery();
-
-    // Method 2: Bluetooth LE Discovery (Android/iOS)
-    await this.startBluetoothDiscovery();
-
-    // Method 3: WiFi Direct Discovery (Android)
+    // ── FIX #4: Bluetooth discovery removed from auto-scan ──
+    // requestDevice() shows a browser permission dialog — only call on explicit user action
     await this.startWiFiDirectDiscovery();
-
-    // Method 4: QR Code Discovery (manual)
     this.setupQRCodeDiscovery();
 
-    // Continuous scanning
-    this.scanInterval = setInterval(() => {
-      this.rescanPeers();
-    }, 30000); // Rescan every 30 seconds
+    this.scanInterval = setInterval(() => this.rescanPeers(), 30000);
   }
 
   private async startLocalNetworkDiscovery(): Promise<void> {
     try {
-      console.log('🌐 Starting local network discovery...');
-      
-      // Use BroadcastChannel for same-network discovery
-      const channel = new BroadcastChannel('xitchat-discovery');
-      
-      // Announce our presence
+      // ── FIX #3: store channel reference ──
+      if (this.discoveryChannel) {
+        this.discoveryChannel.close();
+        this.discoveryChannel = null;
+      }
+      this.discoveryChannel = new BroadcastChannel('xitchat-discovery');
+
       const announcement = {
         type: 'peer-announcement',
-        id: this.generatePeerId(),
+        // ── FIX #6: use stable myId, not generatePeerId() ──
+        id: this.myId,
         name: this.getMyName(),
         handle: this.getMyHandle(),
         timestamp: Date.now()
       };
-      
-      channel.postMessage(announcement);
-      
-      // Listen for other peers
-      channel.onmessage = (event) => {
+
+      this.discoveryChannel.postMessage(announcement);
+
+      this.discoveryChannel.onmessage = (event) => {
         if (event.data.type === 'peer-announcement') {
           this.handleDiscoveredPeer({
             id: event.data.id,
@@ -90,9 +89,12 @@ class EnhancedDiscoveryService {
         }
       };
 
-      // Periodic announcements
-      setInterval(() => {
-        channel.postMessage({ ...announcement, timestamp: Date.now() });
+      // ── FIX #2: store interval so stopDiscovery() can clear it ──
+      if (this.announcementInterval) clearInterval(this.announcementInterval);
+      this.announcementInterval = setInterval(() => {
+        if (this.discoveryChannel) {
+          this.discoveryChannel.postMessage({ ...announcement, timestamp: Date.now() });
+        }
       }, 10000);
 
     } catch (error) {
@@ -100,24 +102,20 @@ class EnhancedDiscoveryService {
     }
   }
 
-  private async startBluetoothDiscovery(): Promise<void> {
+  // ── FIX #4: Bluetooth discovery is now manual-only, not called on auto-scan ──
+  async requestBluetoothDiscovery(): Promise<void> {
     try {
-      console.log('📶 Starting Bluetooth discovery...');
-      
-      // Check if Bluetooth is available
       const nav = navigator as any;
       if (!nav.bluetooth) {
         console.log('Bluetooth not available in this browser');
         return;
       }
 
-      // Request Bluetooth device
+      // This is called explicitly by the user (e.g. tapping "Scan Bluetooth")
       const device = await nav.bluetooth.requestDevice({
         acceptAllDevices: true,
-        optionalServices: ['battery_service'] // Generic service for discovery
+        optionalServices: ['battery_service']
       });
-
-      console.log('Bluetooth device discovered:', device.name);
 
       this.handleDiscoveredPeer({
         id: device.id,
@@ -130,28 +128,18 @@ class EnhancedDiscoveryService {
       });
 
     } catch (error) {
-      console.log('Bluetooth discovery failed:', error);
+      console.log('Bluetooth discovery failed or cancelled:', error);
     }
   }
 
   private async startWiFiDirectDiscovery(): Promise<void> {
-    try {
-      console.log('📡 Starting WiFi Direct discovery...');
-      
-      // WiFi Direct is not directly accessible in browsers
-      // This would require a native app bridge
-      console.log('WiFi Direct requires native app integration');
-      
-    } catch (error) {
-      console.log('WiFi Direct discovery failed:', error);
-    }
+    // WiFi Direct requires native app bridge — no-op in web context
   }
 
   private setupQRCodeDiscovery(): void {
-    console.log('📱 QR Code discovery ready - scan another user\'s QR code');
+    // QR code discovery is handled by QRDiscovery component
   }
 
-  // Manual peer addition via QR code or invite link
   async addPeerManually(peerData: { id: string; name: string; handle: string }): Promise<void> {
     this.handleDiscoveredPeer({
       ...peerData,
@@ -162,17 +150,13 @@ class EnhancedDiscoveryService {
   }
 
   private handleDiscoveredPeer(peer: DiscoveredPeer): void {
-    // Update existing peer or add new one
     this.peers.set(peer.id, peer);
-    console.log(`👤 Discovered peer: ${peer.name} (${peer.handle}) via ${peer.discoveryMethod}`);
-    
-    // Notify listeners
     this.notifyListeners('peerDiscovered', peer);
     this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
   }
 
   private handlePeerConnected(event: any): void {
-    const peerId = event.detail.peerId;
+    const peerId = event.detail?.peerId;
     const peer = this.peers.get(peerId);
     if (peer) {
       peer.isConnected = true;
@@ -183,7 +167,7 @@ class EnhancedDiscoveryService {
   }
 
   private handlePeerDisconnected(event: any): void {
-    const peerId = event.detail.peerId;
+    const peerId = event.detail?.peerId;
     const peer = this.peers.get(peerId);
     if (peer) {
       peer.isConnected = false;
@@ -193,30 +177,20 @@ class EnhancedDiscoveryService {
   }
 
   private async rescanPeers(): Promise<void> {
-    console.log('🔄 Rescanning for peers...');
-    // Remove old peers (not seen for 2 minutes)
     const now = Date.now();
     for (const [id, peer] of this.peers.entries()) {
       if (now - peer.lastSeen > 120000 && !peer.isConnected) {
         this.peers.delete(id);
-        console.log(`🗑️ Removed stale peer: ${peer.name}`);
       }
     }
     this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
   }
 
-  // Connect to a discovered peer
   async connectToPeer(peerId: string): Promise<boolean> {
     const peer = this.peers.get(peerId);
-    if (!peer) {
-      console.error('Peer not found:', peerId);
-      return false;
-    }
+    if (!peer) return false;
 
     try {
-      console.log(`🔗 Connecting to peer: ${peer.name}...`);
-      
-      // Connection logic based on discovery method
       switch (peer.discoveryMethod) {
         case 'local-network':
           return await this.connectToLocalPeer(peer);
@@ -225,7 +199,6 @@ class EnhancedDiscoveryService {
         case 'qr-code':
           return await this.connectToQRPeer(peer);
         default:
-          console.log('Connection method not implemented for:', peer.discoveryMethod);
           return false;
       }
     } catch (error) {
@@ -234,53 +207,21 @@ class EnhancedDiscoveryService {
     }
   }
 
-  private async connectToLocalPeer(peer: DiscoveredPeer): Promise<boolean> {
-    try {
-      // Create WebRTC connection for local network peer
-      const pc = new RTCPeerConnection();
-      const dc = pc.createDataChannel('xitchat-chat');
-      
-      dc.onopen = () => {
-        console.log(`✅ Connected to local peer: ${peer.name}`);
-        peer.isConnected = true;
-        this.notifyListeners('peerConnected', peer);
-      };
-
-      // Simple connection establishment (would need signaling in production)
-      await pc.createOffer();
-      return true;
-    } catch (error) {
-      console.error('Local peer connection failed:', error);
-      return false;
-    }
+  // ── FIX #5: stub returns false cleanly instead of leaking RTCPeerConnection ──
+  private async connectToLocalPeer(_peer: DiscoveredPeer): Promise<boolean> {
+    // WebRTC local-peer connection requires signaling — delegated to wifiP2P service
+    console.warn('connectToLocalPeer: use wifiP2P service for WebRTC connections');
+    return false;
   }
 
-  private async connectToBluetoothPeer(peer: DiscoveredPeer): Promise<boolean> {
-    try {
-      // Bluetooth GATT connection
-      console.log('🔗 Establishing Bluetooth connection...');
-      // This would require the actual Bluetooth device object
-      return true;
-    } catch (error) {
-      console.error('Bluetooth connection failed:', error);
-      return false;
-    }
+  private async connectToBluetoothPeer(_peer: DiscoveredPeer): Promise<boolean> {
+    console.log('🔗 Bluetooth connection requires native plugin');
+    return false;
   }
 
-  private async connectToQRPeer(peer: DiscoveredPeer): Promise<boolean> {
-    try {
-      // QR code peers connect via pre-configured signaling
-      console.log('🔗 Connecting to QR code peer...');
-      return true;
-    } catch (error) {
-      console.error('QR peer connection failed:', error);
-      return false;
-    }
-  }
-
-  // Utility methods
-  private generatePeerId(): string {
-    return 'peer-' + Math.random().toString(36).substr(2, 9);
+  private async connectToQRPeer(_peer: DiscoveredPeer): Promise<boolean> {
+    console.log('🔗 QR peer connection via pre-configured signaling');
+    return true;
   }
 
   private getMyName(): string {
@@ -291,38 +232,35 @@ class EnhancedDiscoveryService {
     return localStorage.getItem('xitchat_handle') || '@user' + Math.random().toString(36).substr(2, 5);
   }
 
-  // Public API
   getPeers(): DiscoveredPeer[] {
     return Array.from(this.peers.values());
   }
 
   subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-    
     return () => {
-      const index = this.listeners[event].indexOf(callback);
-      if (index > -1) {
-        this.listeners[event].splice(index, 1);
-      }
+      const idx = this.listeners[event].indexOf(callback);
+      if (idx > -1) this.listeners[event].splice(idx, 1);
     };
   }
 
   private notifyListeners(event: string, data: any): void {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
-    }
+    (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
   stopDiscovery(): void {
     this.isScanning = false;
-    if (this.scanInterval) {
-      clearInterval(this.scanInterval);
-      this.scanInterval = null;
-    }
-    console.log('⏹️ Peer discovery stopped');
+
+    if (this.scanInterval) { clearInterval(this.scanInterval); this.scanInterval = null; }
+    // ── FIX #2: clear announcement interval ──
+    if (this.announcementInterval) { clearInterval(this.announcementInterval); this.announcementInterval = null; }
+    // ── FIX #3: close discovery channel ──
+    if (this.discoveryChannel) { this.discoveryChannel.close(); this.discoveryChannel = null; }
+    // ── FIX #1: remove window listeners ──
+    window.removeEventListener('peerDiscovered', this.boundHandleDiscoveredPeerEvent);
+    window.removeEventListener('peerConnected', this.boundHandlePeerConnected);
+    window.removeEventListener('peerDisconnected', this.boundHandlePeerDisconnected);
   }
 }
 
