@@ -7,22 +7,19 @@ import { localStorageService } from './localStorageService';
 if (typeof (secp256k1 as any).hashes !== 'undefined') {
   const hashes = (secp256k1 as any).hashes;
   const concatBytes = (secp256k1 as any).etc?.concatBytes;
-
   if (!hashes.sha256 && concatBytes) {
     hashes.sha256 = (...messages: Uint8Array[]) => sha256(concatBytes(...messages));
   }
-
   if (!hashes.hmacSha256 && concatBytes) {
-    hashes.hmacSha256 = (key: Uint8Array, ...messages: Uint8Array[]) => {
-      return hmac(sha256, key, concatBytes(...messages));
-    };
+    hashes.hmacSha256 = (key: Uint8Array, ...messages: Uint8Array[]) =>
+      hmac(sha256, key, concatBytes(...messages));
   }
 }
 
 const STORAGE_KEY = 'identity_secp256k1_sk_hex_v1';
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -35,7 +32,6 @@ function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
-// Use @noble/hashes instead of crypto.subtle for better compatibility
 function sha256Bytes(data: Uint8Array): Uint8Array {
   return sha256(data);
 }
@@ -44,8 +40,8 @@ function normalizePubkeyHex(pubkey: string): string {
   return pubkey.replace(/^0x/i, '').toLowerCase();
 }
 
-export type IdentityPublicKey = string; // hex, 64 chars
-export type IdentitySignature = string; // hex
+export type IdentityPublicKey = string; // hex, 128 chars (64-byte x||y uncompressed, no 04 prefix)
+export type IdentitySignature = string; // hex, 128 chars (64-byte Schnorr sig)
 
 class IdentityService {
   private skHexPromise: Promise<string> | null = null;
@@ -69,33 +65,45 @@ class IdentityService {
   async getPublicKeyHex(): Promise<IdentityPublicKey> {
     const skHex = await this.getOrCreateSecretKeyHex();
     const pk = secp256k1.getPublicKey(hexToBytes(skHex), false); // 65 bytes uncompressed
-    // drop 0x04 prefix -> 64 bytes (x||y)
-    const pk64 = pk.slice(1);
-    return bytesToHex(pk64);
+    // Drop 0x04 prefix → 64 bytes (x||y) = 128 hex chars
+    return bytesToHex(pk.slice(1));
   }
 
-  async signEnvelope(fields: { content: string; timestamp: number; messageId: string }): Promise<{ pk: IdentityPublicKey; sig: IdentitySignature }> {
+  async signEnvelope(fields: {
+    content: string;
+    timestamp: number;
+    messageId: string;
+  }): Promise<{ pk: IdentityPublicKey; sig: IdentitySignature }> {
     const skHex = await this.getOrCreateSecretKeyHex();
     const pkHex = await this.getPublicKeyHex();
     const payload = `${fields.content}|${fields.timestamp}|${fields.messageId}`;
-    const msg = new TextEncoder().encode(payload);
-    const hash = sha256Bytes(msg); // No await - now synchronous
+    const hash = sha256Bytes(new TextEncoder().encode(payload));
     const sigBytes = await (secp256k1.schnorr as any).sign(hash, hexToBytes(skHex));
     return { pk: pkHex, sig: bytesToHex(sigBytes as Uint8Array) };
   }
 
-  async verifyEnvelope(fields: { content: string; timestamp: number; messageId: string; pk: string; sig: string }): Promise<boolean> {
+  async verifyEnvelope(fields: {
+    content: string;
+    timestamp: number;
+    messageId: string;
+    pk: string;
+    sig: string;
+  }): Promise<boolean> {
     try {
+      // pk:  64-byte uncompressed pubkey (x||y, no 04 prefix) = 128 hex chars
+      // sig: 64-byte Schnorr signature = 128 hex chars
       const pkHex = normalizePubkeyHex(fields.pk);
       const sigHex = fields.sig.replace(/^0x/i, '').toLowerCase();
-      if (!/^[0-9a-f]{128}$/i.test(sigHex)) return false;
-      if (!/^[0-9a-f]{128}$/i.test(pkHex)) return false;
+      if (!/^[0-9a-f]{128}$/.test(sigHex)) return false;
+      if (!/^[0-9a-f]{128}$/.test(pkHex)) return false;
+
       const payload = `${fields.content}|${fields.timestamp}|${fields.messageId}`;
-      const msg = new TextEncoder().encode(payload);
-      const hash = sha256Bytes(msg); // No await - now synchronous
-      const sigBytes = hexToBytes(sigHex);
-      const pkBytes = hexToBytes(pkHex);
-      return await (secp256k1.schnorr as any).verify(sigBytes, hash, pkBytes);
+      const hash = sha256Bytes(new TextEncoder().encode(payload));
+      return await (secp256k1.schnorr as any).verify(
+        hexToBytes(sigHex),
+        hash,
+        hexToBytes(pkHex)
+      );
     } catch {
       return false;
     }
@@ -105,19 +113,21 @@ class IdentityService {
     const myPk = await this.getPublicKeyHex();
     const a = normalizePubkeyHex(myPk);
     const b = normalizePubkeyHex(peerPubkeyHex);
+    // Canonical order — lower hex first for determinism on both sides
     const [p1, p2] = a < b ? [a, b] : [b, a];
     const input = new TextEncoder().encode(`xitchat-safety-v1|${p1}|${p2}`);
-    const hash = sha256Bytes(input); // No await - now synchronous
-    // 60 bits → 5 groups of 4 digits (0000-9999-ish), stable & readable
+    const hash = sha256Bytes(input);
+    // 5 groups of 4 digits (big-endian uint16 mod 10000) = 60 bits of entropy
     const view = new DataView(hash.buffer);
-    const parts = [
-      view.getUint16(0) % 10000,
-      view.getUint16(2) % 10000,
-      view.getUint16(4) % 10000,
-      view.getUint16(6) % 10000,
-      view.getUint16(8) % 10000
-    ].map((n) => String(n).padStart(4, '0'));
-    return parts.join('-');
+    return [0, 2, 4, 6, 8]
+      .map(offset => String(view.getUint16(offset) % 10000).padStart(4, '0'))
+      .join('-');
+  }
+
+  // ── FIX #1: reset cached key promise after node wipe ──
+  // Call this from App.tsx handleWipeNode() after clearing localStorage
+  reset(): void {
+    this.skHexPromise = null;
   }
 }
 
