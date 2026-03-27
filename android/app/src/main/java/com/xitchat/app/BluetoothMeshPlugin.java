@@ -428,6 +428,20 @@ public class BluetoothMeshPlugin extends Plugin {
                 Log.d(TAG, "Client GATT disconnected: " + deviceId);
             }
         }
+
+        @Override
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            if (gatt == null || gatt.getDevice() == null) return;
+            String deviceId = gatt.getDevice().getAddress();
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                Log.d(TAG, "Services discovered for " + deviceId);
+                JSObject ret = new JSObject();
+                ret.put("deviceId", deviceId);
+                notifyListeners("deviceReady", ret);
+            } else {
+                Log.w(TAG, "Service discovery failed for " + deviceId + " status=" + status);
+            }
+        }
     };
 
     private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {

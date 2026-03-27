@@ -41,10 +41,14 @@ export interface WorkingMeshNode {
 class WorkingBluetoothMeshService {
   private peers: Map<string, WorkingMeshNode> = new Map();
   private nativeConnectedDeviceIds: Set<string> = new Set();
+  // Maps BLE MAC address → XitChat pubkey for identity resolution
+  private macToPubkey: Map<string, string> = new Map();
   private isConnected = false;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private myDevice: BluetoothDevice | null = null;
   private scanTimer: any = null;
+  private myPubkey: string = '';
+  private myHandle: string = '';
   private serviceInfo: NetworkService = {
     name: 'bluetoothMesh',
     isConnected: false,
@@ -80,15 +84,53 @@ class WorkingBluetoothMeshService {
       this.handleNativeConnectionState(event, false);
     }).catch(() => {});
 
+    // deviceReady fires after GATT service discovery completes — safe to send now
+    BluetoothMesh.addListener('deviceReady', (event: any) => {
+      this.sendIdentity(event.deviceId);
+    }).catch(() => {});
+
     BluetoothMesh.addListener('messageReceived', (event: any) => {
+      // Check if this is an identity exchange packet
+      try {
+        const parsed = JSON.parse(event.message);
+        if (parsed?.type === 'ble_identity' && parsed.pubkey) {
+          const mac = event.deviceId;
+          this.macToPubkey.set(mac, parsed.pubkey);
+          // Update the peer record with real XitChat identity
+          const peer = this.peers.get(mac);
+          if (peer) {
+            const handle = parsed.handle || `@${parsed.pubkey.substring(0, 8)}`;
+            this.peers.set(mac, { ...peer, name: handle, handle });
+            this.emit('peersUpdated', Array.from(this.peers.values()));
+          }
+          return; // Don't forward identity packets as chat messages
+        }
+      } catch {
+        // Not JSON — treat as plain message
+      }
+
+      // Remap MAC to pubkey if we know it
+      const fromId = this.macToPubkey.get(event.deviceId) || event.deviceId;
       this.emit('messageReceived', {
-        id: `bt-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        from: event.deviceId,
+        id: `bt-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        from: fromId,
         to: 'me',
         content: event.message,
         timestamp: Date.now()
       });
     }).catch(() => {});
+  }
+
+  private async sendIdentity(deviceId: string): Promise<void> {
+    if (!this.myPubkey || !this.nativeBluetoothPlugin) return;
+    try {
+      await this.nativeBluetoothPlugin.sendMessage({
+        deviceId,
+        message: JSON.stringify({ type: 'ble_identity', pubkey: this.myPubkey, handle: this.myHandle })
+      });
+    } catch {
+      // Peer may not be ready yet — ignore
+    }
   }
 
   private failUnavailable(context: string): boolean {
@@ -104,7 +146,13 @@ class WorkingBluetoothMeshService {
   async initialize(): Promise<boolean> {
     try {
       this.registerWithNetworkManager();
-      console.log('Initializing Bluetooth mesh (real transport only)...');
+
+      // Load user identity for BLE advertising and identity exchange
+      try {
+        this.myPubkey = localStorage.getItem('xitchat_pubkey') || localStorage.getItem('nostr_pubkey') || '';
+        this.myHandle = localStorage.getItem('xitchat_handle') || '';
+        if (this.myHandle && !this.myHandle.startsWith('@')) this.myHandle = `@${this.myHandle}`;
+      } catch { /* localStorage may not be available */ }
 
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
 
@@ -221,9 +269,11 @@ class WorkingBluetoothMeshService {
         this.setupNativePluginListeners(BluetoothMesh);
 
         await BluetoothMesh.startScanning();
+        // Use stable pubkey prefix so returning users are recognizable
+        const nameId = this.myPubkey ? this.myPubkey.substring(0, 8) : Math.random().toString(36).substring(2, 6);
         await BluetoothMesh.startAdvertising({
-          deviceName: 'XitChat-' + Math.random().toString(36).substr(2, 4),
-          deviceId: this.myDevice ? (this.myDevice as any).id : 'anon'
+          deviceName: `XitChat-${nameId}`,
+          deviceId: this.myPubkey || 'anon'
         });
 
         this.nativeTransportStarted = true;
