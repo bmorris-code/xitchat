@@ -41,12 +41,11 @@ export interface WorkingMeshNode {
 class WorkingBluetoothMeshService {
   private peers: Map<string, WorkingMeshNode> = new Map();
   private nativeConnectedDeviceIds: Set<string> = new Set();
-  // Maps BLE MAC address → XitChat pubkey for identity resolution
   private macToPubkey: Map<string, string> = new Map();
   private isConnected = false;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private myDevice: BluetoothDevice | null = null;
-  private scanTimer: any = null;
+  // ── FIX #3: scanTimer was declared but never used — removed ──
   private myPubkey: string = '';
   private myHandle: string = '';
   private serviceInfo: NetworkService = {
@@ -61,6 +60,9 @@ class WorkingBluetoothMeshService {
   private nativeListenersRegistered = false;
   private nativeBluetoothPlugin: any = null;
   private nativeTransportStarted = false;
+
+  // ── FIX #2: store gatt disconnect handler so it can be removed ──
+  private gattDisconnectHandler: (() => void) | null = null;
 
   private registerWithNetworkManager(): void {
     this.serviceInfo.healthCheck = () => this.performHealthCheck();
@@ -84,32 +86,28 @@ class WorkingBluetoothMeshService {
       this.handleNativeConnectionState(event, false);
     }).catch(() => {});
 
-    // deviceReady fires after GATT service discovery completes — safe to send now
     BluetoothMesh.addListener('deviceReady', (event: any) => {
       this.sendIdentity(event.deviceId);
     }).catch(() => {});
 
     BluetoothMesh.addListener('messageReceived', (event: any) => {
-      // Check if this is an identity exchange packet
       try {
         const parsed = JSON.parse(event.message);
         if (parsed?.type === 'ble_identity' && parsed.pubkey) {
           const mac = event.deviceId;
           this.macToPubkey.set(mac, parsed.pubkey);
-          // Update the peer record with real XitChat identity
           const peer = this.peers.get(mac);
           if (peer) {
             const handle = parsed.handle || `@${parsed.pubkey.substring(0, 8)}`;
             this.peers.set(mac, { ...peer, name: handle, handle });
             this.emit('peersUpdated', Array.from(this.peers.values()));
           }
-          return; // Don't forward identity packets as chat messages
+          return;
         }
       } catch {
         // Not JSON — treat as plain message
       }
 
-      // Remap MAC to pubkey if we know it
       const fromId = this.macToPubkey.get(event.deviceId) || event.deviceId;
       this.emit('messageReceived', {
         id: `bt-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
@@ -128,13 +126,11 @@ class WorkingBluetoothMeshService {
         deviceId,
         message: JSON.stringify({ type: 'ble_identity', pubkey: this.myPubkey, handle: this.myHandle })
       });
-    } catch {
-      // Peer may not be ready yet — ignore
-    }
+    } catch {}
   }
 
   private failUnavailable(context: string): boolean {
-    console.warn(`Bluetooth unavailable (${context}) - real hardware required`);
+    console.warn(`Bluetooth unavailable (${context})`);
     this.peers.clear();
     this.isConnected = false;
     this.serviceInfo.isConnected = false;
@@ -147,14 +143,15 @@ class WorkingBluetoothMeshService {
     try {
       this.registerWithNetworkManager();
 
-      // Load user identity for BLE advertising and identity exchange
       try {
         this.myPubkey = localStorage.getItem('xitchat_pubkey') || localStorage.getItem('nostr_pubkey') || '';
         this.myHandle = localStorage.getItem('xitchat_handle') || '';
         if (this.myHandle && !this.myHandle.startsWith('@')) this.myHandle = `@${this.myHandle}`;
-      } catch { /* localStorage may not be available */ }
+      } catch {}
 
-      const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+      const isNativeAndroid =
+        (window as any).Capacitor?.isNativePlatform() &&
+        (window as any).Capacitor?.getPlatform() === 'android';
 
       if (isNativeAndroid) {
         try {
@@ -163,14 +160,13 @@ class WorkingBluetoothMeshService {
           this.nativeBluetoothPlugin = BluetoothMesh;
           this.setupNativePluginListeners(BluetoothMesh);
           await BluetoothMesh.initialize();
-
           this.isConnected = true;
           this.serviceInfo.isConnected = true;
           this.serviceInfo.isHealthy = true;
           networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
           return true;
         } catch (error) {
-          console.warn('Native Bluetooth plugin unavailable on Android:', error);
+          console.warn('Native Bluetooth plugin unavailable:', error);
           return this.failUnavailable('android-native-plugin-unavailable');
         }
       }
@@ -180,9 +176,7 @@ class WorkingBluetoothMeshService {
       }
 
       const available = await navigator.bluetooth.getAvailability();
-      if (!available) {
-        return this.failUnavailable('web-bluetooth-unavailable');
-      }
+      if (!available) return this.failUnavailable('web-bluetooth-unavailable');
 
       this.isConnected = true;
       this.serviceInfo.isConnected = true;
@@ -197,13 +191,12 @@ class WorkingBluetoothMeshService {
 
   private handleNativeDiscoveredDevice(device: any): void {
     const deviceId = device.deviceId;
-    const existingPeer = this.peers.get(deviceId);
-
     const distance = device.rssi ? this.calculateDistance(device.rssi) : 5;
     const signal = device.rssi ? this.calculateSignalStrength(device.rssi) : 50;
+    const existing = this.peers.get(deviceId);
 
-    if (!existingPeer) {
-      const peer: WorkingMeshNode = {
+    if (!existing) {
+      this.peers.set(deviceId, {
         id: deviceId,
         name: device.deviceName || `Device ${deviceId.substring(0, 4)}`,
         handle: `@${(device.deviceName || 'node').replace(/\s+/g, '').toLowerCase()}`,
@@ -212,64 +205,54 @@ class WorkingBluetoothMeshService {
         lastSeen: Date.now(),
         signalStrength: signal,
         isConnected: this.nativeConnectedDeviceIds.has(deviceId)
-      };
-
-      this.peers.set(deviceId, peer);
-      this.emit('peersUpdated', Array.from(this.peers.values()));
+      });
     } else {
-      existingPeer.lastSeen = Date.now();
-      existingPeer.distance = distance;
-      existingPeer.signalStrength = signal;
-      existingPeer.isConnected = this.nativeConnectedDeviceIds.has(deviceId);
-      this.emit('peersUpdated', Array.from(this.peers.values()));
+      existing.lastSeen = Date.now();
+      existing.distance = distance;
+      existing.signalStrength = signal;
+      existing.isConnected = this.nativeConnectedDeviceIds.has(deviceId);
     }
+    this.emit('peersUpdated', Array.from(this.peers.values()));
   }
 
   private handleNativeConnectionState(event: any, connected: boolean): void {
     const deviceId = event?.deviceId;
     if (!deviceId) return;
 
-    if (connected) {
-      this.nativeConnectedDeviceIds.add(deviceId);
-    } else {
-      this.nativeConnectedDeviceIds.delete(deviceId);
-    }
+    if (connected) this.nativeConnectedDeviceIds.add(deviceId);
+    else this.nativeConnectedDeviceIds.delete(deviceId);
 
-    const existingPeer = this.peers.get(deviceId);
-    if (existingPeer) {
-      existingPeer.isConnected = connected;
-      existingPeer.lastSeen = Date.now();
+    const existing = this.peers.get(deviceId);
+    if (existing) {
+      existing.isConnected = connected;
+      existing.lastSeen = Date.now();
     } else {
       const name = event.deviceName || `Device ${deviceId.substring(0, 4)}`;
       this.peers.set(deviceId, {
-        id: deviceId,
-        name,
+        id: deviceId, name,
         handle: `@${name.replace(/\s+/g, '').toLowerCase()}`,
-        device: null,
-        distance: 5,
-        lastSeen: Date.now(),
-        signalStrength: 50,
-        isConnected: connected
+        device: null, distance: 5, lastSeen: Date.now(),
+        signalStrength: 50, isConnected: connected
       });
     }
-
     this.emit('peersUpdated', Array.from(this.peers.values()));
   }
 
   async startScanning(): Promise<boolean> {
-    if ((window as any).Capacitor?.isNativePlatform() && this.nativeTransportStarted) {
-      return true;
-    }
+    if ((window as any).Capacitor?.isNativePlatform() && this.nativeTransportStarted) return true;
 
     if ((window as any).Capacitor?.isNativePlatform()) {
       try {
-        const { registerPlugin } = await import('@capacitor/core');
-        const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
-        this.nativeBluetoothPlugin = BluetoothMesh;
-        this.setupNativePluginListeners(BluetoothMesh);
+        // ── FIX #1: reuse existing plugin instance instead of creating a new one ──
+        if (!this.nativeBluetoothPlugin) {
+          const { registerPlugin } = await import('@capacitor/core');
+          this.nativeBluetoothPlugin = registerPlugin<any>('BluetoothMesh');
+        }
+        const BluetoothMesh = this.nativeBluetoothPlugin;
+        // Only register listeners if not already done
+        if (!this.nativeListenersRegistered) this.setupNativePluginListeners(BluetoothMesh);
 
         await BluetoothMesh.startScanning();
-        // Use stable pubkey prefix so returning users are recognizable
         const nameId = this.myPubkey ? this.myPubkey.substring(0, 8) : Math.random().toString(36).substring(2, 6);
         await BluetoothMesh.startAdvertising({
           deviceName: `XitChat-${nameId}`,
@@ -277,7 +260,6 @@ class WorkingBluetoothMeshService {
         });
 
         this.nativeTransportStarted = true;
-        console.log('Native Bluetooth scan/advertise started');
         return true;
       } catch (e) {
         console.error('Failed to start native Bluetooth scan:', e);
@@ -286,27 +268,17 @@ class WorkingBluetoothMeshService {
       }
     }
 
-    if (!navigator.bluetooth) {
-      console.debug('Bluetooth not available - scanning disabled');
-      return false;
-    }
+    if (!navigator.bluetooth) return false;
 
     try {
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: ['battery_service', 'device_information']
       });
-
-      if (device) {
-        this.handleConnection(device);
-        return true;
-      }
+      if (device) { this.handleConnection(device); return true; }
       return false;
     } catch (error: any) {
-      if (error.name === 'NotFoundError' || error.message.includes('cancelled')) {
-        console.log('Bluetooth scan cancelled by user');
-        return false;
-      }
+      if (error.name === 'NotFoundError' || error.message?.includes('cancelled')) return false;
       console.debug('Bluetooth scan failed:', error);
       return false;
     }
@@ -316,10 +288,12 @@ class WorkingBluetoothMeshService {
     this.myDevice = device;
     this.isConnected = true;
 
-    device.addEventListener('gattserverdisconnected', () => {
+    // ── FIX #2: store handler so disconnect() can remove it ──
+    this.gattDisconnectHandler = () => {
       this.isConnected = false;
       this.emit('disconnected', {});
-    });
+    };
+    device.addEventListener('gattserverdisconnected', this.gattDisconnectHandler);
 
     this.handleDiscoveredDevice(device, -50);
     this.emit('connected', { deviceName: device.name });
@@ -327,15 +301,13 @@ class WorkingBluetoothMeshService {
 
   private handleDiscoveredDevice(device: BluetoothDevice, rssi: number): void {
     if (!device) return;
-
     const deviceId = device.id;
-    const existingPeer = this.peers.get(deviceId);
-
     const distance = this.calculateDistance(rssi);
     const signal = this.calculateSignalStrength(rssi);
+    const existing = this.peers.get(deviceId);
 
-    if (!existingPeer) {
-      const peer: WorkingMeshNode = {
+    if (!existing) {
+      this.peers.set(deviceId, {
         id: deviceId,
         name: device.name || `Unknown Device ${this.peers.size + 1}`,
         handle: `@${(device.name || 'user').replace(/\s+/g, '').toLowerCase().substring(0, 8)}`,
@@ -344,17 +316,14 @@ class WorkingBluetoothMeshService {
         lastSeen: Date.now(),
         signalStrength: signal,
         isConnected: !!device.gatt?.connected
-      };
-
-      this.peers.set(deviceId, peer);
-      this.emit('peersUpdated', Array.from(this.peers.values()));
+      });
     } else {
-      existingPeer.lastSeen = Date.now();
-      existingPeer.distance = distance;
-      existingPeer.signalStrength = signal;
-      existingPeer.isConnected = !!device.gatt?.connected;
-      this.emit('peersUpdated', Array.from(this.peers.values()));
+      existing.lastSeen = Date.now();
+      existing.distance = distance;
+      existing.signalStrength = signal;
+      existing.isConnected = !!device.gatt?.connected;
     }
+    this.emit('peersUpdated', Array.from(this.peers.values()));
   }
 
   private calculateDistance(rssi: number): number {
@@ -381,63 +350,48 @@ class WorkingBluetoothMeshService {
     if ((window as any).Capacitor?.isNativePlatform()) {
       if (!peer.isConnected) return false;
       try {
-        const BluetoothMesh = this.nativeBluetoothPlugin || (await import('@capacitor/core')).registerPlugin<any>('BluetoothMesh');
+        const BluetoothMesh = this.nativeBluetoothPlugin ||
+          (await import('@capacitor/core')).registerPlugin<any>('BluetoothMesh');
         this.nativeBluetoothPlugin = BluetoothMesh;
-
-        await BluetoothMesh.sendMessage({
-          deviceId: peerId,
-          message: content
-        });
-
+        await BluetoothMesh.sendMessage({ deviceId: peerId, message: content });
         return true;
       } catch (e) {
-        console.debug('Bluetooth native plugin send failed:', e);
+        console.debug('Bluetooth native send failed:', e);
         return false;
       }
     }
 
-    if (!peer.device || !peer.device.gatt) {
-      return false;
-    }
-
+    if (!peer.device || !peer.device.gatt) return false;
     console.debug('Web Bluetooth send not supported; using mesh fallback');
     return false;
   }
 
-  getPeers(): WorkingMeshNode[] {
-    return Array.from(this.peers.values());
-  }
-
+  getPeers(): WorkingMeshNode[] { return Array.from(this.peers.values()); }
   isConnectedToMesh(): boolean {
-    return this.isConnected && Array.from(this.peers.values()).some(peer => peer.isConnected);
+    return this.isConnected && Array.from(this.peers.values()).some(p => p.isConnected);
   }
 
   private emit(event: string, data?: any): void {
-    const listeners = this.listeners[event] || [];
-    listeners.forEach(callback => callback(data));
+    (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
   subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-
     return () => {
-      const listeners = this.listeners[event];
-      const index = listeners.indexOf(callback);
-      if (index > -1) {
-        listeners.splice(index, 1);
-      }
+      const idx = this.listeners[event].indexOf(callback);
+      if (idx > -1) this.listeners[event].splice(idx, 1);
     };
   }
 
   disconnect(): void {
-    if (this.scanTimer) clearInterval(this.scanTimer);
-
-    if (this.myDevice && this.myDevice.gatt?.connected) {
-      this.myDevice.gatt.disconnect();
+    // ── FIX #2: remove gatt disconnect handler ──
+    if (this.myDevice && this.gattDisconnectHandler) {
+      this.myDevice.removeEventListener('gattserverdisconnected', this.gattDisconnectHandler);
+      this.gattDisconnectHandler = null;
     }
+
+    if (this.myDevice?.gatt?.connected) this.myDevice.gatt.disconnect();
 
     this.isConnected = false;
     this.nativeTransportStarted = false;
