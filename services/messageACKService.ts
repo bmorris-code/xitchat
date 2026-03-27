@@ -33,13 +33,15 @@ class MessageACKService {
   private retryInterval: any = null;
   private isOnline = true;
   private lastSeenTimestamp = Date.now();
-  
-  // Configuration
-  private readonly RETRY_INTERVAL = 5000; // 5 seconds
+
+  private readonly RETRY_INTERVAL = 5000;
   private readonly MAX_RETRIES = 3;
   private readonly MESSAGE_EXPIRY = 300000; // 5 minutes
-  private readonly ACK_TIMEOUT = 10000; // Base timeout for ACK retries
-  private readonly MAX_RETRY_DELAY = 60000; // 60 seconds cap
+  private readonly ACK_TIMEOUT = 10000;
+  private readonly MAX_RETRY_DELAY = 60000;
+
+  // ── FIX #3: store connectivity unsub functions ──
+  private connectivityUnsubs: Array<() => void> = [];
 
   constructor() {
     this.setupRetryMechanism();
@@ -55,28 +57,25 @@ class MessageACKService {
   }
 
   private setupConnectivityMonitoring() {
-    // Monitor online/offline status
-    window.addEventListener('online', () => {
-      console.log('📡 Connection restored, retrying pending messages');
+    // ── FIX #3: store all unsub functions ──
+    const onOnline = () => {
       this.isOnline = true;
       this.retryAllPendingMessages();
-    });
+    };
+    window.addEventListener('online', onOnline);
+    this.connectivityUnsubs.push(() => window.removeEventListener('online', onOnline));
 
-    window.addEventListener('offline', () => {
-      console.log('📡 Connection lost, pausing retries');
-      this.isOnline = false;
-    });
+    const onOffline = () => { this.isOnline = false; };
+    window.addEventListener('offline', onOffline);
+    this.connectivityUnsubs.push(() => window.removeEventListener('offline', onOffline));
 
-    // Monitor page visibility for mobile sleep detection
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        console.log('📱 App became visible, checking for missed messages');
-        this.checkForMissedMessages();
-      }
-    });
+    const onVisibilityChange = () => {
+      if (!document.hidden) this.checkForMissedMessages();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    this.connectivityUnsubs.push(() => document.removeEventListener('visibilitychange', onVisibilityChange));
   }
 
-  // Send a message with ACK requirement
   async sendMessage(
     content: string,
     to: string,
@@ -103,21 +102,10 @@ class MessageACKService {
       this.saveToStorage();
     }
 
-    console.log(`📨 Sending message ${messageId} via ${transportLayer} (ACK required: ${requiresAck})`);
-    
-    // Emit message for transport layer to handle
-    this.notifyListeners('sendMessage', {
-      messageId,
-      content,
-      to,
-      transportLayer,
-      requiresAck
-    });
-
+    this.notifyListeners('sendMessage', { messageId, content, to, transportLayer, requiresAck });
     return messageId;
   }
 
-  // Track an outgoing message sent by another transport service (hybrid mesh, nostr, etc.)
   trackOutgoingMessage(
     messageId: string,
     to: string,
@@ -160,48 +148,34 @@ class MessageACKService {
       maxRetries: this.MAX_RETRIES,
       transportLayer
     };
-    this.receiveACK(ack).catch(() => { });
+    this.receiveACK(ack).catch(() => {});
   }
 
-  // Handle incoming message
   async receiveMessage(
     messageId: string,
     from: string,
     content: string,
     transportLayer: string
   ): Promise<void> {
-    console.log(`📩 Received message ${messageId} from ${from} via ${transportLayer}`);
-
-    // Update last seen timestamp
+    // ── FIX #5: downgraded to debug to avoid flooding on every message ──
+    console.debug(`📩 Received message ${messageId} from ${from} via ${transportLayer}`);
     this.lastSeenTimestamp = Date.now();
-
-    // Send ACK immediately
     await this.sendACK(messageId, from, transportLayer as any);
-
-    // Emit message received event
-    this.notifyListeners('messageReceived', {
-      messageId,
-      from,
-      content,
-      transportLayer
-    });
+    this.notifyListeners('messageReceived', { messageId, from, content, transportLayer });
   }
 
-  // Handle incoming ACK
   async receiveACK(ack: MessageACK): Promise<void> {
-    console.log(`✅ Received ACK for message ${ack.messageId} from ${ack.from}`);
+    // ── FIX #5: downgraded to debug ──
+    console.debug(`✅ Received ACK for message ${ack.messageId} from ${ack.from}`);
 
-    // Store the ACK
     this.receivedACKs.set(ack.messageId, ack);
 
-    // Remove from pending messages
     const pendingMessage = this.pendingMessages.get(ack.messageId);
     if (pendingMessage) {
       pendingMessage.acknowledged = true;
       this.pendingMessages.delete(ack.messageId);
       this.saveToStorage();
 
-      // Notify about successful delivery
       this.notifyListeners('messageDelivered', {
         messageId: ack.messageId,
         to: ack.to,
@@ -211,7 +185,6 @@ class MessageACKService {
     }
   }
 
-  // Send ACK for received message
   private async sendACK(
     messageId: string,
     to: string,
@@ -227,51 +200,37 @@ class MessageACKService {
       maxRetries: this.MAX_RETRIES,
       transportLayer
     };
-
-    console.log(`📤 Sending ACK for message ${messageId} to ${to} via ${transportLayer}`);
-
-    // Emit ACK for transport layer to handle
-    this.notifyListeners('sendACK', {
-      ack,
-      transportLayer
-    });
+    this.notifyListeners('sendACK', { ack, transportLayer });
   }
 
-  // Retry pending messages
   private async retryPendingMessages(): Promise<void> {
-    if (!this.isOnline) return;
-    if (document.hidden) return;
+    if (!this.isOnline || document.hidden) return;
 
     const now = Date.now();
     const messagesToRetry: PendingMessage[] = [];
 
     this.pendingMessages.forEach((message) => {
       if (message.acknowledged) return;
-
       const timeSinceLastRetry = now - message.lastRetry;
       const retryDelay = this.getRetryDelay(message.retryCount);
-      const shouldRetry = timeSinceLastRetry >= retryDelay;
-
-      if (shouldRetry && message.retryCount < message.maxRetries) {
+      if (timeSinceLastRetry >= retryDelay && message.retryCount < message.maxRetries) {
         messagesToRetry.push(message);
       }
     });
 
-    console.log(`🔄 Retrying ${messagesToRetry.length} pending messages`);
-
-    for (const message of messagesToRetry) {
-      await this.retryMessage(message);
+    // ── FIX #1: only log when there's actually something to retry ──
+    if (messagesToRetry.length > 0) {
+      console.log(`🔄 Retrying ${messagesToRetry.length} pending messages`);
+      for (const message of messagesToRetry) {
+        await this.retryMessage(message);
+      }
     }
   }
 
-  // Retry a specific message
   private async retryMessage(message: PendingMessage): Promise<void> {
     message.retryCount++;
     message.lastRetry = Date.now();
 
-    console.log(`🔄 Retrying message ${message.id} (attempt ${message.retryCount}/${message.maxRetries})`);
-
-    // Retry using one transport per attempt to avoid multi-layer send storms
     const fallbackLayers = this.getFallbackTransportLayers(message.transportLayer);
     const transportIndex = Math.min(message.retryCount - 1, fallbackLayers.length - 1);
     const transportLayer = fallbackLayers[transportIndex];
@@ -290,94 +249,61 @@ class MessageACKService {
       console.warn(`Retry failed for message ${message.id} via ${transportLayer}:`, error);
     }
 
-    this.saveToStorage();
-
-    // Mark as failed if max retries reached
+    // ── FIX #2: remove failed messages so they don't retry forever ──
     if (message.retryCount >= message.maxRetries) {
-      console.warn(`Message ${message.id} not acknowledged after ${message.maxRetries} retries`);
+      this.pendingMessages.delete(message.id);
       this.notifyListeners('messageFailed', {
         messageId: message.id,
         to: message.to,
         error: 'Max retries exceeded'
       });
     }
+
+    this.saveToStorage();
   }
 
   private getRetryDelay(retryCount: number): number {
-    const exp = Math.max(0, retryCount);
-    return Math.min(this.ACK_TIMEOUT * Math.pow(2, exp), this.MAX_RETRY_DELAY);
+    return Math.min(this.ACK_TIMEOUT * Math.pow(2, Math.max(0, retryCount)), this.MAX_RETRY_DELAY);
   }
 
-  // Get fallback transport layers
   private getFallbackTransportLayers(primary: string): string[] {
-    const fallbackOrder = [
-      'nostr',     // Most reliable for mobile
-      'relay',     // Server fallback
-      'presence',  // Presence beacon
-      'webrtc',   // Direct P2P
-      'wifi',      // Local mesh
-      'bluetooth' // Local mesh
-    ];
-
-    const primaryIndex = fallbackOrder.indexOf(primary);
-    if (primaryIndex === -1) return fallbackOrder;
-
-    // Return primary first, then fallbacks in order
-    return [primary, ...fallbackOrder.slice(0, primaryIndex), ...fallbackOrder.slice(primaryIndex + 1)];
+    const fallbackOrder = ['nostr', 'relay', 'presence', 'webrtc', 'wifi', 'bluetooth'];
+    const idx = fallbackOrder.indexOf(primary);
+    if (idx === -1) return fallbackOrder;
+    return [primary, ...fallbackOrder.slice(0, idx), ...fallbackOrder.slice(idx + 1)];
   }
 
-  // Retry all pending messages (called when connection is restored)
   private async retryAllPendingMessages(): Promise<void> {
     const messages = Array.from(this.pendingMessages.values());
     for (const message of messages) {
       if (!message.acknowledged && message.retryCount < message.maxRetries) {
-        message.lastRetry = 0; // Force immediate retry
+        message.lastRetry = 0;
         await this.retryMessage(message);
       }
     }
   }
 
-  // Check for missed messages when app becomes visible
   private async checkForMissedMessages(): Promise<void> {
-    // This would integrate with presence beacon or other services
-    // to fetch messages sent while the app was asleep
-    console.log('🔍 Checking for missed messages since last seen:', new Date(this.lastSeenTimestamp));
-    
-    this.notifyListeners('checkMissedMessages', {
-      since: this.lastSeenTimestamp
-    });
+    this.notifyListeners('checkMissedMessages', { since: this.lastSeenTimestamp });
   }
 
-  // Clean up expired messages
   private cleanupExpiredMessages(): void {
     const now = Date.now();
-    const expiredMessages: string[] = [];
-
-    this.pendingMessages.forEach((message, messageId) => {
-      if (now - message.timestamp > this.MESSAGE_EXPIRY) {
-        expiredMessages.push(messageId);
-      }
+    const expired: string[] = [];
+    this.pendingMessages.forEach((message, id) => {
+      if (now - message.timestamp > this.MESSAGE_EXPIRY) expired.push(id);
     });
-
-    expiredMessages.forEach(messageId => {
-      this.pendingMessages.delete(messageId);
-      console.log(`🗑️ Removed expired message: ${messageId}`);
-    });
-
-    if (expiredMessages.length > 0) {
-      this.saveToStorage();
-    }
+    expired.forEach(id => this.pendingMessages.delete(id));
+    if (expired.length > 0) this.saveToStorage();
   }
 
-  // Storage management
   private saveToStorage(): void {
     try {
-      const data = {
+      localStorage.setItem('xitchat_message_ack', JSON.stringify({
         pendingMessages: Array.from(this.pendingMessages.entries()),
         receivedACKs: Array.from(this.receivedACKs.entries()),
         lastSeenTimestamp: this.lastSeenTimestamp
-      };
-      localStorage.setItem('xitchat_message_ack', JSON.stringify(data));
+      }));
     } catch (error) {
       console.warn('Failed to save ACK data to localStorage:', error);
     }
@@ -386,51 +312,42 @@ class MessageACKService {
   private loadFromStorage(): void {
     try {
       const data = localStorage.getItem('xitchat_message_ack');
-      if (data) {
-        const parsed = JSON.parse(data);
-        const now = Date.now();
-        const rawPending: Array<[string, PendingMessage]> = Array.isArray(parsed.pendingMessages) ? parsed.pendingMessages : [];
-        const filteredPending = rawPending
-          .filter(([, msg]) => {
-            if (!msg || typeof msg !== 'object') return false;
-            if (msg.acknowledged) return false;
-            if (typeof msg.timestamp !== 'number' || now - msg.timestamp > 60000) return false;
-            if (typeof msg.retryCount === 'number' && msg.retryCount >= this.MAX_RETRIES) return false;
-            return true;
-          })
-          .sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0))
-          .slice(0, 10);
+      if (!data) return;
 
-        this.pendingMessages = new Map(filteredPending);
-        this.receivedACKs = new Map(parsed.receivedACKs || []);
-        this.lastSeenTimestamp = parsed.lastSeenTimestamp || Date.now();
-        this.saveToStorage();
-        
-        console.log(`📂 Loaded ${this.pendingMessages.size} pending messages from storage`);
-      }
+      const parsed = JSON.parse(data);
+      const now = Date.now();
+      const rawPending: Array<[string, PendingMessage]> = Array.isArray(parsed.pendingMessages)
+        ? parsed.pendingMessages
+        : [];
+
+      const filteredPending = rawPending
+        .filter(([, msg]) => {
+          if (!msg || typeof msg !== 'object') return false;
+          if (msg.acknowledged) return false;
+          // ── FIX #4: use MESSAGE_EXPIRY (5 min) instead of 60 seconds ──
+          if (typeof msg.timestamp !== 'number' || now - msg.timestamp > this.MESSAGE_EXPIRY) return false;
+          if (typeof msg.retryCount === 'number' && msg.retryCount >= this.MAX_RETRIES) return false;
+          return true;
+        })
+        .sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0))
+        .slice(0, 10);
+
+      this.pendingMessages = new Map(filteredPending);
+      this.receivedACKs = new Map(parsed.receivedACKs || []);
+      this.lastSeenTimestamp = parsed.lastSeenTimestamp || Date.now();
+      this.saveToStorage();
     } catch (error) {
       console.warn('Failed to load ACK data from localStorage:', error);
     }
   }
 
-  // Utility methods
   private generateMessageId(): string {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  // Public API
-  getPendingMessages(): PendingMessage[] {
-    return Array.from(this.pendingMessages.values());
-  }
-
-  getPendingCount(): number {
-    return this.pendingMessages.size;
-  }
-
-  isMessageAcknowledged(messageId: string): boolean {
-    const message = this.pendingMessages.get(messageId);
-    return message?.acknowledged || false;
-  }
+  getPendingMessages(): PendingMessage[] { return Array.from(this.pendingMessages.values()); }
+  getPendingCount(): number { return this.pendingMessages.size; }
+  isMessageAcknowledged(messageId: string): boolean { return this.pendingMessages.get(messageId)?.acknowledged || false; }
 
   getMessageStatus(messageId: string): 'pending' | 'acknowledged' | 'failed' | 'unknown' {
     const message = this.pendingMessages.get(messageId);
@@ -440,36 +357,29 @@ class MessageACKService {
     return 'pending';
   }
 
-  // Clear all pending messages (call when user logs out)
   clearAllMessages(): void {
     this.pendingMessages.clear();
     this.receivedACKs.clear();
     this.saveToStorage();
-    console.log('🗑️ Cleared all message ACK data');
   }
 
   subscribe(event: string, callback: (data: any) => void): () => void {
     if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-    return () => {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    };
+    return () => { this.listeners[event] = this.listeners[event].filter(cb => cb !== callback); };
   }
 
   private notifyListeners(event: string, data: any): void {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
-    }
+    (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
-  // Cleanup
   destroy(): void {
-    if (this.retryInterval) {
-      clearInterval(this.retryInterval);
-    }
+    if (this.retryInterval) clearInterval(this.retryInterval);
+    // ── FIX #3: remove all event listeners ──
+    this.connectivityUnsubs.forEach(u => u());
+    this.connectivityUnsubs = [];
     this.saveToStorage();
   }
 }
 
 export const messageACKService = new MessageACKService();
-
