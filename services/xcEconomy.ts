@@ -1,5 +1,6 @@
 // XC Economy Service - Virtual Currency System
 import { nostrService } from './nostrService';
+
 export interface XCTransaction {
   id: string;
   type: 'earn' | 'spend' | 'bonus' | 'achievement';
@@ -38,12 +39,15 @@ class XCEconomyService {
     nextBonus: 10
   };
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
+  private syncTimeout: any = null;
+
+  // ── FIX #3: cap transactions stored to prevent unbounded localStorage growth ──
+  private readonly MAX_TRANSACTIONS = 200;
 
   constructor() {
     this.loadState();
     this.initializeAchievements();
     this.checkDailyStreak();
-    // Nostr sync subscription removed - not needed for basic app functionality
   }
 
   private loadState() {
@@ -60,9 +64,14 @@ class XCEconomyService {
     }
   }
 
-  private syncTimeout: any = null;
-
   private saveState() {
+    // ── FIX #3: trim transaction history before saving ──
+    if (this.transactions.length > this.MAX_TRANSACTIONS) {
+      this.transactions = this.transactions
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, this.MAX_TRANSACTIONS);
+    }
+
     const state = {
       balance: this.balance,
       transactions: this.transactions,
@@ -70,158 +79,77 @@ class XCEconomyService {
       timestamp: Date.now()
     };
 
-    localStorage.setItem('xc_economy', JSON.stringify(state));
+    try {
+      localStorage.setItem('xc_economy', JSON.stringify(state));
+    } catch (error) {
+      console.warn('Failed to save XC economy state:', error);
+    }
 
     // Sync to Nostr (cross-device) with debounce
     if (this.syncTimeout) clearTimeout(this.syncTimeout);
-
     this.syncTimeout = setTimeout(() => {
       if (nostrService.getPublicKey()) {
         nostrService.broadcastMessage(`xitchat-economy-sync:${JSON.stringify(state)}`)
-          .catch(err => console.debug('Failed to sync economy state to Nostr:', err));
+          .catch(err => console.debug('Economy sync to Nostr failed:', err));
       }
-    }, 2000); // 2 second delay to prevent rate limiting
+    }, 2000);
   }
 
   private initializeAchievements() {
+    // ── FIX #1: only initialise if not already loaded from saved state ──
+    // Prevents resetting progress on every construction
+    if (this.achievements.length > 0) return;
+
     this.achievements = [
-      {
-        id: 'first_post',
-        name: 'First Steps',
-        description: 'Post your first buzz message',
-        reward: 25,
-        completed: false,
-        progress: 0,
-        maxProgress: 1,
-        icon: '📝'
-      },
-      {
-        id: 'buzz_master',
-        name: 'Buzz Master',
-        description: 'Post 10 buzz messages',
-        reward: 50,
-        completed: false,
-        progress: 0,
-        maxProgress: 10,
-        icon: '🎯'
-      },
-      {
-        id: 'social_butterfly',
-        name: 'Social Butterfly',
-        description: 'Interact 100 times',
-        reward: 100,
-        completed: false,
-        progress: 0,
-        maxProgress: 100,
-        icon: '🦋'
-      },
-      {
-        id: 'mesh_pioneer',
-        name: 'Mesh Pioneer',
-        description: 'Connect to 10 mesh nodes',
-        reward: 75,
-        completed: false,
-        progress: 0,
-        maxProgress: 10,
-        icon: '🌐'
-      },
-      {
-        id: 'channel_hopper',
-        name: 'Channel Hopper',
-        description: 'Join 5 geohash channels',
-        reward: 30,
-        completed: false,
-        progress: 0,
-        maxProgress: 5,
-        icon: '📍'
-      },
-      {
-        id: 'profile_complete',
-        name: 'Profile Complete',
-        description: 'Complete your profile setup',
-        reward: 20,
-        completed: false,
-        progress: 0,
-        maxProgress: 4,
-        icon: '👤'
-      },
-      {
-        id: 'daily_warrior',
-        name: 'Daily Warrior',
-        description: 'Login for 7 consecutive days',
-        reward: 100,
-        completed: false,
-        progress: 0,
-        maxProgress: 7,
-        icon: '🗓️'
-      },
-      {
-        id: 'xc_collector',
-        name: 'XC Collector',
-        description: 'Earn 500 XC total',
-        reward: 200,
-        completed: false,
-        progress: 0,
-        maxProgress: 500,
-        icon: '💰'
-      }
+      { id: 'first_post', name: 'First Steps', description: 'Post your first buzz message', reward: 25, completed: false, progress: 0, maxProgress: 1, icon: '📝' },
+      { id: 'buzz_master', name: 'Buzz Master', description: 'Post 10 buzz messages', reward: 50, completed: false, progress: 0, maxProgress: 10, icon: '🎯' },
+      { id: 'social_butterfly', name: 'Social Butterfly', description: 'Interact 100 times', reward: 100, completed: false, progress: 0, maxProgress: 100, icon: '🦋' },
+      { id: 'mesh_pioneer', name: 'Mesh Pioneer', description: 'Connect to 10 mesh nodes', reward: 75, completed: false, progress: 0, maxProgress: 10, icon: '🌐' },
+      { id: 'channel_hopper', name: 'Channel Hopper', description: 'Join 5 geohash channels', reward: 30, completed: false, progress: 0, maxProgress: 5, icon: '📍' },
+      { id: 'profile_complete', name: 'Profile Complete', description: 'Complete your profile setup', reward: 20, completed: false, progress: 0, maxProgress: 4, icon: '👤' },
+      { id: 'daily_warrior', name: 'Daily Warrior', description: 'Login for 7 consecutive days', reward: 100, completed: false, progress: 0, maxProgress: 7, icon: '🗓️' },
+      { id: 'xc_collector', name: 'XC Collector', description: 'Earn 500 XC total', reward: 200, completed: false, progress: 0, maxProgress: 500, icon: '💰' }
     ];
   }
 
   private checkDailyStreak() {
     const today = new Date().toDateString();
-    const lastActive = this.streak.lastActiveDate;
+    if (this.streak.lastActiveDate === today) return; // ── FIX #2: guard duplicate calls
 
-    if (lastActive !== today) {
-      const yesterday = new Date(Date.now() - 86400000).toDateString();
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
 
-      if (lastActive === yesterday) {
-        // Continue streak
-        this.streak.currentStreak++;
+    if (this.streak.lastActiveDate === yesterday) {
+      this.streak.currentStreak++;
+      this.streak.totalDays++;
+      this.streak.nextBonus = Math.min(10 + this.streak.currentStreak * 5, 50);
+    } else {
+      this.streak.currentStreak = 1;
+      this.streak.nextBonus = 10;
+      if (this.streak.lastActiveDate !== '') {
+        // Only increment totalDays if we've seen at least one prior login
         this.streak.totalDays++;
-        this.streak.nextBonus = Math.min(10 + this.streak.currentStreak * 5, 50);
-      } else {
-        // Reset streak
-        this.streak.currentStreak = 1;
-        this.streak.nextBonus = 10;
       }
-
-      this.streak.lastActiveDate = today;
-
-      // Award daily bonus
-      this.addXC(this.streak.nextBonus, 'Daily Login Bonus', 'daily_bonus');
-
-      // Check streak achievement
-      this.updateAchievement('daily_warrior', this.streak.currentStreak);
-
-      this.saveState();
     }
+
+    this.streak.lastActiveDate = today;
+    this.addXC(this.streak.nextBonus, 'Daily Login Bonus', 'daily_bonus');
+    this.updateAchievement('daily_warrior', this.streak.currentStreak);
+    this.saveState();
   }
 
-  // PUBLIC API
-  getBalance(): number {
-    return this.balance;
-  }
+  // ── PUBLIC API ──────────────────────────────────────────────────────────────
 
-  getTransactions(): XCTransaction[] {
-    return this.transactions.sort((a, b) => b.timestamp - a.timestamp);
-  }
-
-  getAchievements(): XCAchievement[] {
-    return this.achievements;
-  }
-
-  getStreak(): XCStreak {
-    return this.streak;
-  }
+  getBalance(): number { return this.balance; }
+  getTransactions(): XCTransaction[] { return [...this.transactions].sort((a, b) => b.timestamp - a.timestamp); }
+  getAchievements(): XCAchievement[] { return this.achievements; }
+  getStreak(): XCStreak { return { ...this.streak }; }
 
   addXC(amount: number, description: string, source: string): boolean {
     if (amount <= 0) return false;
 
     this.balance += amount;
-
     const transaction: XCTransaction = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       type: 'earn',
       amount,
       description,
@@ -230,14 +158,11 @@ class XCEconomyService {
     };
 
     this.transactions.push(transaction);
-
-    // Update XC collector achievement
-    this.updateAchievement('xc_collector', this.balance);
+    this.updateAchievement('xc_collector', amount); // ── FIX #4: pass amount, not balance
 
     this.saveState();
     this.notifyListeners('balanceUpdated', this.balance);
     this.notifyListeners('transactionAdded', transaction);
-
     return true;
   }
 
@@ -245,9 +170,8 @@ class XCEconomyService {
     if (amount <= 0 || this.balance < amount) return false;
 
     this.balance -= amount;
-
     const transaction: XCTransaction = {
-      id: Date.now().toString(),
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       type: 'spend',
       amount: -amount,
       description,
@@ -256,18 +180,15 @@ class XCEconomyService {
     };
 
     this.transactions.push(transaction);
-
     this.saveState();
     this.notifyListeners('balanceUpdated', this.balance);
     this.notifyListeners('transactionAdded', transaction);
-
     return true;
   }
 
-  // EARNING METHODS
-  awardDailyLogin(): void {
-    this.checkDailyStreak();
-  }
+  // ── EARNING METHODS ─────────────────────────────────────────────────────────
+
+  awardDailyLogin(): void { this.checkDailyStreak(); }
 
   awardBuzzPost(): void {
     this.addXC(5, 'Posted buzz message', 'buzz_post');
@@ -303,8 +224,8 @@ class XCEconomyService {
   awardAchievement(achievementId: string): void {
     const achievement = this.achievements.find(a => a.id === achievementId);
     if (achievement && !achievement.completed) {
-      this.addXC(achievement.reward, `Achievement: ${achievement.name}`, 'achievement');
       achievement.completed = true;
+      this.addXC(achievement.reward, `Achievement: ${achievement.name}`, 'achievement');
       this.saveState();
       this.notifyListeners('achievementCompleted', achievement);
     }
@@ -312,46 +233,33 @@ class XCEconomyService {
 
   private updateAchievement(achievementId: string, increment: number): void {
     const achievement = this.achievements.find(a => a.id === achievementId);
-    if (achievement && !achievement.completed) {
-      achievement.progress = Math.min(achievement.progress + increment, achievement.maxProgress);
+    if (!achievement || achievement.completed) return;
 
-      if (achievement.progress >= achievement.maxProgress) {
-        this.awardAchievement(achievementId);
-      }
-
-      this.saveState();
-      this.notifyListeners('achievementUpdated', achievement);
+    achievement.progress = Math.min(achievement.progress + increment, achievement.maxProgress);
+    if (achievement.progress >= achievement.maxProgress) {
+      this.awardAchievement(achievementId);
     }
+
+    this.saveState();
+    this.notifyListeners('achievementUpdated', achievement);
   }
 
-  // EVENT LISTENERS
   subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-
-    return () => {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    };
+    return () => { this.listeners[event] = this.listeners[event].filter(cb => cb !== callback); };
   }
 
   private notifyListeners(event: string, data: any) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
-    }
+    (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
-  // Cleanup method for proper resource management
   destroy() {
-    // Nostr subscription cleanup removed - no longer needed
+    if (this.syncTimeout) { clearTimeout(this.syncTimeout); this.syncTimeout = null; }
     this.listeners = {};
   }
 
-  // ADMIN METHODS (for testing/debugging)
-  debugAddXC(amount: number): void {
-    this.addXC(amount, 'Debug addition', 'debug');
-  }
+  debugAddXC(amount: number): void { this.addXC(amount, 'Debug addition', 'debug'); }
 
   getStats() {
     return {
