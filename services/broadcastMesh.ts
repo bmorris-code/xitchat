@@ -1,6 +1,5 @@
-// Simple Broadcast Channel Mesh for Vercel deployment
-// Uses BroadcastChannel API for same-origin communication
-// UPGRADED: Now uses Nostr for real-time cross-device communication
+// Broadcast Channel Mesh for XitChat
+// BroadcastChannel for same-device, Nostr for cross-device
 
 import { safeJsonStringify } from '../utils/jsonUtils';
 import { nostrService } from './nostrService';
@@ -32,20 +31,23 @@ class BroadcastMeshService {
   private myName: string;
   private myHandle: string;
   private broadcastChannel: BroadcastChannel | null = null;
-  private storageKey: string = 'xitchat-broadcast-mesh';
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private isConnected = false;
-  private nostrPrefix = 'xitchat-broadcast-v1-';
+  private readonly nostrPrefix = 'xitchat-broadcast-v1-';
+
+  // ── FIX #1: store Nostr unsub so disconnect() can clean it up ──
+  private nostrUnsub: (() => void) | null = null;
+
+  // ── FIX #3: counter to throttle Nostr announces to every 60s ──
+  private nostrAnnounceCounter = 0;
 
   private fallbackHandle(id: string): string {
-    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    return `@${(source.slice(0, 8) || 'peer')}`;
+    return `@${(id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 8) || 'peer'}`;
   }
 
   private fallbackName(id: string): string {
-    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '');
-    return `Peer ${(source.slice(0, 8) || 'peer')}`;
+    return `Peer ${(id || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'peer'}`;
   }
 
   constructor() {
@@ -56,29 +58,17 @@ class BroadcastMeshService {
 
   async initialize(): Promise<boolean> {
     try {
-      console.log('📡 Initializing Broadcast Channel Mesh (Cross-Device Enabled)...');
-
-      // 1. Create broadcast channel for same-device communication
       if ('BroadcastChannel' in window) {
         this.broadcastChannel = new BroadcastChannel('xitchat-mesh');
         this.broadcastChannel.onmessage = (event) => {
           this.handleIncomingRawMessage(event.data, 'local');
         };
-        console.log('✅ BroadcastChannel created');
       }
 
-      // 2. Setup Nostr for cross-device communication
       this.setupNostrTransport();
-
-      // Start heartbeat
       this.startHeartbeat();
-
-      // Announce presence
-      this.announcePresence();
-
+      this.announcePresenceLocal();
       this.isConnected = true;
-      console.log('✅ Broadcast mesh initialized with cross-device support');
-
       return true;
     } catch (error) {
       console.error('❌ Broadcast mesh initialization failed:', error);
@@ -87,8 +77,10 @@ class BroadcastMeshService {
   }
 
   private setupNostrTransport() {
-    // Listen for broadcast mesh messages via Nostr
-    nostrService.subscribe('messageReceived', (message) => {
+    // ── FIX #1: unsubscribe previous listener before re-subscribing ──
+    if (this.nostrUnsub) { this.nostrUnsub(); this.nostrUnsub = null; }
+
+    this.nostrUnsub = nostrService.subscribe('messageReceived', (message) => {
       if (message.content && message.content.startsWith(this.nostrPrefix)) {
         const rawData = message.content.replace(this.nostrPrefix, '');
         this.handleIncomingRawMessage(rawData, 'nostr');
@@ -99,24 +91,13 @@ class BroadcastMeshService {
   private handleIncomingRawMessage(rawData: string, source: 'local' | 'nostr') {
     try {
       const message: BroadcastMessage = JSON.parse(rawData);
-
-      if (message.from === this.myId) return; // Ignore own messages
-
-      // If it's a direct message, check if it's for us
+      if (message.from === this.myId) return;
       if (message.to !== 'broadcast' && message.to !== this.myId) return;
 
-      console.log(`📨 Received ${source} broadcast message:`, message.type);
-
       switch (message.type) {
-        case 'discovery':
-          this.handleDiscoveryMessage(message);
-          break;
-        case 'direct':
-          this.handleDirectMessage(message);
-          break;
-        case 'broadcast':
-          this.handleBroadcastData(message);
-          break;
+        case 'discovery': this.handleDiscoveryMessage(message); break;
+        case 'direct': this.handleDirectMessage(message); break;
+        case 'broadcast': this.handleBroadcastData(message); break;
       }
     } catch (error) {
       console.error('Error handling raw broadcast message:', error);
@@ -126,7 +107,6 @@ class BroadcastMeshService {
   private handleDiscoveryMessage(message: BroadcastMessage) {
     try {
       const peerData = JSON.parse(message.content);
-
       const peer: BroadcastPeer = {
         id: message.from,
         name: peerData.name || this.fallbackName(message.from),
@@ -140,15 +120,11 @@ class BroadcastMeshService {
 
       if (!this.peers.has(message.from)) {
         this.peers.set(message.from, peer);
-        console.log(`👋 Discovered cross-device peer: ${peer.name} (${peer.handle})`);
-
-        // Reply to discovery
-        this.announcePresence(message.from);
-
+        // Reply only via local channel to avoid Nostr storm
+        this.announcePresenceLocal(message.from);
         this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
         this.notifyListeners('peerFound', peer);
       } else {
-        // Update existing peer
         const existing = this.peers.get(message.from)!;
         existing.lastSeen = Date.now();
         existing.isConnected = true;
@@ -166,13 +142,9 @@ class BroadcastMeshService {
     this.notifyListeners('messageReceived', message);
   }
 
-  private announcePresence(targetId?: string) {
-    const discoveryData = {
-      name: this.myName,
-      handle: this.myHandle,
-      timestamp: Date.now()
-    };
-
+  // ── FIX #3: split into local-only and Nostr announce ──
+  private announcePresenceLocal(targetId?: string) {
+    const discoveryData = { name: this.myName, handle: this.myHandle, timestamp: Date.now() };
     const message: BroadcastMessage = {
       id: this.generateMessageId(),
       from: this.myId,
@@ -182,72 +154,83 @@ class BroadcastMeshService {
       type: 'discovery',
       encrypted: false
     };
+    // Send via BroadcastChannel only (no Nostr)
+    const messageData = safeJsonStringify(message);
+    if (this.broadcastChannel) {
+      try { this.broadcastChannel.postMessage(messageData); } catch {}
+    }
+  }
 
-    this.sendMessageInternal(message);
+  private async announcePresenceNostr() {
+    const discoveryData = { name: this.myName, handle: this.myHandle, timestamp: Date.now() };
+    const message: BroadcastMessage = {
+      id: this.generateMessageId(),
+      from: this.myId,
+      to: 'broadcast',
+      content: safeJsonStringify(discoveryData),
+      timestamp: Date.now(),
+      type: 'discovery',
+      encrypted: false
+    };
+    const messageData = safeJsonStringify(message);
+    try {
+      if (nostrService.isConnected()) {
+        await nostrService.broadcastMessage(`${this.nostrPrefix}${messageData}`);
+      }
+    } catch {}
   }
 
   private startHeartbeat() {
+    if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     this.heartbeatInterval = setInterval(() => {
-      this.announcePresence();
+      // ── FIX #3: local announce every 15s, Nostr every 60s ──
+      this.announcePresenceLocal();
+      this.nostrAnnounceCounter++;
+      if (this.nostrAnnounceCounter % 4 === 0) {
+        this.announcePresenceNostr();
+      }
       this.cleanupPeers();
-    }, 15000); // Every 15 seconds
+    }, 15000);
   }
 
   private cleanupPeers() {
     const now = Date.now();
     let changed = false;
     this.peers.forEach((peer, id) => {
-      if (now - peer.lastSeen > 60000) { // 1 minute timeout
-        this.peers.delete(id);
-        changed = true;
-      }
+      if (now - peer.lastSeen > 60000) { this.peers.delete(id); changed = true; }
     });
-    if (changed) {
-      this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
-    }
+    if (changed) this.notifyListeners('peersUpdated', Array.from(this.peers.values()));
   }
 
   private async sendMessageInternal(message: BroadcastMessage) {
     const messageData = safeJsonStringify(message);
 
-    // 1. Send via local BroadcastChannel (same-device)
+    // 1. Send via local BroadcastChannel
     if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage(messageData);
+      try { this.broadcastChannel.postMessage(messageData); } catch {}
     }
 
-    // 2. Send via Nostr (cross-device)
+    // 2. Send via Nostr (cross-device) — fire and forget
     try {
       if (nostrService.isConnected()) {
         await nostrService.broadcastMessage(`${this.nostrPrefix}${messageData}`);
       }
-    } catch (error) {
-      // Silently fail for Nostr broadcast if not ready
-      // console.warn('Nostr broadcast failed for mesh:', error); 
-    }
+    } catch {}
 
-    // 3. Fallback to localStorage (same-device fallback)
-    try {
-      localStorage.setItem(`${this.storageKey}-${message.id}`, messageData);
-      setTimeout(() => {
-        localStorage.removeItem(`${this.storageKey}-${message.id}`);
-      }, 1000);
-    } catch (error) {
-      // ignore
-    }
+    // ── FIX #2: removed localStorage fallback — it blocked the main thread
+    // and provided no benefit over BroadcastChannel for same-device ──
   }
 
   async pingPeer(peerId: string): Promise<boolean> {
-    const peer = this.peers.get(peerId);
-    if (!peer) return false;
-
-    this.announcePresence(peerId);
+    if (!this.peers.get(peerId)) return false;
+    this.announcePresenceLocal(peerId);
     return true;
   }
 
   async sendMessage(peerId: string, content: string): Promise<boolean> {
     if (!this.isConnected) return false;
     if (!this.peers.has(peerId)) {
-      console.debug(`Broadcast direct send skipped; peer ${peerId} not in known peer map`);
+      console.debug(`Broadcast direct send skipped; peer ${peerId} not known`);
       return false;
     }
 
@@ -255,14 +238,13 @@ class BroadcastMeshService {
       id: this.generateMessageId(),
       from: this.myId,
       to: peerId,
-      content: content,
+      content,
       timestamp: Date.now(),
       type: 'direct',
       encrypted: false
     };
 
     await this.sendMessageInternal(message);
-    console.log(`📤 Sent broadcast-mesh message to ${peerId}: ${content}`);
     return true;
   }
 
@@ -273,47 +255,27 @@ class BroadcastMeshService {
       id: this.generateMessageId(),
       from: this.myId,
       to: 'broadcast',
-      content: content,
+      content,
       timestamp: Date.now(),
       type: 'broadcast',
       encrypted: false
     };
 
     await this.sendMessageInternal(message);
-    console.log(`📢 Broadcast mesh message: ${content}`);
   }
 
-  getPeers(): BroadcastPeer[] {
-    return Array.from(this.peers.values());
-  }
-
-  isConnectedToMesh(): boolean {
-    return this.isConnected;
-  }
-
-  getConnectionInfo() {
-    return {
-      type: 'broadcast' as const,
-      peerCount: this.peers.size,
-      isRealConnection: true
-    };
-  }
+  getPeers(): BroadcastPeer[] { return Array.from(this.peers.values()); }
+  isConnectedToMesh(): boolean { return this.isConnected; }
+  getConnectionInfo() { return { type: 'broadcast' as const, peerCount: this.peers.size, isRealConnection: true }; }
 
   subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-
-    return () => {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    };
+    return () => { this.listeners[event] = this.listeners[event].filter(cb => cb !== callback); };
   }
 
   private notifyListeners(event: string, data: any) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
-    }
+    (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
   private generateMessageId(): string {
@@ -321,18 +283,13 @@ class BroadcastMeshService {
   }
 
   disconnect() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-    }
-
-    if (this.broadcastChannel) {
-      this.broadcastChannel.close();
-    }
-
+    if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = null; }
+    // ── FIX #1: unsubscribe Nostr listener ──
+    if (this.nostrUnsub) { this.nostrUnsub(); this.nostrUnsub = null; }
+    // ── FIX #4: null out channel after closing ──
+    if (this.broadcastChannel) { this.broadcastChannel.close(); this.broadcastChannel = null; }
     this.isConnected = false;
-    console.log('📡 Broadcast mesh disconnected');
   }
 }
 
 export const broadcastMesh = new BroadcastMeshService();
-
