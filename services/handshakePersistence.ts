@@ -1,4 +1,5 @@
-interface HandshakeNode {
+// ── FIX #5: export the interface so App.tsx import compiles ──
+export interface HandshakeNode {
   id: string;
   name: string;
   handle: string;
@@ -11,22 +12,17 @@ interface HandshakeNode {
 }
 
 class HandshakePersistenceService {
+  private readonly STORAGE_KEY = 'xitchat_handshake_nodes';
+  // ── FIX #4: cap stored nodes to prevent unbounded growth ──
+  private readonly MAX_NODES = 500;
+
+  private nodes: Map<string, HandshakeNode> = new Map();
+  private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private integrityInterval: ReturnType<typeof setInterval> | null = null;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
-  stopBackgroundMaintenance() {
-    if (this.integrityInterval) {
-      clearInterval(this.integrityInterval);
-      this.integrityInterval = null;
-    }
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
-    }
-  }
-  private readonly STORAGE_KEY = 'xitchat_handshake_nodes';
-  private nodes: Map<string, HandshakeNode> = new Map();
-  private listeners: { [key: string]: ((data: any) => void)[] } = {};
+  // ── FIX #1: debounce timer for localStorage saves ──
+  private saveDebounceTimer: any = null;
 
   constructor() {
     this.loadHandshakes();
@@ -37,9 +33,7 @@ class HandshakePersistenceService {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
         const nodes: HandshakeNode[] = JSON.parse(stored);
-        nodes.forEach(node => {
-          this.nodes.set(node.id, node);
-        });
+        nodes.forEach(node => this.nodes.set(node.id, node));
         this.cleanupOldNodes();
       }
     } catch (error) {
@@ -49,42 +43,61 @@ class HandshakePersistenceService {
 
   private saveHandshakes() {
     try {
-      const nodesArray = Array.from(this.nodes.values());
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(nodesArray));
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(Array.from(this.nodes.values())));
     } catch (error) {
       console.error('Failed to save handshake nodes:', error);
     }
   }
 
+  // ── FIX #1: debounced save — coalesces rapid sequential saves (e.g. peersUpdated) ──
+  private saveHandshakesDebounced() {
+    if (this.saveDebounceTimer) clearTimeout(this.saveDebounceTimer);
+    this.saveDebounceTimer = setTimeout(() => {
+      this.saveDebounceTimer = null;
+      this.saveHandshakes();
+    }, 1000);
+  }
+
   private cleanupOldNodes() {
     const now = Date.now();
     const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
-    
+    let changed = false;
+
     for (const [id, node] of this.nodes.entries()) {
       if (now - node.lastSeen > THIRTY_DAYS) {
         this.nodes.delete(id);
+        changed = true;
       }
     }
-    
-    this.saveHandshakes();
+
+    if (changed) this.saveHandshakes();
   }
 
   // PUBLIC API
+
   recordHandshake(nodeData: Omit<HandshakeNode, 'firstConnected' | 'lastSeen' | 'integrity'>): HandshakeNode {
     const now = Date.now();
-    const existingNode = this.nodes.get(nodeData.id);
-    
+    const existing = this.nodes.get(nodeData.id);
+
     const handshakeNode: HandshakeNode = {
       ...nodeData,
-      firstConnected: existingNode?.firstConnected || now,
+      firstConnected: existing?.firstConnected || now,
       lastSeen: now,
-      integrity: existingNode ? Math.min(100, existingNode.integrity + 5) : 50
+      integrity: existing ? Math.min(100, existing.integrity + 5) : 50
     };
 
     this.nodes.set(nodeData.id, handshakeNode);
+
+    // ── FIX #4: prune oldest nodes if cap exceeded ──
+    if (this.nodes.size > this.MAX_NODES) {
+      const sorted = Array.from(this.nodes.entries())
+        .sort((a, b) => a[1].lastSeen - b[1].lastSeen);
+      sorted.slice(0, this.nodes.size - this.MAX_NODES)
+        .forEach(([id]) => this.nodes.delete(id));
+    }
+
     this.saveHandshakes();
     this.notifyListeners('handshakeRecorded', handshakeNode);
-    
     return handshakeNode;
   }
 
@@ -93,7 +106,8 @@ class HandshakePersistenceService {
     if (node) {
       node.lastSeen = Date.now();
       node.integrity = Math.min(100, node.integrity + 2);
-      this.saveHandshakes();
+      // ── FIX #1: debounced save instead of immediate write on every call ──
+      this.saveHandshakesDebounced();
       this.notifyListeners('nodeUpdated', node);
     }
   }
@@ -101,38 +115,35 @@ class HandshakePersistenceService {
   degradeIntegrity(): void {
     const now = Date.now();
     const ONE_HOUR = 60 * 60 * 1000;
-    
+    // ── FIX #3: only save/notify if something actually changed ──
+    let changed = false;
+
     for (const [id, node] of this.nodes.entries()) {
       if (now - node.lastSeen > ONE_HOUR) {
         node.integrity = Math.max(0, node.integrity - 10);
-        if (node.integrity === 0) {
-          this.nodes.delete(id);
-        }
+        changed = true;
+        if (node.integrity === 0) this.nodes.delete(id);
       }
     }
-    
-    this.saveHandshakes();
-    this.notifyListeners('integrityUpdated', Array.from(this.nodes.values()));
+
+    if (changed) {
+      this.saveHandshakes();
+      this.notifyListeners('integrityUpdated', Array.from(this.nodes.values()));
+    }
   }
 
   getHandshakeNodes(): HandshakeNode[] {
-    return Array.from(this.nodes.values())
-      .sort((a, b) => b.lastSeen - a.lastSeen);
+    return Array.from(this.nodes.values()).sort((a, b) => b.lastSeen - a.lastSeen);
   }
 
   getActiveNodes(): HandshakeNode[] {
     const now = Date.now();
     const FIVE_MINUTES = 5 * 60 * 1000;
-    
-    return this.getHandshakeNodes().filter(node => 
-      now - node.lastSeen < FIVE_MINUTES
-    );
+    return this.getHandshakeNodes().filter(n => now - n.lastSeen < FIVE_MINUTES);
   }
 
   getNodesByType(connectionType: HandshakeNode['connectionType']): HandshakeNode[] {
-    return this.getHandshakeNodes().filter(node => 
-      node.connectionType === connectionType
-    );
+    return this.getHandshakeNodes().filter(n => n.connectionType === connectionType);
   }
 
   removeNode(nodeId: string): boolean {
@@ -150,16 +161,14 @@ class HandshakePersistenceService {
     this.notifyListeners('allNodesCleared', null);
   }
 
-  // Analytics
   getHandshakeStats() {
     const nodes = this.getHandshakeNodes();
     const now = Date.now();
     const ONE_DAY = 24 * 60 * 60 * 1000;
-    
     return {
       totalNodes: nodes.length,
       activeNodes: nodes.filter(n => now - n.lastSeen < ONE_DAY).length,
-      averageIntegrity: nodes.length > 0 
+      averageIntegrity: nodes.length > 0
         ? Math.round(nodes.reduce((sum, n) => sum + n.integrity, 0) / nodes.length)
         : 0,
       connectionTypes: {
@@ -170,39 +179,32 @@ class HandshakePersistenceService {
     };
   }
 
-  // Event Listeners
   subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-    
-    return () => {
-      this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
-    };
+    return () => { this.listeners[event] = this.listeners[event].filter(cb => cb !== callback); };
   }
 
   private notifyListeners(event: string, data: any) {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
+    (this.listeners[event] || []).forEach(cb => cb(data));
+  }
+
+  startBackgroundMaintenance() {
+    // ── FIX #2: check each interval independently ──
+    if (!this.integrityInterval) {
+      this.integrityInterval = setInterval(() => this.degradeIntegrity(), 60 * 60 * 1000);
+    }
+    if (!this.cleanupInterval) {
+      this.cleanupInterval = setInterval(() => this.cleanupOldNodes(), 24 * 60 * 60 * 1000);
     }
   }
 
-  // Start background integrity degradation
-  startBackgroundMaintenance() {
-    if (this.integrityInterval || this.cleanupInterval) return;
-
-    // Degrade integrity every hour
-    this.integrityInterval = setInterval(() => {
-      this.degradeIntegrity();
-    }, 60 * 60 * 1000);
-
-    // Cleanup old nodes daily
-    this.cleanupInterval = setInterval(() => {
-      this.cleanupOldNodes();
-    }, 24 * 60 * 60 * 1000);
+  stopBackgroundMaintenance() {
+    if (this.integrityInterval) { clearInterval(this.integrityInterval); this.integrityInterval = null; }
+    if (this.cleanupInterval) { clearInterval(this.cleanupInterval); this.cleanupInterval = null; }
+    // Flush any pending debounced save
+    if (this.saveDebounceTimer) { clearTimeout(this.saveDebounceTimer); this.saveDebounceTimer = null; this.saveHandshakes(); }
   }
 }
 
 export const handshakePersistence = new HandshakePersistenceService();
-export type { HandshakeNode };
