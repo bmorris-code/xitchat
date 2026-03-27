@@ -499,7 +499,7 @@ const App: React.FC = () => {
             status: 'Online',
             mood: 'Connected via mesh discovery'
           };
-          handleOpenChat(newUser);
+          handleOpenChat(newUser), 0);
         });
 
       } catch (error) {
