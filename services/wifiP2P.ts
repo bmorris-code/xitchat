@@ -1,6 +1,4 @@
-// WiFi P2P Service with Nostr Signaling - Clean Version
-// Fixed version with proper Nostr initialization checks
-
+// WiFi P2P Service with Nostr Signaling
 import { nostrService } from './nostrService';
 import { networkStateManager, NetworkService } from './networkStateManager';
 import { ICE_SERVERS } from './iceConfig';
@@ -30,7 +28,7 @@ class WiFiP2PService {
   private myName: string = 'Anonymous';
   private myHandle: string = '@anon';
   private broadcastChannel: BroadcastChannel;
-  private nostrSignalingPrefix = 'xitchat-wifi:';
+  private readonly nostrSignalingPrefix = 'xitchat-wifi:';
   private isDiscovering = false;
   private announceInterval: any = null;
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
@@ -47,32 +45,31 @@ class WiFiP2PService {
   private WiFiDirectPlugin: any = null;
   private nativeListenersRegistered = false;
   private nativeConnectAttempts = new Set<string>();
+  private pendingCandidates: Map<string, RTCIceCandidate[]> = new Map();
+
+  // ── FIX #3: store Nostr unsub so disconnect() can clean it up ──
+  private nostrSignalUnsub: (() => void) | null = null;
 
   private fallbackHandle(id: string): string {
-    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    return `@${(source.slice(0, 8) || 'peer')}`;
+    return `@${(id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 8) || 'peer'}`;
   }
 
   private fallbackName(id: string): string {
-    const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '');
-    return `Peer ${(source.slice(0, 8) || 'peer')}`;
+    return `Peer ${(id || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'peer'}`;
   }
 
-  private pendingCandidates: Map<string, RTCIceCandidate[]> = new Map();
-
   constructor() {
-    this.myPeerId = this.generatePeerId();
+    this.myPeerId = 'wifi-' + Math.random().toString(36).substr(2, 9);
     if (typeof BroadcastChannel !== 'undefined') {
       this.broadcastChannel = new BroadcastChannel('xitchat-wifi');
-
-    this.broadcastChannel.onmessage = (event) => {
-      try {
-        const message: WiFiMessage = JSON.parse(event.data);
-        this.handleIncomingMessage(message, 'local');
-      } catch (error) {
-        console.error('Failed to parse WiFi message:', error);
-      }
-    };
+      this.broadcastChannel.onmessage = (event) => {
+        try {
+          const message: WiFiMessage = JSON.parse(event.data);
+          this.handleIncomingMessage(message, 'local');
+        } catch (error) {
+          console.error('Failed to parse WiFi message:', error);
+        }
+      };
     } else {
       this.broadcastChannel = null as any;
     }
@@ -80,17 +77,13 @@ class WiFiP2PService {
     this.setupNostrSignaling();
   }
 
-  private generatePeerId(): string {
-    return 'wifi-' + Math.random().toString(36).substr(2, 9);
-  }
-
   private setupNostrSignaling(): void {
-    // Listen for incoming Nostr channel messages used as signaling bus.
-    // Using channel events avoids the global broadcast rate-limit path.
-    nostrService.subscribe('channelMessageReceived', (event: any) => {
+    // ── FIX #3: store unsub and clean up previous before re-subscribing ──
+    if (this.nostrSignalUnsub) { this.nostrSignalUnsub(); this.nostrSignalUnsub = null; }
+
+    this.nostrSignalUnsub = nostrService.subscribe('channelMessageReceived', (event: any) => {
       if (!event?.content || typeof event.content !== 'string') return;
       if (!event.content.startsWith(this.nostrSignalingPrefix)) return;
-
       try {
         const signalData = JSON.parse(event.content.replace(this.nostrSignalingPrefix, ''));
         this.handleIncomingMessage(signalData, 'nostr');
@@ -106,7 +99,6 @@ class WiFiP2PService {
 
     WiFiDirect.addListener('peersChanged', (event: any) => {
       const peers = Array.isArray(event?.peers) ? event.peers : [];
-
       peers.forEach((nativePeer: any) => {
         const peerId = nativePeer.deviceAddress || nativePeer.deviceName || `wifi-${Math.random().toString(36).substr(2, 6)}`;
         const existing = this.peers.get(peerId);
@@ -133,16 +125,12 @@ class WiFiP2PService {
           });
         }
       });
-
       this.emit('peersUpdated', Array.from(this.peers.values()));
     }).catch(() => {});
 
     WiFiDirect.addListener('connectionChanged', (event: any) => {
       const connected = !!event?.connected;
-      this.peers.forEach(peer => {
-        peer.isConnected = connected;
-        peer.lastSeen = new Date();
-      });
+      this.peers.forEach(peer => { peer.isConnected = connected; peer.lastSeen = new Date(); });
       this.emit('peersUpdated', Array.from(this.peers.values()));
     }).catch(() => {});
 
@@ -158,28 +146,15 @@ class WiFiP2PService {
   }
 
   private handleIncomingMessage(message: WiFiMessage, source: 'local' | 'nostr'): void {
-    // Ignore own messages
     if (message.from === this.myPeerId) return;
-
-    // If it's a direct message to us or a broadcast
     if (message.to !== 'broadcast' && message.to !== this.myPeerId) return;
 
     switch (message.type) {
-      case 'peer-announce':
-        this.handlePeerAnnouncement(message);
-        break;
-      case 'chat':
-        this.handleChatMessage(message);
-        break;
-      case 'webrtc-offer':
-        this.handleWebRTCOffer(message, source);
-        break;
-      case 'webrtc-answer':
-        this.handleWebRTCAnswer(message);
-        break;
-      case 'ice-candidate':
-        this.handleICECandidate(message);
-        break;
+      case 'peer-announce': this.handlePeerAnnouncement(message); break;
+      case 'chat': this.handleChatMessage(message); break;
+      case 'webrtc-offer': this.handleWebRTCOffer(message, source); break;
+      case 'webrtc-answer': this.handleWebRTCAnswer(message); break;
+      case 'ice-candidate': this.handleICECandidate(message); break;
     }
   }
 
@@ -200,8 +175,9 @@ class WiFiP2PService {
       this.emit('peerFound', peer);
       this.emit('peersUpdated', Array.from(this.peers.values()));
 
-      // Automatically try to establish a WebRTC connection if we found a new peer
-      this.initiateWebRTCConnection(message.from);
+      // ── FIX #2: removed auto-WebRTC initiation — would create a connection
+      // storm on busy Nostr relays. WebRTC is initiated on-demand when the
+      // user opens a chat (via sendMessage or connectToPeer). ──
     } catch (error) {
       console.error('Failed to parse peer announcement:', error);
     }
@@ -221,13 +197,8 @@ class WiFiP2PService {
     const peer = this.peers.get(peerId);
     if (!peer || peer.connection) return;
 
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    });
-
+    // ── FIX #1: use ICE_SERVERS from iceConfig instead of hardcoded STUN ──
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peer.connection = pc;
 
     const dc = pc.createDataChannel('chat');
@@ -241,38 +212,21 @@ class WiFiP2PService {
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-
     this.sendSignal(peerId, 'webrtc-offer', JSON.stringify({ offer }));
   }
 
   private async handleWebRTCOffer(message: WiFiMessage, source: 'local' | 'nostr'): Promise<void> {
-
     let peer = this.peers.get(message.from);
     if (!peer) {
-      // Create peer entry if not exists
-      peer = {
-        id: message.from,
-        name: 'Remote Peer',
-        handle: '@remote',
-        isConnected: false,
-        lastSeen: new Date()
-      };
+      peer = { id: message.from, name: 'Remote Peer', handle: '@remote', isConnected: false, lastSeen: new Date() };
       this.peers.set(message.from, peer);
     }
 
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    });
-
+    // ── FIX #1: use ICE_SERVERS from iceConfig ──
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     peer.connection = pc;
 
-    pc.ondatachannel = (event) => {
-      this.setupDataChannel(event.channel, peer!);
-    };
-
+    pc.ondatachannel = (event) => { this.setupDataChannel(event.channel, peer!); };
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         this.sendSignal(message.from, 'ice-candidate', JSON.stringify({ candidate: event.candidate }));
@@ -281,44 +235,31 @@ class WiFiP2PService {
 
     const offer = JSON.parse(message.content).offer;
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-
     this.sendSignal(message.from, 'webrtc-answer', JSON.stringify({ answer }));
 
     const queued = this.pendingCandidates.get(message.from) || [];
-    for (const c of queued) {
-      await pc.addIceCandidate(c).catch(() => {});
-    }
+    for (const c of queued) await pc.addIceCandidate(c).catch(() => {});
     this.pendingCandidates.delete(message.from);
   }
 
   private async handleWebRTCAnswer(message: WiFiMessage): Promise<void> {
     const peer = this.peers.get(message.from);
-    if (peer && peer.connection) {
-      const answer = JSON.parse(message.content).answer;
-      await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
-
-      const queued = this.pendingCandidates.get(message.from) || [];
-      for (const c of queued) {
-        await peer.connection.addIceCandidate(c).catch(() => {});
-      }
-      this.pendingCandidates.delete(message.from);
-    }
+    if (!peer?.connection) return;
+    const answer = JSON.parse(message.content).answer;
+    await peer.connection.setRemoteDescription(new RTCSessionDescription(answer));
+    const queued = this.pendingCandidates.get(message.from) || [];
+    for (const c of queued) await peer.connection.addIceCandidate(c).catch(() => {});
+    this.pendingCandidates.delete(message.from);
   }
 
   private async handleICECandidate(message: WiFiMessage): Promise<void> {
     const peer = this.peers.get(message.from);
     if (!peer) return;
     const candidate = JSON.parse(message.content).candidate;
-    
-    if (peer.connection && peer.connection.remoteDescription) {
-      try {
-        await peer.connection.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (e) {
-        console.warn('Failed to add ICE candidate', e);
-      }
+    if (peer.connection?.remoteDescription) {
+      await peer.connection.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
     } else {
       const queue = this.pendingCandidates.get(message.from) || [];
       queue.push(new RTCIceCandidate(candidate));
@@ -336,16 +277,17 @@ class WiFiP2PService {
     };
 
     dc.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        this.handleChatMessage(message);
-      } catch (e) {
-        console.error('Failed to parse DC message', e);
-      }
+      try { this.handleChatMessage(JSON.parse(event.data)); }
+      catch (e) { console.error('Failed to parse DC message', e); }
     };
 
     dc.onclose = () => {
       peer.isConnected = false;
+      // ── FIX #4: null out connection so peer can reconnect ──
+      peer.connection = undefined;
+      peer.dataChannel = undefined;
+      // ── FIX #5: clean up pending candidates for this peer ──
+      this.pendingCandidates.delete(peer.id);
       this.emit('peerDisconnected', peer);
       this.emit('peersUpdated', Array.from(this.peers.values()));
     };
@@ -360,20 +302,15 @@ class WiFiP2PService {
       timestamp: new Date(),
       type
     };
-
     const payload = JSON.stringify(message);
 
-    // 1. Send via local BroadcastChannel (same-device)
     if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage(payload);
+      try { this.broadcastChannel.postMessage(payload); } catch {}
     }
 
-    // 2. Send via Nostr channel (cross-device signaling) - only if initialized
     try {
       if (nostrService.isConnected()) {
         await nostrService.publishChannelMessage('xitchat-wifi-signaling', `${this.nostrSignalingPrefix}${payload}`);
-      } else {
-        console.debug('Nostr not initialized, skipping Nostr signaling');
       }
     } catch (error) {
       console.debug('Nostr signaling failed:', error);
@@ -382,14 +319,11 @@ class WiFiP2PService {
 
   async initialize(): Promise<boolean> {
     try {
-      console.log('� Initializing SERVERLESS WiFi P2P...');
+      const isNativeAndroid =
+        (window as any).Capacitor?.isNativePlatform() &&
+        (window as any).Capacitor?.getPlatform() === 'android';
 
-      // ANDROID SERVERLESS: Skip native plugins (they don't exist)
-      // Use WebRTC + Nostr signaling for true P2P
-      const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
-      
       if (isNativeAndroid) {
-        // Try native WiFi Direct plugin — not bundled by default, so handle gracefully
         try {
           const { registerPlugin } = await import('@capacitor/core');
           const WiFiDirect = registerPlugin<any>('WiFiDirect');
@@ -397,18 +331,13 @@ class WiFiP2PService {
           this.WiFiDirectPlugin = WiFiDirect;
           this.setupNativeWiFiDirectListeners(WiFiDirect);
         } catch (error) {
-          // Plugin not installed — fall through to WebRTC + Nostr signaling path
-          console.warn('WiFiDirect plugin missing or failed to initialize, falling back to WebRTC + Nostr:', error);
+          console.warn('WiFiDirect plugin missing, falling back to WebRTC + Nostr:', error);
           this.WiFiDirectPlugin = null;
         }
       }
 
-      // Web or Android fallback — use WebRTC with Nostr signaling
-      if (!isNativeAndroid && !('RTCPeerConnection' in window)) {
-        return false;
-      }
+      if (!isNativeAndroid && !('RTCPeerConnection' in window)) return false;
 
-      // Register with network state manager
       this.serviceInfo.healthCheck = () => this.performHealthCheck();
       this.serviceInfo.reconnect = () => this.initialize();
       networkStateManager.registerService(this.serviceInfo);
@@ -417,8 +346,6 @@ class WiFiP2PService {
       this.serviceInfo.isHealthy = true;
       this.isInitialized = true;
       networkStateManager.updateServiceStatus('wifiP2P', true, true);
-
-      console.log('✅ Serverless WiFi P2P (WebRTC + Nostr signaling) initialized');
       return true;
     } catch (error) {
       console.error('WiFi P2P initialization failed:', error);
@@ -429,35 +356,24 @@ class WiFiP2PService {
   async startDiscovery(): Promise<void> {
     if (this.isDiscovering) return;
 
-    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+    const isNativeAndroid =
+      (window as any).Capacitor?.isNativePlatform() &&
+      (window as any).Capacitor?.getPlatform() === 'android';
+
     if (isNativeAndroid && this.WiFiDirectPlugin) {
-      console.log('🔍 Starting native WiFi Direct discovery...');
       this.isDiscovering = true;
-      const discoveryResult = await this.WiFiDirectPlugin.startDiscovery();
-      if (discoveryResult && discoveryResult.success === false) {
-        console.warn('WiFi Direct discovery did not start:', discoveryResult);
-      }
-      try {
-        await this.WiFiDirectPlugin.startServer();
-      } catch (error) {
-        console.debug('WiFi Direct server start skipped:', error);
-      }
+      const result = await this.WiFiDirectPlugin.startDiscovery();
+      if (result?.success === false) console.warn('WiFi Direct discovery did not start:', result);
+      try { await this.WiFiDirectPlugin.startServer(); } catch {}
       this.emit('discoveryStarted');
       return;
     }
 
-    console.log('🔍 Starting serverless WiFi P2P discovery (WebRTC + Nostr)...');
-    
     this.isDiscovering = true;
-
-    // Start announcing presence via Nostr signaling
-    this.announceInterval = window.setInterval(() => {
-      this.announcePresence();
-    }, 10000);
-
+    if (this.announceInterval) clearInterval(this.announceInterval);
+    this.announceInterval = window.setInterval(() => this.announcePresence(), 10000);
     this.announcePresence();
     this.emit('discoveryStarted');
-    console.log('📡 Serverless WiFi P2P discovery started');
   }
 
   private announcePresence(): void {
@@ -470,33 +386,27 @@ class WiFiP2PService {
 
   stopDiscovery(): void {
     this.isDiscovering = false;
-    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+    const isNativeAndroid =
+      (window as any).Capacitor?.isNativePlatform() &&
+      (window as any).Capacitor?.getPlatform() === 'android';
     if (isNativeAndroid && this.WiFiDirectPlugin) {
       this.WiFiDirectPlugin.stopDiscovery().catch(() => {});
     }
-    if (this.announceInterval) {
-      clearInterval(this.announceInterval);
-      this.announceInterval = null;
-    }
+    if (this.announceInterval) { clearInterval(this.announceInterval); this.announceInterval = null; }
     this.emit('discoveryStopped');
   }
 
   async sendMessage(peerId: string, content: string): Promise<boolean> {
-    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() && (window as any).Capacitor?.getPlatform() === 'android';
+    const isNativeAndroid =
+      (window as any).Capacitor?.isNativePlatform() &&
+      (window as any).Capacitor?.getPlatform() === 'android';
 
     if (isNativeAndroid && this.WiFiDirectPlugin) {
       try {
-        await this.WiFiDirectPlugin.sendMessage({
-          message: content,
-          targetAddress: peerId
-        });
+        await this.WiFiDirectPlugin.sendMessage({ message: content, targetAddress: peerId });
         this.emit('messageSent', {
           id: Math.random().toString(36).substr(2, 9),
-          from: this.myPeerId,
-          to: peerId,
-          content,
-          timestamp: new Date(),
-          type: 'chat'
+          from: this.myPeerId, to: peerId, content, timestamp: new Date(), type: 'chat'
         });
         return true;
       } catch (error) {
@@ -505,32 +415,28 @@ class WiFiP2PService {
     }
 
     const peer = this.peers.get(peerId);
-    if (!peer) {
-      console.warn(`Peer ${peerId} not found`);
-      return false;
-    }
-
-    console.log(`📤 Sending via serverless WiFi P2P to ${peerId}: ${content}`);
+    if (!peer) return false;
 
     const message: WiFiMessage = {
       id: Math.random().toString(36).substr(2, 9),
-      from: this.myPeerId,
-      to: peerId,
-      content,
-      timestamp: new Date(),
-      type: 'chat'
+      from: this.myPeerId, to: peerId, content, timestamp: new Date(), type: 'chat'
     };
 
-    if (peer.isConnected && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+    // Use WebRTC data channel if open
+    if (peer.isConnected && peer.dataChannel?.readyState === 'open') {
       peer.dataChannel.send(JSON.stringify(message));
-      console.log(`📤 Sent via WebRTC P2P to ${peerId}: ${content}`);
       this.emit('messageSent', message);
       return true;
     }
 
+    // Initiate WebRTC on first send attempt if not already connected
+    if (!peer.connection) {
+      this.initiateWebRTCConnection(peerId).catch(() => {});
+    }
+
+    // Fall back to Nostr signaling
     try {
       await this.sendSignal(peerId, 'chat', content);
-      console.log(`📤 Sent via Nostr P2P to ${peerId}: ${content}`);
       this.emit('messageSent', message);
       return true;
     } catch (error) {
@@ -544,32 +450,20 @@ class WiFiP2PService {
     this.myHandle = handle;
   }
 
-  getPeers(): WiFiPeer[] {
-    return Array.from(this.peers.values());
-  }
-
-  getConnectedPeers(): WiFiPeer[] {
-    return this.getPeers().filter(peer => peer.isConnected);
-  }
+  getPeers(): WiFiPeer[] { return Array.from(this.peers.values()); }
+  getConnectedPeers(): WiFiPeer[] { return this.getPeers().filter(p => p.isConnected); }
 
   subscribe(event: string, callback: (data: any) => void): () => void {
-    if (!this.listeners[event]) {
-      this.listeners[event] = [];
-    }
+    if (!this.listeners[event]) this.listeners[event] = [];
     this.listeners[event].push(callback);
-
     return () => {
-      const index = this.listeners[event].indexOf(callback);
-      if (index > -1) {
-        this.listeners[event].splice(index, 1);
-      }
+      const idx = this.listeners[event].indexOf(callback);
+      if (idx > -1) this.listeners[event].splice(idx, 1);
     };
   }
 
   private emit(event: string, data?: any): void {
-    if (this.listeners[event]) {
-      this.listeners[event].forEach(callback => callback(data));
-    }
+    (this.listeners[event] || []).forEach(cb => cb(data));
   }
 
   disconnect(): void {
@@ -577,28 +471,26 @@ class WiFiP2PService {
     this.peers.forEach(peer => {
       if (peer.connection) peer.connection.close();
     });
+    // ── FIX #5: clear all pending candidates ──
+    this.pendingCandidates.clear();
     this.peers.clear();
     if (this.broadcastChannel) this.broadcastChannel.close();
+    // ── FIX #3: unsubscribe Nostr listener ──
+    if (this.nostrSignalUnsub) { this.nostrSignalUnsub(); this.nostrSignalUnsub = null; }
     this.emit('disconnected');
   }
 
   getConnectionInfo(): any {
     return {
-      peerId: this.myPeerId,
-      name: this.myName,
-      handle: this.myHandle,
-      isDiscovering: this.isDiscovering,
-      totalPeers: this.peers.size,
-      connectedPeers: this.getConnectedPeers().length,
-      type: 'wifi-p2p'
+      peerId: this.myPeerId, name: this.myName, handle: this.myHandle,
+      isDiscovering: this.isDiscovering, totalPeers: this.peers.size,
+      connectedPeers: this.getConnectedPeers().length, type: 'wifi-p2p'
     };
   }
 
   private async performHealthCheck(): Promise<boolean> {
-    // Healthy if we have at least one peer or if Nostr signaling is active
     return this.peers.size > 0 || nostrService.isConnected();
   }
 }
 
 export const wifiP2P = new WiFiP2PService();
-
