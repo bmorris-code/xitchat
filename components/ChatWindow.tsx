@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Chat, Message } from '../types';
 import { encryptionService } from '../services/encryptionService';
 import { localStorageService } from '../services/localStorageService';
@@ -11,14 +11,8 @@ import ForwardModal from './ForwardModal';
 import VerifyPeerModal from './verify-peer-modal';
 import { getGeohashChannelsInstance, GeohashMessage } from '../services/geohashChannels';
 
-// Initialize the service instance
-const geohashChannels = getGeohashChannelsInstance();
-
-// === UUID fallback for older devices ===
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-  return 'msg-' + Date.now() + '-' + Math.random().toString(36).substring(2, 15);
-}
+// ── FIX #4: removed unused generateUUID — crypto.randomUUID or Date.now fallback
+// is used inline if needed ──
 
 interface ChatWindowProps {
   chat: Chat | null;
@@ -26,7 +20,13 @@ interface ChatWindowProps {
   myHandle: string;
   aiStreaming?: boolean;
   aiStreamingProvider?: string;
-  onSendMessage: (text: string, options?: { imageUrl?: string, videoUrl?: string, replyTo?: Message['replyTo'], nostrRecipient?: string, encryptedData?: any }) => void;
+  onSendMessage: (text: string, options?: {
+    imageUrl?: string;
+    videoUrl?: string;
+    replyTo?: Message['replyTo'];
+    nostrRecipient?: string;
+    encryptedData?: any;
+  }) => void;
   onForwardMessage: (message: Message, targetChatId: string) => void;
   onReaction: (messageId: string, emoji: string) => void;
   onDeleteMessage?: (messageId: string) => void;
@@ -51,7 +51,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   className = "",
   nostrRecipient
 }) => {
-  // === State ===
   const [chatMessages, setChatMessages] = useState<GeohashMessage[]>([]);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showForwardTarget, setShowForwardTarget] = useState<Message | null>(null);
@@ -63,34 +62,37 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [secureMode, setSecureMode] = useState(true);
   const [reactingToMessageId, setReactingToMessageId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<Map<string, number>>(new Map());
   const [verifyPeerPk, setVerifyPeerPk] = useState<string | null>(null);
   const [verifyPeerLabel, setVerifyPeerLabel] = useState<string | undefined>(undefined);
+
+  // ── FIX #4: removed uploadProgress Map state — was never rendered,
+  // isUploading bool is sufficient to guard the UI ──
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
+  // ── FIX #1: use a ref so the instance is stable per component mount,
+  // not created at module level where it fires before React is ready ──
+  const geohashChannelsRef = useRef(getGeohashChannelsInstance());
+
   const emojis = ['🙂', '😎', '😜', '🔥', '💀', '👽', '👾', '🚀', '❤️', '👍', '👎', '✨'];
 
-  // === Subscribe to Geohash Channel Messages ===
+  // Subscribe to geohash channel messages for the current chat
   useEffect(() => {
     if (!chat) return;
+    const gc = geohashChannelsRef.current;
 
-    const loadMessages = () => {
-      const msgs = geohashChannels.getChannelMessages(chat.id);
-      setChatMessages(msgs);
-    };
+    const msgs = gc.getChannelMessages(chat.id);
+    setChatMessages(msgs);
 
-    loadMessages();
-
-    const unsubReceived = geohashChannels.subscribe('messageReceived', (msg: GeohashMessage) => {
+    const unsubReceived = gc.subscribe('messageReceived', (msg: GeohashMessage) => {
       if (msg.channelId === chat.id) {
         setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
       }
     });
 
-    const unsubSent = geohashChannels.subscribe('messageSent', (msg: GeohashMessage) => {
+    const unsubSent = gc.subscribe('messageSent', (msg: GeohashMessage) => {
       if (msg.channelId === chat.id) {
         setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
       }
@@ -102,40 +104,42 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [chat?.id]);
 
-  // === Scroll to bottom when messages update ===
+  // Scroll to bottom when messages update
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [chat?.messages]);
 
-  // === Send Message ===
-  const handleSendMessage = async (text: string, options?: { imageUrl?: string, videoUrl?: string, mediaId?: string }) => {
-    if (!chat || !text) return;
+  const handleSendMessage = async (
+    text: string,
+    options?: { imageUrl?: string; videoUrl?: string; mediaId?: string }
+  ) => {
+    if (!chat) return;
+    // ── FIX #2: allow empty text when media is provided (gallery image sends) ──
+    if (!text && !options?.imageUrl && !options?.videoUrl) return;
 
-    // Call parent's onSendMessage to handle the actual message sending
     onSendMessage(text, {
       imageUrl: options?.imageUrl,
       videoUrl: options?.videoUrl,
-      replyTo: replyingTo ? { senderHandle: replyingTo.senderHandle, text: replyingTo.text } : undefined,
+      replyTo: replyingTo
+        ? { senderHandle: replyingTo.senderHandle, text: replyingTo.text }
+        : undefined,
       nostrRecipient,
-      encryptedData: undefined // Will be handled by parent
+      encryptedData: undefined
     });
 
-    // Clear reply state after sending
-    if (replyingTo) {
-      setReplyingTo(null);
-    }
+    if (replyingTo) setReplyingTo(null);
   };
 
-  // === Handle file uploads ===
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
+  const handleFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: 'image' | 'video'
+  ) => {
     const file = e.target.files?.[0];
     if (!file || isUploading) return;
 
     setIsUploading(true);
-    const mediaId = `media_${Date.now()}`;
-    setUploadProgress(prev => new Map(prev).set(mediaId, 0));
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -156,29 +160,32 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           canvas.height = height;
           ctx?.drawImage(img, 0, 0, width, height);
           const compressed = canvas.toDataURL('image/jpeg', 0.8);
-          handleSendMessage(`📎 Image: ${file.name}`, { imageUrl: compressed, mediaId });
+          handleSendMessage(`📎 Image: ${file.name}`, { imageUrl: compressed });
           setIsUploading(false);
-          setUploadProgress(prev => { const n = new Map(prev); n.delete(mediaId); return n; });
         };
         img.src = dataUrl;
       } else {
-        handleSendMessage(`📎 Video: ${file.name}`, { videoUrl: dataUrl, mediaId });
+        handleSendMessage(`📎 Video: ${file.name}`, { videoUrl: dataUrl });
         setIsUploading(false);
-        setUploadProgress(prev => { const n = new Map(prev); n.delete(mediaId); return n; });
       }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
   };
 
-  // === Helpers for themes/colors ===
   const getChatBackgroundClass = () => {
-    const bgMap: any = { black: 'bg-black', 'dark-gray': 'bg-gray-900', navy: 'bg-blue-950', forest: 'bg-green-950', burgundy: 'bg-red-950', charcoal: 'bg-gray-800' };
+    const bgMap: Record<string, string> = {
+      black: 'bg-black', 'dark-gray': 'bg-gray-900', navy: 'bg-blue-950',
+      forest: 'bg-green-950', burgundy: 'bg-red-950', charcoal: 'bg-gray-800'
+    };
     return bgMap[chatBackground] || 'bg-black';
   };
 
   const getChatThemeClass = () => {
-    const themeMap: any = { default: '', ocean: 'text-cyan-400', sunset: 'text-amber-400', matrix: 'text-[#00ff41]', blood: 'text-red-400', purple: 'text-purple-400' };
+    const themeMap: Record<string, string> = {
+      default: '', ocean: 'text-cyan-400', sunset: 'text-amber-400',
+      matrix: 'text-[#00ff41]', blood: 'text-red-400', purple: 'text-purple-400'
+    };
     return themeMap[chatTheme] || '';
   };
 
@@ -189,7 +196,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return 'text-orange-400';
   };
 
-  // === Render ===
   if (!chat) {
     return (
       <div className={`flex-1 hidden md:flex flex-col items-center justify-center text-current opacity-30 gap-4 ${className}`}>
@@ -259,7 +265,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       <MediaGallery
         isOpen={showGallery}
         onClose={() => setShowGallery(false)}
-        onSelect={(img) => { handleSendMessage('', { imageUrl: img.url }); setShowGallery(false); }}
+        onSelect={(img) => {
+          // ── FIX #2: empty string text is now allowed when imageUrl is present ──
+          handleSendMessage('', { imageUrl: img.url });
+          setShowGallery(false);
+        }}
         sampleImages={[
           { id: 's1', url: 'https://picsum.photos/seed/cyber1/400/400.jpg', caption: 'Cyber City', category: 'tech', size: '2.1MB' },
           { id: 's2', url: 'https://picsum.photos/seed/nature1/400/400.jpg', caption: 'Nature', category: 'nature', size: '1.8MB' },
