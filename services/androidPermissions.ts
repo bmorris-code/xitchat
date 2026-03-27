@@ -13,31 +13,48 @@ export interface PermissionResult {
 export class AndroidPermissionsService {
   private isNative: boolean;
 
+  // ── FIX #1: cache plugin instances — registerPlugin should only be called once ──
+  private bluetoothMeshPlugin: any = null;
+  private wifiDirectPlugin: any = null;
+
   constructor() {
     this.isNative = Capacitor.isNativePlatform();
   }
 
-  // Check if running on Android
   private isAndroid(): boolean {
     return this.isNative && Capacitor.getPlatform() === 'android';
   }
 
-  // Request Camera Permissions
+  // ── FIX #1: lazy-load and cache plugin instances ──
+  private async getBluetoothPlugin(): Promise<any> {
+    if (!this.bluetoothMeshPlugin) {
+      const { registerPlugin } = await import('@capacitor/core');
+      this.bluetoothMeshPlugin = registerPlugin<any>('BluetoothMesh');
+    }
+    return this.bluetoothMeshPlugin;
+  }
+
+  private async getWiFiPlugin(): Promise<any> {
+    if (!this.wifiDirectPlugin) {
+      const { registerPlugin } = await import('@capacitor/core');
+      this.wifiDirectPlugin = registerPlugin<any>('WiFiDirect');
+    }
+    return this.wifiDirectPlugin;
+  }
+
   async requestCameraPermissions(): Promise<PermissionResult> {
     if (!this.isNative) {
-      // Web fallback - always grant for web demo
       return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
     }
 
     try {
       const permissions = await Camera.requestPermissions();
-      const cameraPermission = permissions.camera;
-
+      const p = permissions.camera;
       return {
-        granted: cameraPermission === 'granted',
-        denied: cameraPermission === 'denied',
-        permanentlyDenied: cameraPermission === 'denied',
-        canAskAgain: cameraPermission !== 'denied'
+        granted: p === 'granted',
+        denied: p === 'denied',
+        permanentlyDenied: p === 'denied',
+        canAskAgain: p !== 'denied'
       };
     } catch (error) {
       console.error('Camera permission request failed:', error);
@@ -45,35 +62,45 @@ export class AndroidPermissionsService {
     }
   }
 
-  // Request Location Permissions
   async requestLocationPermissions(): Promise<PermissionResult> {
     if (!this.isNative) {
-      // Web fallback
-      try {
-        await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-        });
-        return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
-      } catch (error) {
-        return { granted: false, denied: true, permanentlyDenied: false, canAskAgain: true };
+      // ── FIX #3: use Permissions API on web instead of triggering GPS ──
+      if ('permissions' in navigator) {
+        try {
+          const result = await navigator.permissions.query({ name: 'geolocation' });
+          return {
+            granted: result.state === 'granted',
+            denied: result.state === 'denied',
+            permanentlyDenied: result.state === 'denied',
+            canAskAgain: result.state === 'prompt'
+          };
+        } catch {}
       }
+      // Fallback for browsers without Permissions API
+      return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
     }
 
     try {
-      const position = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 30000
-      });
+      // Use checkPermissions first to avoid unnecessary GPS trigger
+      const check = await Geolocation.checkPermissions();
+      if (check.location === 'granted') {
+        return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
+      }
 
-      return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
+      // Only call requestPermissions if not already granted
+      const perms = await Geolocation.requestPermissions();
+      const p = perms.location;
+      return {
+        granted: p === 'granted',
+        denied: p === 'denied',
+        permanentlyDenied: p === 'denied',
+        canAskAgain: p !== 'denied'
+      };
     } catch (error: any) {
       console.error('Location permission request failed:', error);
-
-      // Check if it's a permanent denial
-      const isPermanentlyDenied = error?.message?.includes('PERMANENTLY_DENIED') ||
+      const isPermanentlyDenied =
+        error?.message?.includes('PERMANENTLY_DENIED') ||
         error?.message?.includes('permission denied');
-
       return {
         granted: false,
         denied: true,
@@ -83,59 +110,48 @@ export class AndroidPermissionsService {
     }
   }
 
-  // Request Push Notification Permissions
   async requestPushPermissions(): Promise<PermissionResult> {
     if (!this.isNative) {
-      // Web fallback
       return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
     }
-
-    try {
-      // Push notifications are disabled in this build
-      return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
-    } catch (error) {
-      console.error('Push notification permission request failed:', error);
-      return { granted: false, denied: true, permanentlyDenied: false, canAskAgain: true };
-    }
+    // Push notifications disabled in this build
+    return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
   }
 
-  // Request Bluetooth & Nearby Devices Permissions (Android 12+)
   async requestBluetoothPermissions(): Promise<PermissionResult> {
-    if (!this.isNative) return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
+    if (!this.isNative) {
+      return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
+    }
 
     console.log('📶 Checking Bluetooth/WiFi permissions...');
 
     try {
-      const { registerPlugin } = await import('@capacitor/core');
-      const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
-      const WiFiDirect = registerPlugin<any>('WiFiDirect');
+      // ── FIX #1: use cached plugin instances ──
+      const BluetoothMesh = await this.getBluetoothPlugin();
+      const WiFiDirect = await this.getWiFiPlugin();
 
-      // Check Android version if possible, or just catch errors per request
-      // On Android 11 and below, these might fail or return nothing
       let btGranted = false;
       let wifiGranted = false;
 
       try {
-        console.log('📡 Requesting BluetoothMesh permissions...');
         const btResult = await BluetoothMesh.requestPermissions();
-        console.log('BT Permission Result:', btResult);
-        // On Android 11, location is often the key
-        btGranted = btResult.location === 'granted' || btResult.bluetoothScan === 'granted' || btResult.bluetooth === 'granted';
+        btGranted = btResult.location === 'granted' ||
+          btResult.bluetoothScan === 'granted' ||
+          btResult.bluetooth === 'granted';
       } catch (e) {
-        console.warn('BluetoothMesh.requestPermissions failed (might be Android < 12):', e);
-        // Fallback: check location which is the real gatekeeper on Android < 12
+        console.warn('BluetoothMesh.requestPermissions failed (Android < 12):', e);
         const locStatus = await this.requestLocationPermissions();
         btGranted = locStatus.granted;
       }
 
       try {
-        console.log('📡 Requesting WiFiDirect permissions...');
         const wifiResult = await WiFiDirect.requestPermissions();
-        console.log('WiFi Permission Result:', wifiResult);
-        wifiGranted = wifiResult.location === 'granted' || wifiResult.nearbyWifiDevices === 'granted' || wifiResult.wifiState === 'granted';
+        wifiGranted = wifiResult.location === 'granted' ||
+          wifiResult.nearbyWifiDevices === 'granted' ||
+          wifiResult.wifiState === 'granted';
       } catch (e) {
         console.warn('WiFiDirect.requestPermissions failed:', e);
-        wifiGranted = btGranted; // Fallback to whatever BT got
+        wifiGranted = btGranted;
       }
 
       return {
@@ -145,12 +161,11 @@ export class AndroidPermissionsService {
         canAskAgain: true
       };
     } catch (error) {
-      console.error('Bluetooth/WiFi permission request failed completely:', error);
+      console.error('Bluetooth/WiFi permission request failed:', error);
       return { granted: false, denied: true, permanentlyDenied: false, canAskAgain: true };
     }
   }
 
-  // Request all critical permissions for the app
   async requestAllCriticalPermissions(): Promise<{
     camera: PermissionResult;
     location: PermissionResult;
@@ -168,49 +183,37 @@ export class AndroidPermissionsService {
       overallGranted: false
     };
 
-    // Calculate overall success
-    results.overallGranted = results.camera.granted && results.location.granted && results.bluetooth.granted;
+    results.overallGranted = results.camera.granted &&
+      results.location.granted &&
+      results.bluetooth.granted;
 
-    // Log results
-    console.log('📸 Camera Permission:', results.camera);
-    console.log('📍 Location Permission:', results.location);
-    console.log('🔔 Push Permission:', results.push);
-    console.log('✅ Overall Success:', results.overallGranted);
+    console.log('📸 Camera:', results.camera.granted ? 'granted' : 'denied');
+    console.log('📍 Location:', results.location.granted ? 'granted' : 'denied');
+    console.log('📶 Bluetooth:', results.bluetooth.granted ? 'granted' : 'denied');
+    console.log('✅ Overall:', results.overallGranted);
 
-    // Trigger haptic feedback on completion
     try {
       await nativeDevice.triggerHaptic();
-    } catch (error) {
-      console.log('Haptic feedback not available');
-    }
+    } catch {}
 
     return results;
   }
 
-  // Check current permission status without requesting
-  async checkPermissionStatus(): Promise<{
-    camera: string;
-    location: string;
-    push: string;
-  }> {
+  async checkPermissionStatus(): Promise<{ camera: string; location: string; push: string }> {
     if (!this.isNative) {
-      return {
-        camera: 'prompt', // Web always prompts
-        location: 'prompt',
-        push: 'prompt'
-      };
+      return { camera: 'prompt', location: 'prompt', push: 'prompt' };
     }
 
     try {
       const cameraPerms = await Camera.checkPermissions();
 
-      // For location, we need to try getting position to check
+      // ── FIX #2: use checkPermissions() not getCurrentPosition() ──
       let locationStatus = 'prompt';
       try {
-        await Geolocation.getCurrentPosition({ timeout: 1000 });
-        locationStatus = 'granted';
-      } catch (error) {
-        locationStatus = 'denied';
+        const locPerms = await Geolocation.checkPermissions();
+        locationStatus = locPerms.location || 'prompt';
+      } catch {
+        locationStatus = 'prompt';
       }
 
       return {
@@ -220,33 +223,18 @@ export class AndroidPermissionsService {
       };
     } catch (error) {
       console.error('Error checking permission status:', error);
-      return {
-        camera: 'prompt',
-        location: 'prompt',
-        push: 'prompt'
-      };
+      return { camera: 'prompt', location: 'prompt', push: 'prompt' };
     }
   }
 
-  // Open app settings for manual permission grant
+  // ── FIX #4: openAppSettings returns false — not yet implemented ──
   async openAppSettings(): Promise<boolean> {
-    if (!this.isNative) {
-      console.log('App settings not available on web');
-      return false;
-    }
-
-    try {
-      // This would require a custom Capacitor plugin or using the App Launcher
-      // For now, we'll just log it
-      console.log('Please manually enable permissions in app settings');
-      return true;
-    } catch (error) {
-      console.error('Failed to open app settings:', error);
-      return false;
-    }
+    if (!this.isNative) return false;
+    // TODO: implement via @capacitor/app or a custom plugin
+    console.warn('openAppSettings: not yet implemented — direct user to Settings manually');
+    return false;
   }
 
-  // Get user-friendly permission status text
   getPermissionStatusText(result: PermissionResult): string {
     if (result.granted) return 'Granted';
     if (result.permanentlyDenied) return 'Permanently Denied';
@@ -254,8 +242,11 @@ export class AndroidPermissionsService {
     return 'Not Requested';
   }
 
-  // Check if any permissions are permanently denied
-  hasPermanentDenials(results: { camera: PermissionResult; location: PermissionResult; push: PermissionResult }): boolean {
+  hasPermanentDenials(results: {
+    camera: PermissionResult;
+    location: PermissionResult;
+    push: PermissionResult;
+  }): boolean {
     return results.camera.permanentlyDenied ||
       results.location.permanentlyDenied ||
       results.push.permanentlyDenied;
