@@ -6,6 +6,10 @@
 const API_BASE = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_API_BASE_URL : '') || '';
 
 async function groqFetch(body: object): Promise<any> {
+  // In local dev with no API base configured, skip the network call entirely
+  const isDev = (import.meta as any).env?.DEV === true;
+  if (isDev && !API_BASE) throw new Error('API proxy not available in dev mode');
+
   const res = await fetch(`${API_BASE}/api/groq`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

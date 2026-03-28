@@ -61,10 +61,12 @@ class RealTorService {
   constructor() {
     this.localPeerId = this.generatePeerId();
     this.loadSettings();
-    // Start connection process asynchronously to avoid blocking initialization
-    setTimeout(() => {
-      this.connectToSignalingServer();
-    }, 100);
+    // Only connect if Tor has been explicitly enabled by the user
+    if (this.isEnabled) {
+      setTimeout(() => {
+        this.connectToSignalingServer();
+      }, 100);
+    }
   }
 
   private generatePeerId(): string {
