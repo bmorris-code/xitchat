@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XitChat Privacy Policy</title>
+  <style>
+    body { font-family: 'JetBrains Mono', monospace; background: #020202; color: #00ff41; margin: 0; padding: 40px 20px; line-height: 1.7; }
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 28px; border-bottom: 1px solid #00ff41; padding-bottom: 10px; }
+    h2 { font-size: 18px; margin-top: 36px; color: #00cc33; }
+    p, li { font-size: 14px; opacity: 0.9; }
+    ul { padding-left: 20px; }
+    a { color: #00ff41; }
+    .updated { font-size: 12px; opacity: 0.6; margin-bottom: 32px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>XitChat Privacy Policy</h1>
+    <p class="updated">Last updated: March 28, 2026</p>
+
+    <h2>1. Overview</h2>
+    <p>XitChat is a decentralized, serverless mesh messaging application. We are committed to protecting your privacy. This policy explains what data is collected, how it is used, and your rights.</p>
+
+    <h2>2. Data We Do NOT Collect</h2>
+    <ul>
+      <li>We do not operate servers that store your messages.</li>
+      <li>We do not collect your name, email address, or phone number.</li>
+      <li>We do not track your location.</li>
+      <li>We do not sell or share your data with third parties.</li>
+      <li>We do not use advertising networks or analytics trackers.</li>
+    </ul>
+
+    <h2>3. Data Stored Locally on Your Device</h2>
+    <p>The following data is stored only on your device and never transmitted to our servers:</p>
+    <ul>
+      <li>Your chosen display name and handle</li>
+      <li>Your cryptographic key pair (used for message signing on the Nostr network)</li>
+      <li>Your message history (stored in your browser's local storage)</li>
+      <li>App preferences and settings</li>
+    </ul>
+
+    <h2>4. Peer-to-Peer Communications</h2>
+    <p>XitChat uses the following decentralized protocols to deliver messages:</p>
+    <ul>
+      <li><strong>Nostr protocol</strong> — Messages are relayed through public Nostr relay servers. Direct messages are end-to-end encrypted (NIP-04). Room messages are broadcast to relay servers.</li>
+      <li><strong>WebRTC</strong> — Direct peer-to-peer connections for real-time messaging. Signaling is handled via Ably; no message content is stored by Ably.</li>
+      <li><strong>Bluetooth BLE</strong> — Local device discovery and messaging. All communication stays within Bluetooth range and is not transmitted over the internet.</li>
+      <li><strong>Wi-Fi Direct</strong> — Local network peer-to-peer messaging. All communication stays on the local network.</li>
+    </ul>
+
+    <h2>5. Permissions Used</h2>
+    <ul>
+      <li><strong>Bluetooth</strong> — Required to discover and communicate with nearby XitChat users.</li>
+      <li><strong>Location (foreground)</strong> — Required by Android for Bluetooth LE scanning. We do not store or transmit your location.</li>
+      <li><strong>Camera</strong> — Used only for scanning QR invite codes. Photos are not stored or transmitted.</li>
+      <li><strong>Nearby Wi-Fi Devices</strong> — Required for Wi-Fi Direct peer discovery on Android 12+.</li>
+      <li><strong>Notifications</strong> — Used to alert you of incoming messages.</li>
+    </ul>
+
+    <h2>6. AI Assistant (XitBot)</h2>
+    <p>XitChat includes an optional AI assistant powered by Groq and Google Gemini APIs. When you use XitBot, your message is sent to these third-party AI services to generate a response. Please review their privacy policies:</p>
+    <ul>
+      <li><a href="https://groq.com/privacy-policy/" target="_blank">Groq Privacy Policy</a></li>
+      <li><a href="https://policies.google.com/privacy" target="_blank">Google Privacy Policy</a></li>
+    </ul>
+    <p>XitBot usage is optional. You can use XitChat without ever interacting with the AI assistant.</p>
+
+    <h2>7. Children's Privacy</h2>
+    <p>XitChat is not directed at children under 13 years of age. We do not knowingly collect personal information from children under 13.</p>
+
+    <h2>8. Changes to This Policy</h2>
+    <p>We may update this Privacy Policy from time to time. Changes will be reflected on this page with an updated date.</p>
+
+    <h2>9. Contact</h2>
+    <p>If you have questions about this Privacy Policy, please open an issue on our GitHub repository or contact us through the app.</p>
+  </div>
+</body>
+</html>
