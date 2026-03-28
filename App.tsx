@@ -1444,39 +1444,42 @@ const App: React.FC = () => {
       case 'native': return <NativeFeaturesView onBack={() => setView('apps')} />;
       case 'nostr':
         return (
-          <div className="flex-1 p-6 overflow-y-auto bg-black text-current animate-in fade-in zoom-in-95 duration-300">
-            <div className="flex justify-between items-center mb-10 border-b border-current pb-4">
-              <div>
-                <h2 className="text-3xl font-bold uppercase tracking-tighter glow-text">nostr_network.bin</h2>
-                <p className="text-[10px] font-bold opacity-50 uppercase tracking-[0.2em] mt-1 text-white/40">
-                  {nostrConnected ? 'connected_to_global_mesh' : 'offline_mode'}
-                </p>
+          <div className="flex-1 p-3 overflow-y-auto bg-black text-current animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex justify-between items-center mb-4 border-b border-current pb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <button onClick={() => setView('apps')} className="terminal-btn px-2 py-0 h-8 text-[10px] uppercase shrink-0">back</button>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold uppercase tracking-tight glow-text truncate">nostr_network.bin</h2>
+                  <p className="text-[9px] font-bold opacity-50 uppercase tracking-wider mt-0.5 text-white/40 truncate">
+                    {nostrConnected ? 'connected_to_global_mesh' : 'offline_mode'}
+                  </p>
+                </div>
               </div>
-              <div className={`px-3 py-1 text-xs font-bold uppercase ${nostrConnected ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} border border-current border-opacity-20`}>
+              <div className={`ml-2 shrink-0 px-2 py-1 text-xs font-bold uppercase ${nostrConnected ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'} border border-current border-opacity-20`}>
                 {nostrConnected ? 'ONLINE' : 'OFFLINE'}
               </div>
             </div>
-            <div className="mb-8 p-4 border border-current border-opacity-20 bg-[#050505]">
-              <div className="flex items-center gap-4 mb-4">
-                <div className={`w-3 h-3 rounded-full ${nostrConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
-                <div>
+            <div className="mb-4 p-3 border border-current border-opacity-20 bg-[#050505]">
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-3 h-3 rounded-full shrink-0 ${nostrConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-bold uppercase">Network Status</h3>
-                  <p className="text-xs opacity-60">
+                  <p className="text-xs opacity-60 truncate">
                     {nostrConnected ? `Connected to ${(nostrService.getConnectionInfo() as any).relayCount} relays` : 'Disconnected from Nostr network'}
                   </p>
                 </div>
               </div>
               {nostrConnected && (
-                <div className="text-xs font-mono opacity-40">
+                <div className="text-xs font-mono opacity-40 truncate">
                   Public Key: <span className="text-[#00ff41]">{nostrService.getPublicKey()?.substring(0, 16)}...</span>
                 </div>
               )}
             </div>
-            <div className="mb-8">
-              <h3 className="text-lg font-bold uppercase mb-4">search_nodes</h3>
+            <div className="mb-4">
+              <h3 className="text-sm font-bold uppercase mb-3">search_nodes</h3>
               <div className="flex gap-2">
                 <input type="text" placeholder="Search Nostr users..."
-                  className="flex-1 bg-black border border-current border-opacity-20 px-4 py-2 text-sm font-mono focus:outline-none focus:border-opacity-100"
+                  className="flex-1 min-w-0 bg-black border border-current border-opacity-20 px-3 py-2 text-sm font-mono focus:outline-none focus:border-opacity-100"
                   onKeyPress={(e) => {
                     if (e.key === 'Enter' && e.currentTarget.value) {
                       handleSearchNostrUsers(e.currentTarget.value);
@@ -1486,16 +1489,16 @@ const App: React.FC = () => {
                 <button onClick={() => {
                   const input = document.querySelector('input[placeholder="Search Nostr users..."]') as HTMLInputElement;
                   if (input?.value) { handleSearchNostrUsers(input.value); input.value = ''; }
-                }} className="px-4 py-2 border border-current border-opacity-20 text-sm font-bold uppercase hover:bg-white/[0.05] active:scale-95 transition-all">
+                }} className="shrink-0 px-3 py-2 border border-current border-opacity-20 text-xs font-bold uppercase hover:bg-white/[0.05] active:scale-95 transition-all">
                   Search
                 </button>
               </div>
             </div>
             <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold uppercase">active_nodes ({nostrPeers.length})</h3>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-bold uppercase truncate min-w-0">active_nodes ({nostrPeers.length})</h3>
                 <button onClick={() => setShowQRDiscovery(!showQRDiscovery)}
-                  className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
+                  className="shrink-0 ml-2 px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors">
                   🔍 Discover
                 </button>
               </div>
@@ -1505,20 +1508,20 @@ const App: React.FC = () => {
                 ) : (
                   nostrPeers.map(peer => (
                     <div key={peer.id} onClick={() => handleNostrPeerChat(peer)}
-                      className="p-4 border border-current border-opacity-20 bg-[#050505] hover:bg-white/[0.05] cursor-pointer transition-all group">
-                      <div className="flex items-center gap-4">
-                        <img src={peer.picture || '/icon-192.png'} alt={peer.name || 'Nostr User'} className="w-12 h-12 rounded-full object-cover" />
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-sm group-hover:text-[#00ff41]">
+                      className="p-3 border border-current border-opacity-20 bg-[#050505] hover:bg-white/[0.05] cursor-pointer transition-all group">
+                      <div className="flex items-center gap-3">
+                        <img src={peer.picture || '/icon-192.png'} alt={peer.name || 'Nostr User'} className="w-10 h-10 shrink-0 rounded-full object-cover" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <h4 className="font-bold text-sm group-hover:text-[#00ff41] truncate">
                               {peer.name || `Anonymous ${peer.id.substring(0, 8)}`}
                             </h4>
-                            {peer.nip05 && <span className="text-xs opacity-40 font-mono">{peer.nip05}</span>}
+                            {peer.nip05 && <span className="text-xs opacity-40 font-mono truncate">{peer.nip05}</span>}
                           </div>
-                          <p className="text-xs opacity-60 mt-1">{peer.about || 'No description available'}</p>
-                          <p className="text-xs opacity-40 font-mono mt-1">{peer.id.substring(0, 16)}...</p>
+                          <p className="text-xs opacity-60 mt-0.5 truncate">{peer.about || 'No description available'}</p>
+                          <p className="text-xs opacity-40 font-mono mt-0.5">{peer.id.substring(0, 16)}...</p>
                         </div>
-                        <div className="text-xs opacity-40"><i className="fa-solid fa-message"></i></div>
+                        <div className="text-xs opacity-40 shrink-0"><i className="fa-solid fa-message"></i></div>
                       </div>
                     </div>
                   ))
@@ -1527,37 +1530,37 @@ const App: React.FC = () => {
             </div>
             {showQRDiscovery && (
               <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-                <div className="bg-black border border-green-500/30 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-                  <div className="flex justify-between items-center p-4 border-b border-green-500/30">
-                    <h3 className="text-xl font-bold text-green-400">🔗 Peer Discovery</h3>
+                <div className="bg-black border border-green-500/30 rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
+                  <div className="flex justify-between items-center p-3 border-b border-green-500/30">
+                    <h3 className="text-base font-bold text-green-400">🔗 Peer Discovery</h3>
                     <button onClick={() => setShowQRDiscovery(false)} className="text-gray-400 hover:text-white">✕</button>
                   </div>
-                  <div className="p-4">
+                  <div className="p-3">
                     <QRDiscovery onPeerConnected={(peer) => { console.log('Peer connected via QR:', peer); setShowQRDiscovery(false); }} />
                   </div>
                 </div>
               </div>
             )}
             {discoveredPeers.length > 0 && (
-              <div>
-                <h3 className="text-lg font-bold uppercase mb-4">discovered_peers ({discoveredPeers.length})</h3>
+              <div className="mt-4">
+                <h3 className="text-sm font-bold uppercase mb-3">discovered_peers ({discoveredPeers.length})</h3>
                 <div className="space-y-2">
                   {discoveredPeers.map(peer => (
                     <div key={peer.id} onClick={() => enhancedDiscovery.connectToPeer(peer.id)}
-                      className={`p-4 border border-current border-opacity-20 bg-[#050505] hover:bg-white/[0.05] cursor-pointer transition-all group ${peer.isConnected ? 'border-green-500/50' : ''}`}>
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                      className={`p-3 border border-current border-opacity-20 bg-[#050505] hover:bg-white/[0.05] cursor-pointer transition-all group ${peer.isConnected ? 'border-green-500/50' : ''}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 shrink-0 bg-green-500/20 rounded-full flex items-center justify-center">
                           <span className="text-green-400 text-xs">
                             {peer.discoveryMethod === 'bluetooth' ? '📶' : peer.discoveryMethod === 'local-network' ? '🌐' : peer.discoveryMethod === 'qr-code' ? '📱' : '🔗'}
                           </span>
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold">{peer.name}</span>
-                            <span className="text-xs opacity-60">{peer.handle}</span>
-                            {peer.isConnected && <span className="text-xs bg-green-500/20 text-green-400 px-2 py-1 rounded">Connected</span>}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-bold truncate">{peer.name}</span>
+                            <span className="text-xs opacity-60 shrink-0">{peer.handle}</span>
+                            {peer.isConnected && <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded shrink-0">Connected</span>}
                           </div>
-                          <div className="text-xs opacity-60">{peer.discoveryMethod} • Last seen: {new Date(peer.lastSeen).toLocaleTimeString()}</div>
+                          <div className="text-xs opacity-60 truncate">{peer.discoveryMethod} • Last seen: {new Date(peer.lastSeen).toLocaleTimeString()}</div>
                         </div>
                       </div>
                     </div>

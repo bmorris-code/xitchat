@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XitChat – Privacy Policy</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; color: #111; line-height: 1.7; }
+    h1 { font-size: 1.8rem; margin-bottom: 4px; }
+    h2 { font-size: 1.1rem; margin-top: 32px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+    p, li { font-size: 0.95rem; }
+    a { color: #0066cc; }
+    .updated { color: #666; font-size: 0.85rem; margin-bottom: 32px; }
+  </style>
+</head>
+<body>
+
+<h1>XitChat Privacy Policy</h1>
+<p class="updated">Last updated: March 2026</p>
+
+<p>XitChat ("we", "our", "the app") is a decentralised mesh-networking chat application. We are committed to protecting your privacy. This policy explains what data the app collects, how it is used, and your rights.</p>
+
+<h2>1. Data We Collect</h2>
+<ul>
+  <li><strong>Identity data</strong> — A cryptographic key pair (secp256k1) is generated on your device when you first launch the app. This acts as your anonymous identity. Your chosen display name and status are stored locally and optionally broadcast to the Nostr network.</li>
+  <li><strong>Location data</strong> — Your approximate location (geohash) is used to connect you to nearby mesh nodes and local chat rooms. Location is never sent to our servers. You may deny this permission at any time.</li>
+  <li><strong>Messages</strong> — Chat messages are stored locally on your device. Messages sent over the Nostr relay network are end-to-end encrypted (NIP-04). We do not store your messages on any central server.</li>
+  <li><strong>Camera and media</strong> — The camera is accessed only when you choose to share a photo. Images are processed locally and sent directly to the recipient.</li>
+  <li><strong>Bluetooth and nearby devices</strong> — Used solely for local mesh discovery and peer-to-peer communication. No Bluetooth data is sent to our servers.</li>
+  <li><strong>Device information</strong> — Basic device state (network connectivity, battery, platform) is used locally to optimise mesh routing. This data is not transmitted off-device.</li>
+</ul>
+
+<h2>2. Data We Do Not Collect</h2>
+<p>We do not collect, store, or sell:</p>
+<ul>
+  <li>Your real name, email address, or phone number</li>
+  <li>Advertising identifiers</li>
+  <li>Browsing history or app usage analytics</li>
+  <li>Payment information</li>
+</ul>
+
+<h2>3. Third-Party Services</h2>
+<ul>
+  <li><strong>Ably</strong> — Used for WebRTC signalling and real-time connectivity. Ably receives connection metadata (IP address, timestamps) subject to <a href="https://ably.com/privacy" target="_blank">Ably's Privacy Policy</a>.</li>
+  <li><strong>Groq / Google Gemini</strong> — Used to power the XitBot AI assistant. When you interact with XitBot, your message text is sent to our secure server proxy, which forwards it to the AI provider. No personally identifying information is attached. See <a href="https://groq.com/privacy-policy/" target="_blank">Groq's Privacy Policy</a> and <a href="https://policies.google.com/privacy" target="_blank">Google's Privacy Policy</a>.</li>
+  <li><strong>Nostr relay network</strong> — Public Nostr relays are used for decentralised message delivery. Messages sent via Nostr are end-to-end encrypted. Relay operators can see encrypted ciphertext and metadata (public key, timestamp).</li>
+</ul>
+
+<h2>4. Data Storage and Security</h2>
+<p>All user data (identity keys, messages, settings) is stored locally on your device in the app's private sandboxed storage. Android's security model prevents other apps from accessing this data. We use industry-standard encryption (AES-GCM, secp256k1) for messages in transit.</p>
+
+<h2>5. Permissions</h2>
+<p>The app requests the following permissions and uses them only for the stated purpose:</p>
+<ul>
+  <li><strong>Location</strong> — Local mesh discovery and geohash-based chat rooms</li>
+  <li><strong>Bluetooth</strong> — Short-range device-to-device mesh networking</li>
+  <li><strong>Camera</strong> — Sharing photos in chat and QR code peer discovery</li>
+  <li><strong>Nearby Wi-Fi Devices</strong> — Wi-Fi Direct peer-to-peer mesh networking</li>
+  <li><strong>Notifications</strong> — New message alerts</li>
+</ul>
+<p>You can revoke any permission at any time in your device settings.</p>
+
+<h2>6. Children's Privacy</h2>
+<p>XitChat is not directed at children under 13. We do not knowingly collect data from children. If you believe a child has used the app, please contact us so we can take appropriate action.</p>
+
+<h2>7. Data Deletion</h2>
+<p>To delete all your data, use the <strong>Factory Reset</strong> option in the app settings. This wipes all locally stored keys, messages, and settings. Because your identity is cryptographic and stored only on your device, deleting the app also permanently removes it.</p>
+
+<h2>8. Changes to This Policy</h2>
+<p>We may update this policy from time to time. Significant changes will be noted in the app. Continued use of the app after changes constitutes acceptance of the updated policy.</p>
+
+<h2>9. Contact</h2>
+<p>Questions about this policy? Contact us at: <a href="mailto:privacy@xitchat.app">privacy@xitchat.app</a></p>
+
+</body>
+</html>

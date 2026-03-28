@@ -227,9 +227,10 @@ class HybridMeshService {
 
   private async startWebRTC(): Promise<boolean> {
     try {
-      const apiKey = import.meta.env.VITE_ABLY_API_KEY;
-      if (!apiKey) return false;
-      const success = await ablyWebRTC.initialize(apiKey);
+      // Use token auth — master key stays server-side, client gets a short-lived token
+      const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+      const authUrl = `${apiBase}/api/ably-token`;
+      const success = await ablyWebRTC.initialize(authUrl);
       if (success) {
         this.activeServices.webrtc = true;
         ablyWebRTC.subscribe('messageReceived', (msg: any) => this.handleMessage('webrtc', msg));

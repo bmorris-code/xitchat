@@ -115,44 +115,44 @@ const GamesView: React.FC<GamesViewProps> = ({ onWinXC, onBack }) => {
 
   // Games list view
   return (
-    <div className="flex-1 flex flex-col bg-black text-current font-mono p-6">
+    <div className="flex-1 flex flex-col bg-black text-current font-mono p-3">
       {/* Header */}
-      <div className="flex justify-between items-center mb-10 border-b border-current pb-4">
-        <div className="flex items-center gap-4">
+      <div className="flex justify-between items-center mb-4 border-b border-current pb-3">
+        <div className="flex items-center gap-2 min-w-0">
           {onBack && (
-            <button onClick={onBack} className="terminal-btn px-2 py-0 h-8 text-[10px] uppercase">back_to_hub</button>
+            <button onClick={onBack} className="terminal-btn px-2 py-0 h-8 text-[10px] uppercase shrink-0">back</button>
           )}
-          <div>
-            <h2 className="text-lg font-bold uppercase tracking-tighter glow-text">play_lounge.exe</h2>
-            <p className="text-[10px] font-bold opacity-50 uppercase tracking-[0.2em] mt-1 text-white/40">active_games_directory</p>
+          <div className="min-w-0">
+            <h2 className="text-base font-bold uppercase tracking-tight glow-text truncate">play_lounge.exe</h2>
+            <p className="text-[9px] font-bold opacity-50 uppercase tracking-wider mt-0.5 text-white/40 truncate">active_games_directory</p>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] opacity-40 uppercase tracking-widest">total_players</div>
-          <div className="text-lg font-bold">{games.reduce((sum, game) => sum + parseInt(game.players), 0).toLocaleString()}</div>
+        <div className="text-right shrink-0 ml-2">
+          <div className="text-[9px] opacity-40 uppercase tracking-wide">players</div>
+          <div className="text-base font-bold">{games.reduce((sum, game) => sum + parseInt(game.players), 0).toLocaleString()}</div>
         </div>
       </div>
 
       {/* Scrollable Games Container */}
       <div className="flex-1 overflow-y-auto no-scrollbar">
         {/* Games Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-6">
+        <div className="grid grid-cols-1 gap-3 pb-4">
           {games.map((game) => (
             <div
               key={game.id}
               onClick={() => launchGame(game.id)}
-              className="border border-current border-opacity-30 bg-[#050505] p-6 flex flex-col gap-4 hover:bg-white/[0.05] hover:border-opacity-100 transition-all cursor-pointer group active:scale-95"
+              className="border border-current border-opacity-30 bg-[#050505] p-3 flex flex-col gap-3 hover:bg-white/[0.05] hover:border-opacity-100 transition-all cursor-pointer group active:scale-95"
             >
               {/* Game Image */}
               <div className="aspect-video bg-black border border-current border-opacity-20 overflow-hidden relative">
-                <img 
-                  src={game.img} 
+                <img
+                  src={game.img}
                   alt={game.name}
                   className="w-full h-full object-cover opacity-50 group-hover:opacity-100 transition-all"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-4">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex items-end p-3">
                   <div className="text-white">
-                    <h3 className="text-xl font-bold">{game.name}</h3>
+                    <h3 className="text-lg font-bold">{game.name}</h3>
                     <p className="text-xs opacity-80">{game.category}</p>
                   </div>
                 </div>
@@ -161,14 +161,14 @@ const GamesView: React.FC<GamesViewProps> = ({ onWinXC, onBack }) => {
               {/* Game Info */}
               <div className="flex-1">
                 <p className="text-xs opacity-60 mb-2">{game.description}</p>
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-yellow-400 font-bold">{game.xc}</span>
-                  <span className="opacity-40">{game.players} players</span>
+                <div className="flex justify-between items-center text-xs gap-2">
+                  <span className="text-yellow-400 font-bold truncate">{game.xc}</span>
+                  <span className="opacity-40 shrink-0">{game.players} players</span>
                 </div>
               </div>
 
               {/* Play Button */}
-              <button className="terminal-btn active w-full py-3 text-sm font-bold uppercase tracking-widest">
+              <button className="terminal-btn active w-full py-2 text-sm font-bold uppercase tracking-widest">
                 launch_game
               </button>
             </div>
@@ -177,8 +177,8 @@ const GamesView: React.FC<GamesViewProps> = ({ onWinXC, onBack }) => {
       </div>
 
       {/* Footer */}
-      <div className="mt-10 text-center">
-        <p className="text-[10px] opacity-40 uppercase tracking-widest">
+      <div className="mt-3 text-center">
+        <p className="text-[9px] opacity-40 uppercase tracking-wide">
           Play games to earn XC coins • Compete with friends • Unlock achievements
         </p>
       </div>

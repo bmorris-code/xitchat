@@ -36,11 +36,12 @@ export class HybridMeshWebRTC {
 
       const ablyKey = apiKey;
       if (!ablyKey) {
-        console.debug('⚠️ Ably API key not provided - skipping WebRTC mesh');
+        console.debug('⚠️ Ably auth not provided - skipping WebRTC mesh');
         return false;
       }
 
-      this.ably = new Ably.Realtime(ablyKey);
+      // ablyKey is an authUrl (token endpoint) — master key stays server-side
+      this.ably = new Ably.Realtime({ authUrl: ablyKey });
       this.channel = this.ably.channels.get(this.currentRoom);
 
       // ── FIX #2: store handlers so disconnect() can remove them ──

@@ -1,20 +1,23 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type } from '@google/genai';
 
-const getClientEnv = (key: string): string => {
-  const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
-  const processEnv = typeof process !== 'undefined' ? (process as any).env : undefined;
-  return metaEnv?.[key] || processEnv?.[key] || '';
-};
+// Calls our server-side proxy — API key never reaches the client/APK.
+const API_BASE = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_API_BASE_URL : '') || '';
 
-const geminiApiKey = getClientEnv('VITE_GEMINI_API_KEY');
-const ai: GoogleGenAI | null = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : null;
+async function geminiFetch(body: object): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/gemini`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Proxy error ${res.status}`);
+  const data = await res.json();
+  // Normalise to a .text property matching the SDK response shape
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? null;
+  return { text };
+}
 
 const chatCache = new Map<string, { response: string; timestamp: number }>();
 const CHAT_CACHE_DURATION = 2 * 60 * 1000;
-let lastChatApiCall = 0;
-const CHAT_API_COOLDOWN = 1000;
-let lastGlobalApiCall = 0;
-const GLOBAL_API_COOLDOWN = 2000;
 const DAILY_API_LIMIT = 500;
 let dailyApiCount = 0;
 let lastDailyReset = Date.now();
@@ -34,33 +37,23 @@ export const getXitBotResponse = async (userMessage: string): Promise<string> =>
   const now = Date.now();
   const cacheKey = userMessage.toLowerCase().trim();
 
-  if (!ai) return getFallbackChatResponse(userMessage);
-
   maybeResetDailyCounter(now);
   if (dailyApiCount >= DAILY_API_LIMIT) return getFallbackChatResponse(userMessage);
 
   const cached = chatCache.get(cacheKey);
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) return cached.response;
 
-  if (now - lastGlobalApiCall < GLOBAL_API_COOLDOWN || now - lastChatApiCall < CHAT_API_COOLDOWN) {
-  }
-
   try {
-    lastChatApiCall = now;
-    lastGlobalApiCall = now;
     dailyApiCount++;
-
-    const response = await ai.models.generateContent({
+    const response = await geminiFetch({
       model: 'gemini-1.5-flash-001',
       contents: userMessage,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        temperature: 0.8,
-        topP: 0.9
-      }
+      systemInstruction: SYSTEM_PROMPT,
+      temperature: 0.8,
+      topP: 0.9
     });
 
-    const result = (response as any).text || getFallbackChatResponse(userMessage);
+    const result = response.text || getFallbackChatResponse(userMessage);
     chatCache.set(cacheKey, { response: result, timestamp: now });
     return result;
   } catch (error) {
@@ -72,15 +65,8 @@ export const streamXitBotResponseGemini = async (
   userMessage: string,
   onToken: (token: string, fullText: string) => void
 ): Promise<string> => {
-  if (!ai) {
-    const fallback = getFallbackChatResponse(userMessage);
-    onToken(fallback, fallback);
-    return fallback;
-  }
-
-  const now = Date.now();
   const cacheKey = userMessage.toLowerCase().trim();
-  maybeResetDailyCounter(now);
+  const now = Date.now();
 
   const cached = chatCache.get(cacheKey);
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) {
@@ -88,39 +74,10 @@ export const streamXitBotResponseGemini = async (
     return cached.response;
   }
 
-  try {
-    lastChatApiCall = now;
-    lastGlobalApiCall = now;
-    dailyApiCount++;
-
-    const streamResult: any = await (ai.models as any).generateContentStream({
-      model: 'gemini-1.5-flash-001',
-      contents: userMessage,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        temperature: 0.8,
-        topP: 0.9
-      }
-    });
-
-    let fullText = '';
-    for await (const chunk of streamResult) {
-      const token = typeof chunk?.text === 'function' ? chunk.text() : (chunk?.text || '');
-      if (!token) continue;
-      fullText += token;
-      onToken(token, fullText);
-    }
-
-    if (!fullText.trim()) {
-      fullText = getFallbackChatResponse(userMessage);
-      onToken(fullText, fullText);
-    }
-
-    chatCache.set(cacheKey, { response: fullText, timestamp: now });
-    return fullText;
-  } catch (error) {
-    return getXitBotResponse(userMessage);
-  }
+  // Proxy doesn't support streaming — fetch full response then deliver as one token
+  const result = await getXitBotResponse(userMessage);
+  onToken(result, result);
+  return result;
 };
 
 const getFallbackChatResponse = (userMessage: string): string => {
@@ -143,23 +100,19 @@ const getFallbackChatResponse = (userMessage: string): string => {
 
 export const getQuickReplies = async (lastMessage: string): Promise<string[]> => {
   try {
-    if (!ai) return ['Rad!', 'On it.', '10-4'];
-
-    const response = await ai.models.generateContent({
+    const response = await geminiFetch({
       model: 'gemini-1.5-flash-001',
       contents: `Suggest 3 short, snappy quick replies for this message: "${lastMessage}"`,
-      config: {
-        systemInstruction: `You generate quick replies for XitChat.
+      systemInstruction: `You generate quick replies for XitChat.
 Replies must be extremely short (1-3 words max).
 Format as a JSON array of strings.`,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING }
-        }
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING }
       }
     });
-    return JSON.parse((response as any).text || '[]');
+    return JSON.parse(response.text || '[]');
   } catch (error) {
     return ['Rad!', 'On it.', '10-4'];
   }
@@ -183,34 +136,31 @@ export const getLatestBuzz = async (): Promise<BuzzItem[]> => {
   const cached = buzzCache.get(cacheKey);
   if (cached && now - cached.timestamp < CACHE_DURATION) return cached.data;
   if (now - lastApiCall < API_COOLDOWN) return getFallbackBuzz();
-  if (!ai) return getFallbackBuzz();
 
   try {
     lastApiCall = now;
-    const response = await ai.models.generateContent({
+    const response = await geminiFetch({
       model: 'gemini-1.5-flash-001',
       contents: 'Generate 5 trending news items for the XitChat mesh network buzz feed.',
-      config: {
-        systemInstruction: `Create 5 buzz items for XitChat.
+      systemInstruction: `Create 5 buzz items for XitChat.
 Return JSON with fields title, time, snippet, category.`,
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              time: { type: Type.STRING },
-              snippet: { type: Type.STRING },
-              category: { type: Type.STRING, enum: ['NEWS', 'GOSSIP', 'UPDATE', 'AD'] }
-            },
-            required: ['title', 'time', 'snippet', 'category']
-          }
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            time: { type: Type.STRING },
+            snippet: { type: Type.STRING },
+            category: { type: Type.STRING, enum: ['NEWS', 'GOSSIP', 'UPDATE', 'AD'] }
+          },
+          required: ['title', 'time', 'snippet', 'category']
         }
       }
     });
 
-    const parsed = JSON.parse((response as any).text || '[]');
+    const parsed = JSON.parse(response.text || '[]');
     const result = Array.isArray(parsed)
       ? parsed
       : Array.isArray(parsed?.items)

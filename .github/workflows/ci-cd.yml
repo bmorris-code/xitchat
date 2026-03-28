@@ -39,9 +39,7 @@ jobs:
     - name: Build
       run: npm run build
       env:
-        VITE_ABLY_API_KEY: ${{ secrets.VITE_ABLY_API_KEY }}
-        VITE_GROQ_API_KEY: ${{ secrets.VITE_GROQ_API_KEY }}
-        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
 
     - name: Install Vercel CLI
       if: ${{ secrets.VERCEL_TOKEN != '' && secrets.VERCEL_ORG_ID != '' && secrets.VERCEL_PROJECT_ID != '' }}
@@ -75,11 +73,9 @@ jobs:
     - run: npm ci
 
     - name: Build
-      run: npm run build
+      run: npm run build:mobile
       env:
-        VITE_ABLY_API_KEY: ${{ secrets.VITE_ABLY_API_KEY }}
-        VITE_GROQ_API_KEY: ${{ secrets.VITE_GROQ_API_KEY }}
-        VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+        VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
 
     - run: npx cap sync android
 

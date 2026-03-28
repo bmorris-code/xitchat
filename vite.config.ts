@@ -105,7 +105,7 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
     },
 
     build: {
-      target: 'esnext',
+      target: 'es2020',
       outDir: 'dist',
       assetsDir: 'assets',
       sourcemap: false,

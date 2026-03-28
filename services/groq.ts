@@ -1,21 +1,19 @@
 // Groq AI Service for XitChat
-// Real-time chat responses with optional streaming.
+// Calls our server-side proxy — API key never reaches the client/APK.
 
-import Groq from 'groq-sdk';
+// For mobile builds VITE_API_BASE_URL points to the Vercel deployment URL.
+// For web builds it is empty and the fetch uses a relative path.
+const API_BASE = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_API_BASE_URL : '') || '';
 
-const getClientEnv = (key: string): string => {
-  const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
-  const processEnv = typeof process !== 'undefined' ? (process as any).env : undefined;
-  return metaEnv?.[key] || processEnv?.[key] || '';
-};
-
-const groqApiKey = getClientEnv('VITE_GROQ_API_KEY');
-const groq = groqApiKey
-  ? new Groq({
-      apiKey: groqApiKey,
-      dangerouslyAllowBrowser: true
-    })
-  : null;
+async function groqFetch(body: object): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/groq`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Proxy error ${res.status}`);
+  return res.json();
+}
 
 const SYSTEM_PROMPT = `You are XitBot, the helpful and witty mascot for XitChat.
 XitChat is a modern chat application inspired by the nostalgic Mxit and BitChat.
@@ -26,10 +24,6 @@ and very helpful. Keep answers concise as it's a mobile-focused chat app.`;
 
 const chatCache = new Map<string, { response: string; timestamp: number }>();
 const CHAT_CACHE_DURATION = 3 * 60 * 1000;
-let lastChatApiCall = 0;
-const CHAT_API_COOLDOWN = 750;
-let lastGlobalApiCall = 0;
-const GLOBAL_API_COOLDOWN = 500;
 const DAILY_API_LIMIT = 2000;
 let dailyApiCount = 0;
 let lastDailyReset = Date.now();
@@ -53,8 +47,6 @@ const buildMessages = (userMessage: string): GroqMessage[] => [
 
 export const getXitBotResponseGroq = async (userMessage: string): Promise<string> => {
   const now = Date.now();
-  if (!groq) return getFallbackChatResponse(userMessage);
-
   const cacheKey = `chat_${userMessage.toLowerCase().trim()}`;
   maybeResetDailyCounter(now);
   if (dailyApiCount >= DAILY_API_LIMIT) return getFallbackChatResponse(userMessage);
@@ -62,21 +54,15 @@ export const getXitBotResponseGroq = async (userMessage: string): Promise<string
   const cached = chatCache.get(cacheKey);
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) return cached.response;
 
-  if (now - lastGlobalApiCall < GLOBAL_API_COOLDOWN || now - lastChatApiCall < CHAT_API_COOLDOWN) {
-  }
-
   try {
-    lastChatApiCall = now;
-    lastGlobalApiCall = now;
     dailyApiCount++;
 
-    const response = await groq.chat.completions.create({
+    const response = await groqFetch({
       messages: buildMessages(userMessage),
       model: 'llama-3.3-70b-versatile',
       temperature: 0.8,
       max_tokens: 500,
-      top_p: 0.9,
-      stream: false
+      top_p: 0.9
     });
 
     const result = response.choices[0]?.message?.content || getFallbackChatResponse(userMessage);
@@ -91,10 +77,8 @@ export const streamXitBotResponseGroq = async (
   userMessage: string,
   onToken: (token: string, fullText: string) => void
 ): Promise<string> => {
-  const now = Date.now();
   const cacheKey = `chat_${userMessage.toLowerCase().trim()}`;
-
-  if (!groq) return getXitBotResponseGroq(userMessage);
+  const now = Date.now();
 
   const cached = chatCache.get(cacheKey);
   if (cached && now - cached.timestamp < CHAT_CACHE_DURATION) {
@@ -102,46 +86,15 @@ export const streamXitBotResponseGroq = async (
     return cached.response;
   }
 
-  try {
-    lastChatApiCall = now;
-    lastGlobalApiCall = now;
-    dailyApiCount++;
-
-    const stream = await groq.chat.completions.create({
-      messages: buildMessages(userMessage),
-      model: 'llama-3.3-70b-versatile',
-      temperature: 0.8,
-      max_tokens: 500,
-      top_p: 0.9,
-      stream: true
-    });
-
-    let fullText = '';
-    for await (const chunk of stream as any) {
-      const token = chunk?.choices?.[0]?.delta?.content || '';
-      if (!token) continue;
-      fullText += token;
-      onToken(token, fullText);
-    }
-
-    if (!fullText.trim()) {
-      fullText = getFallbackChatResponse(userMessage);
-      onToken(fullText, fullText);
-    }
-
-    chatCache.set(cacheKey, { response: fullText, timestamp: now });
-    return fullText;
-  } catch (error: any) {
-    // fallback on any error
-    return getXitBotResponseGroq(userMessage);
-  }
+  // Proxy doesn't support streaming — fetch full response then deliver as one token
+  const result = await getXitBotResponseGroq(userMessage);
+  onToken(result, result);
+  return result;
 };
 
 export const getQuickRepliesGroq = async (lastMessage: string): Promise<string[]> => {
-  if (!groq) return ['Rad!', 'On it.', '10-4'];
-
   try {
-    const response = await groq.chat.completions.create({
+    const response = await groqFetch({
       messages: [
         {
           role: 'system',
@@ -182,11 +135,10 @@ export const getLatestBuzzGroq = async (): Promise<BuzzItem[]> => {
   const cached = buzzCache.get(cacheKey);
   if (cached && now - cached.timestamp < BUZZ_CACHE_DURATION) return cached.data;
   if (now - lastBuzzApiCall < BUZZ_API_COOLDOWN) return getFallbackBuzz();
-  if (!groq) return getFallbackBuzz();
 
   try {
     lastBuzzApiCall = now;
-    const response = await groq.chat.completions.create({
+    const response = await groqFetch({
       messages: [
         { role: 'system', content: `Create 5 buzz items for XitChat as JSON array with title, time, snippet, category.` },
         { role: 'user', content: 'Generate 5 trending news items for the XitChat mesh network buzz feed.' }
@@ -237,9 +189,8 @@ const getFallbackBuzz = (): BuzzItem[] => {
 };
 
 export const checkGroqHealth = async (): Promise<boolean> => {
-  if (!groq) return false;
   try {
-    const response = await groq.chat.completions.create({
+    const response = await groqFetch({
       messages: [{ role: 'user', content: 'Hi' }],
       model: 'llama-3.1-8b-instant',
       max_tokens: 5,
