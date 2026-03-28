@@ -986,9 +986,38 @@ const App: React.FC = () => {
   };
 
   const handleWipeNode = () => {
-    if (confirm('DANGER: This will permanently wipe your node identity and mesh history. Proceed?')) {
-      localStorage.removeItem('xitchat_onboarded');
-      localStorage.removeItem('xitchat_handle');
+    if (confirm('DANGER: This will permanently wipe your node identity and ALL mesh history. This cannot be undone. Proceed?')) {
+      // Remove all known XitChat keys
+      const knownKeys = [
+        'xitchat_onboarded', 'xitchat_handle', 'xitchat_name', 'xitchat_pubkey',
+        'xitchat_avatar', 'xitchat_mood', 'xitchat_uplink_core', 'xitchat_auth_pin',
+        'xitchat_privacy_settings', 'xitchat_default_rooms_joined', 'xitchat_gallery_images',
+        'xitchat_intelligence_feed', 'xitchat_message_ack', 'xitchat_muted_buzz_nodes',
+        'xitchat_geohash_discovery', 'nostr_pubkey', 'identity_secp256k1_sk_hex_v1',
+        'mesh_data_store', 'mesh_node_statuses', 'mesh_permissions', 'mesh_transactions',
+        'mesh_wallet', 'nostr_key', 'pow_settings', 'tor_settings',
+        'xc_economy', 'joebanker_data', 'nodeshop_purchases', 'marketplace_listings',
+        'geohash_channels', 'geohash_messages', 'snake_high_score',
+      ];
+      knownKeys.forEach(k => localStorage.removeItem(k));
+
+      // Remove dynamic/prefixed keys (mesh signaling, chat history, room settings)
+      const prefixes = ['xitchat-', 'mesh-', 'chat_settings_', 'xc_room_'];
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && prefixes.some(p => key.startsWith(p))) {
+          localStorage.removeItem(key);
+        }
+      }
+
+      // Remove any remaining namespaced keys containing xitchat/nostr/mesh
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.includes('xitchat') || key.includes('nostr') || key.includes('mesh'))) {
+          localStorage.removeItem(key);
+        }
+      }
+
       window.location.reload();
     }
   };
