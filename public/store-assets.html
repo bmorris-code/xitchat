@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>XitChat Store Assets</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; font-family: 'JetBrains Mono', monospace; padding: 40px; }
+
+    h2 { color: #00ff41; margin: 40px 0 12px; font-size: 14px; letter-spacing: 2px; }
+
+    /* ── FEATURE GRAPHIC 1024×500 ── */
+    #feature {
+      width: 1024px;
+      height: 500px;
+      background: #020202;
+      border: 1px solid #00ff41;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 60px 80px;
+      position: relative;
+      overflow: hidden;
+    }
+    #feature::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,65,0.015) 2px, rgba(0,255,65,0.015) 4px);
+      pointer-events: none;
+    }
+    .feature-left { z-index: 1; }
+    .feature-logo { display: flex; align-items: center; gap: 24px; margin-bottom: 24px; }
+    .feature-logo img { width: 96px; height: 96px; }
+    .feature-logo-text { font-size: 56px; font-weight: 700; color: #00ff41; text-shadow: 0 0 30px rgba(0,255,65,0.6); letter-spacing: -1px; }
+    .feature-tagline { color: #00ff41; font-size: 18px; opacity: 0.85; margin-bottom: 32px; letter-spacing: 1px; }
+    .feature-badges { display: flex; gap: 12px; flex-wrap: wrap; }
+    .badge { border: 1px solid rgba(0,255,65,0.4); color: #00ff41; font-size: 11px; padding: 5px 12px; letter-spacing: 1px; }
+    .feature-right { z-index: 1; text-align: right; }
+    .mesh-node { color: rgba(0,255,65,0.15); font-size: 11px; line-height: 2; }
+    .mesh-highlight { color: rgba(0,255,65,0.5); }
+
+    /* ── PHONE SCREENSHOT 1080×1920 scaled to 270×480 ── */
+    .screenshots { display: flex; gap: 20px; flex-wrap: wrap; }
+    .phone {
+      width: 270px;
+      height: 480px;
+      background: #020202;
+      border: 1px solid #00ff41;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .phone::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,65,0.015) 2px, rgba(0,255,65,0.015) 4px);
+      pointer-events: none;
+      z-index: 10;
+    }
+    .phone-bar {
+      background: rgba(0,255,65,0.08);
+      border-bottom: 1px solid rgba(0,255,65,0.2);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .phone-bar-title { color: #00ff41; font-size: 10px; font-weight: 700; letter-spacing: 2px; }
+    .phone-bar-status { color: rgba(0,255,65,0.5); font-size: 9px; }
+    .phone-body { flex: 1; padding: 10px; overflow: hidden; }
+    .msg { margin-bottom: 8px; }
+    .msg-out { text-align: right; }
+    .msg-bubble {
+      display: inline-block;
+      background: rgba(0,255,65,0.1);
+      border: 1px solid rgba(0,255,65,0.25);
+      color: #00ff41;
+      font-size: 9px;
+      padding: 5px 8px;
+      max-width: 80%;
+      text-align: left;
+      line-height: 1.4;
+    }
+    .msg-out .msg-bubble { background: rgba(0,255,65,0.18); }
+    .msg-user { color: rgba(0,255,65,0.4); font-size: 8px; margin-bottom: 2px; }
+    .phone-input {
+      border-top: 1px solid rgba(0,255,65,0.2);
+      padding: 8px 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .phone-input-box {
+      flex: 1;
+      background: rgba(0,255,65,0.05);
+      border: 1px solid rgba(0,255,65,0.2);
+      color: rgba(0,255,65,0.4);
+      font-size: 9px;
+      padding: 5px 8px;
+      font-family: inherit;
+    }
+    .phone-send { color: #00ff41; font-size: 14px; cursor: pointer; }
+
+    /* Screenshot 2 - Rooms */
+    .room-item {
+      border-bottom: 1px solid rgba(0,255,65,0.1);
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .room-dot { width: 8px; height: 8px; border-radius: 50%; background: #00ff41; box-shadow: 0 0 6px #00ff41; flex-shrink: 0; }
+    .room-info { flex: 1; }
+    .room-name { color: #00ff41; font-size: 9px; font-weight: 700; }
+    .room-meta { color: rgba(0,255,65,0.4); font-size: 8px; margin-top: 1px; }
+    .room-count { color: rgba(0,255,65,0.5); font-size: 8px; }
+
+    /* Screenshot 3 - Radar */
+    .radar-container { display: flex; flex-direction: column; align-items: center; padding: 16px 10px; }
+    .radar-circle {
+      width: 160px; height: 160px; border-radius: 50%;
+      border: 1px solid rgba(0,255,65,0.3);
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 16px;
+    }
+    .radar-inner { width: 110px; height: 110px; border-radius: 50%; border: 1px solid rgba(0,255,65,0.2); position: absolute; }
+    .radar-inner2 { width: 60px; height: 60px; border-radius: 50%; border: 1px solid rgba(0,255,65,0.15); position: absolute; }
+    .radar-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #00ff41; box-shadow: 0 0 8px #00ff41; }
+    .radar-center { width: 10px; height: 10px; border-radius: 50%; background: #00ff41; box-shadow: 0 0 12px #00ff41; }
+    .radar-peer { color: rgba(0,255,65,0.6); font-size: 8px; padding: 4px 10px; border-bottom: 1px solid rgba(0,255,65,0.08); }
+    .radar-peer strong { color: #00ff41; }
+
+    /* Screenshot 4 - Mesh Status */
+    .mesh-layer {
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(0,255,65,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .mesh-layer-name { color: #00ff41; font-size: 9px; }
+    .mesh-layer-status { font-size: 8px; padding: 2px 7px; border: 1px solid; }
+    .status-active { color: #00ff41; border-color: #00ff41; }
+    .status-standby { color: rgba(0,255,65,0.4); border-color: rgba(0,255,65,0.3); }
+    .mesh-stat { padding: 6px 10px; display: flex; justify-content: space-between; }
+    .mesh-stat-label { color: rgba(0,255,65,0.5); font-size: 8px; }
+    .mesh-stat-val { color: #00ff41; font-size: 8px; }
+  </style>
+</head>
+<body>
+
+  <h2>FEATURE GRAPHIC — 1024×500 (screenshot this exactly)</h2>
+  <div id="feature">
+    <!-- Scanline overlay -->
+    <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,255,65,0.03) 3px,rgba(0,255,65,0.03) 4px);pointer-events:none;z-index:2;"></div>
+
+    <!-- Left: branding -->
+    <div style="z-index:3;flex:1;padding-right:60px;">
+      <div style="color:rgba(0,255,65,0.5);font-size:11px;letter-spacing:4px;margin-bottom:16px;">MESH_PROTOCOL_v1.0</div>
+      <div style="font-size:72px;font-weight:700;color:#00ff41;text-shadow:0 0 40px rgba(0,255,65,0.7),0 0 80px rgba(0,255,65,0.3);line-height:1;letter-spacing:-2px;margin-bottom:8px;">XITCHAT</div>
+      <div style="color:rgba(0,255,65,0.6);font-size:14px;letter-spacing:3px;margin-bottom:36px;">PURE MESH. NO SERVERS. JUST CHAT.</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div style="border:1px solid rgba(0,255,65,0.35);color:#00ff41;font-size:10px;padding:5px 12px;letter-spacing:1px;">BLUETOOTH BLE</div>
+        <div style="border:1px solid rgba(0,255,65,0.35);color:#00ff41;font-size:10px;padding:5px 12px;letter-spacing:1px;">WIFI DIRECT</div>
+        <div style="border:1px solid rgba(0,255,65,0.35);color:#00ff41;font-size:10px;padding:5px 12px;letter-spacing:1px;">NOSTR</div>
+        <div style="border:1px solid rgba(0,255,65,0.35);color:#00ff41;font-size:10px;padding:5px 12px;letter-spacing:1px;">WEBRTC</div>
+        <div style="border:1px solid rgba(0,255,65,0.35);color:#00ff41;font-size:10px;padding:5px 12px;letter-spacing:1px;">E2E ENCRYPTED</div>
+        <div style="border:1px solid rgba(0,255,65,0.35);color:#00ff41;font-size:10px;padding:5px 12px;letter-spacing:1px;">NO ACCOUNT</div>
+      </div>
+    </div>
+
+    <!-- Right: fake terminal panel -->
+    <div style="z-index:3;width:320px;border:1px solid rgba(0,255,65,0.25);background:rgba(0,255,65,0.03);padding:20px;">
+      <div style="color:rgba(0,255,65,0.4);font-size:9px;letter-spacing:2px;border-bottom:1px solid rgba(0,255,65,0.15);padding-bottom:10px;margin-bottom:14px;">MESH_STATUS_MONITOR</div>
+      <div style="font-size:10px;line-height:2.2;color:rgba(0,255,65,0.5);">
+        <div><span style="color:rgba(0,255,65,0.3);">LAYER_1</span> &nbsp;BLE &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#00ff41;">● ACTIVE</span></div>
+        <div><span style="color:rgba(0,255,65,0.3);">LAYER_2</span> &nbsp;WIFI &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#00ff41;">● ACTIVE</span></div>
+        <div><span style="color:rgba(0,255,65,0.3);">LAYER_3</span> &nbsp;NOSTR &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#00ff41;">● ACTIVE</span></div>
+        <div><span style="color:rgba(0,255,65,0.3);">LAYER_4</span> &nbsp;WEBRTC &nbsp;&nbsp;&nbsp;<span style="color:#00ff41;">● ACTIVE</span></div>
+        <div><span style="color:rgba(0,255,65,0.3);">LAYER_5</span> &nbsp;UDP &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:rgba(0,255,65,0.4);">○ STANDBY</span></div>
+      </div>
+      <div style="border-top:1px solid rgba(0,255,65,0.15);margin-top:14px;padding-top:12px;font-size:10px;color:rgba(0,255,65,0.5);line-height:2;">
+        <div>PEERS &nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#00ff41;">7 NEARBY</span></div>
+        <div>ENCRYPT &nbsp;&nbsp;<span style="color:#00ff41;">NIP-04 ✓</span></div>
+        <div>IDENTITY &nbsp;<span style="color:#00ff41;">KEYPAIR ✓</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>PHONE SCREENSHOTS — open in browser, zoom to 100%, screenshot each phone frame (use browser screenshot tool for exact 1080×1920)</h2>
+  <div class="screenshots">
+
+    <!-- Screenshot 1: Chat -->
+    <div class="phone">
+      <div class="phone-bar">
+        <div class="phone-bar-title">XITCHAT</div>
+        <div class="phone-bar-status">● MESH ACTIVE</div>
+      </div>
+      <div class="phone-bar" style="justify-content:flex-start; gap:8px;">
+        <div style="width:6px;height:6px;border-radius:50%;background:#00ff41;box-shadow:0 0 6px #00ff41;"></div>
+        <div style="color:#00ff41;font-size:9px;">Ghost_A2F1</div>
+        <div style="color:rgba(0,255,65,0.4);font-size:8px;margin-left:auto;">BLE · 8ms</div>
+      </div>
+      <div class="phone-body">
+        <div class="msg">
+          <div class="msg-user">Ghost_A2F1</div>
+          <div class="msg-bubble">hey, you there? internet is down but mesh is holding strong 🟢</div>
+        </div>
+        <div class="msg msg-out">
+          <div class="msg-bubble">yeah I got you via bluetooth — no towers needed lol</div>
+        </div>
+        <div class="msg">
+          <div class="msg-user">Ghost_A2F1</div>
+          <div class="msg-bubble">this is actually wild. end-to-end encrypted too?</div>
+        </div>
+        <div class="msg msg-out">
+          <div class="msg-bubble">yep. NIP-04. nobody can read this 🔐</div>
+        </div>
+        <div class="msg">
+          <div class="msg-user">Ghost_A2F1</div>
+          <div class="msg-bubble">no servers, no account, no tracking. this is the future</div>
+        </div>
+      </div>
+      <div class="phone-input">
+        <div class="phone-input-box">Type a message...</div>
+        <div class="phone-send">▶</div>
+      </div>
+    </div>
+
+    <!-- Screenshot 2: Rooms -->
+    <div class="phone">
+      <div class="phone-bar">
+        <div class="phone-bar-title">MESH ROOMS</div>
+        <div class="phone-bar-status">12 ACTIVE</div>
+      </div>
+      <div class="phone-body" style="padding:0;">
+        <div class="room-item">
+          <div class="room-dot"></div>
+          <div class="room-info">
+            <div class="room-name">#johannesburg-mesh</div>
+            <div class="room-meta">last: "anyone near sandton?" · 2m ago</div>
+          </div>
+          <div class="room-count">34</div>
+        </div>
+        <div class="room-item">
+          <div class="room-dot" style="background:rgba(0,255,65,0.4);box-shadow:none;"></div>
+          <div class="room-info">
+            <div class="room-name">#loadshedding-updates</div>
+            <div class="room-meta">last: "stage 4 confirmed" · 5m ago</div>
+          </div>
+          <div class="room-count">89</div>
+        </div>
+        <div class="room-item">
+          <div class="room-dot"></div>
+          <div class="room-info">
+            <div class="room-name">#global-mesh</div>
+            <div class="room-meta">last: "relay hopping to EU" · 1m ago</div>
+          </div>
+          <div class="room-count">212</div>
+        </div>
+        <div class="room-item">
+          <div class="room-dot" style="background:rgba(0,255,65,0.4);box-shadow:none;"></div>
+          <div class="room-info">
+            <div class="room-name">#xitchat-dev</div>
+            <div class="room-meta">last: "new build is live" · 12m ago</div>
+          </div>
+          <div class="room-count">17</div>
+        </div>
+        <div class="room-item">
+          <div class="room-dot"></div>
+          <div class="room-info">
+            <div class="room-name">#cape-town-local</div>
+            <div class="room-meta">last: "wifi direct works 🔥" · 3m ago</div>
+          </div>
+          <div class="room-count">45</div>
+        </div>
+        <div class="room-item">
+          <div class="room-dot"></div>
+          <div class="room-info">
+            <div class="room-name">#mesh-gaming</div>
+            <div class="room-meta">last: "tic tac toe anyone?" · 8m ago</div>
+          </div>
+          <div class="room-count">28</div>
+        </div>
+      </div>
+      <div class="phone-input">
+        <div class="phone-input-box">+ Create room...</div>
+        <div class="phone-send">+</div>
+      </div>
+    </div>
+
+    <!-- Screenshot 3: Radar -->
+    <div class="phone">
+      <div class="phone-bar">
+        <div class="phone-bar-title">NEARBY RADAR</div>
+        <div class="phone-bar-status">7 PEERS</div>
+      </div>
+      <div class="phone-body" style="padding:0;">
+        <div class="radar-container">
+          <div class="radar-circle">
+            <div class="radar-inner"></div>
+            <div class="radar-inner2"></div>
+            <div class="radar-center"></div>
+            <div class="radar-dot" style="top:30px;left:90px;"></div>
+            <div class="radar-dot" style="top:60px;right:25px;"></div>
+            <div class="radar-dot" style="bottom:35px;left:40px;"></div>
+            <div class="radar-dot" style="bottom:50px;right:50px;opacity:0.5;"></div>
+            <div class="radar-dot" style="top:80px;left:20px;opacity:0.6;"></div>
+          </div>
+        </div>
+        <div class="radar-peer"><strong>Ghost_A2F1</strong> · BLE · 8m away</div>
+        <div class="radar-peer"><strong>Node_88C3</strong> · WiFi Direct · 15m away</div>
+        <div class="radar-peer"><strong>Cipher_F4D9</strong> · BLE · 30m away</div>
+        <div class="radar-peer"><strong>Relay_2210</strong> · Nostr · online</div>
+        <div class="radar-peer"><strong>Mesh_9A1B</strong> · WebRTC · online</div>
+      </div>
+    </div>
+
+    <!-- Screenshot 4: Mesh Status -->
+    <div class="phone">
+      <div class="phone-bar">
+        <div class="phone-bar-title">MESH STATUS</div>
+        <div class="phone-bar-status">ALL SYSTEMS ✓</div>
+      </div>
+      <div class="phone-body" style="padding:0;">
+        <div style="padding:8px 10px;color:rgba(0,255,65,0.5);font-size:8px;border-bottom:1px solid rgba(0,255,65,0.1);">TRANSPORT LAYERS</div>
+        <div class="mesh-layer">
+          <div class="mesh-layer-name">Bluetooth BLE</div>
+          <div class="mesh-layer-status status-active">ACTIVE</div>
+        </div>
+        <div class="mesh-layer">
+          <div class="mesh-layer-name">WiFi Direct</div>
+          <div class="mesh-layer-status status-active">ACTIVE</div>
+        </div>
+        <div class="mesh-layer">
+          <div class="mesh-layer-name">Nostr Relay</div>
+          <div class="mesh-layer-status status-active">ACTIVE</div>
+        </div>
+        <div class="mesh-layer">
+          <div class="mesh-layer-name">WebRTC</div>
+          <div class="mesh-layer-status status-active">ACTIVE</div>
+        </div>
+        <div class="mesh-layer">
+          <div class="mesh-layer-name">UDP Broadcast</div>
+          <div class="mesh-layer-status status-standby">STANDBY</div>
+        </div>
+        <div style="padding:8px 10px;color:rgba(0,255,65,0.5);font-size:8px;border-bottom:1px solid rgba(0,255,65,0.1);margin-top:4px;">NETWORK STATS</div>
+        <div class="mesh-stat"><div class="mesh-stat-label">Peers connected</div><div class="mesh-stat-val">7</div></div>
+        <div class="mesh-stat"><div class="mesh-stat-label">Messages routed</div><div class="mesh-stat-val">1,204</div></div>
+        <div class="mesh-stat"><div class="mesh-stat-label">Avg latency</div><div class="mesh-stat-val">12ms</div></div>
+        <div class="mesh-stat"><div class="mesh-stat-label">Encryption</div><div class="mesh-stat-val">NIP-04 ✓</div></div>
+        <div class="mesh-stat"><div class="mesh-stat-label">Identity</div><div class="mesh-stat-val">KEYPAIR ✓</div></div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
