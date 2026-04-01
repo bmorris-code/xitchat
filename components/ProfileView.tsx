@@ -655,6 +655,12 @@ const ProfileView: React.FC<ProfileViewProps> = ({
           >
             emergency_sos
           </button>
+          <a
+            href="mailto:safety@xitchat.app?subject=Child%20Safety%20Report"
+            className="block w-full border border-orange-500/30 text-orange-500/60 hover:text-orange-400 hover:border-orange-400 py-3 uppercase text-[10px] font-bold tracking-[0.2em] transition-all text-center"
+          >
+            report child safety concern
+          </a>
           <button
             onClick={onWipe}
             className="w-full border border-red-500/20 text-red-500/50 hover:text-red-500 hover:border-red-500 py-3 uppercase text-[10px] font-bold tracking-[0.2em] transition-all"
