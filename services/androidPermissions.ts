@@ -125,6 +125,9 @@ export class AndroidPermissionsService {
 
     console.log('📶 Checking Bluetooth/WiFi permissions...');
 
+    const timeout = <T,>(ms: number, fallback: T): Promise<T> =>
+      new Promise(resolve => setTimeout(() => resolve(fallback), ms));
+
     try {
       // ── FIX #1: use cached plugin instances ──
       const BluetoothMesh = await this.getBluetoothPlugin();
@@ -134,10 +137,19 @@ export class AndroidPermissionsService {
       let wifiGranted = false;
 
       try {
-        const btResult = await BluetoothMesh.requestPermissions();
-        btGranted = btResult.location === 'granted' ||
-          btResult.bluetoothScan === 'granted' ||
-          btResult.bluetooth === 'granted';
+        const btResult = await Promise.race([
+          BluetoothMesh.requestPermissions(),
+          timeout(5000, null)
+        ]);
+        if (btResult) {
+          btGranted = btResult.location === 'granted' ||
+            btResult.bluetoothScan === 'granted' ||
+            btResult.bluetooth === 'granted';
+        } else {
+          console.warn('BluetoothMesh.requestPermissions timed out');
+          const locStatus = await this.requestLocationPermissions();
+          btGranted = locStatus.granted;
+        }
       } catch (e) {
         console.warn('BluetoothMesh.requestPermissions failed (Android < 12):', e);
         const locStatus = await this.requestLocationPermissions();
@@ -145,10 +157,18 @@ export class AndroidPermissionsService {
       }
 
       try {
-        const wifiResult = await WiFiDirect.requestPermissions();
-        wifiGranted = wifiResult.location === 'granted' ||
-          wifiResult.nearbyWifiDevices === 'granted' ||
-          wifiResult.wifiState === 'granted';
+        const wifiResult = await Promise.race([
+          WiFiDirect.requestPermissions(),
+          timeout(5000, null)
+        ]);
+        if (wifiResult) {
+          wifiGranted = wifiResult.location === 'granted' ||
+            wifiResult.nearbyWifiDevices === 'granted' ||
+            wifiResult.wifiState === 'granted';
+        } else {
+          console.warn('WiFiDirect.requestPermissions timed out');
+          wifiGranted = btGranted;
+        }
       } catch (e) {
         console.warn('WiFiDirect.requestPermissions failed:', e);
         wifiGranted = btGranted;
