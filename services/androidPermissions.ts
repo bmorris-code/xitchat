@@ -25,19 +25,19 @@ export class AndroidPermissionsService {
     return this.isNative && Capacitor.getPlatform() === 'android';
   }
 
-  // ── FIX #1: lazy-load and cache plugin instances ──
-  private async getBluetoothPlugin(): Promise<any> {
+  // ---- FIX #1: lazy-load and cache plugin instances (synchronous to avoid proxy .then() issues) ----
+  private getBluetoothPlugin(): any {
     if (!this.bluetoothMeshPlugin) {
-      const { registerPlugin } = await import('@capacitor/core');
-      this.bluetoothMeshPlugin = registerPlugin<any>('BluetoothMesh');
+      const { registerPlugin } = require('@capacitor/core');
+      this.bluetoothMeshPlugin = registerPlugin('BluetoothMesh');
     }
     return this.bluetoothMeshPlugin;
   }
 
-  private async getWiFiPlugin(): Promise<any> {
+  private getWiFiPlugin(): any {
     if (!this.wifiDirectPlugin) {
-      const { registerPlugin } = await import('@capacitor/core');
-      this.wifiDirectPlugin = registerPlugin<any>('WiFiDirect');
+      const { registerPlugin } = require('@capacitor/core');
+      this.wifiDirectPlugin = registerPlugin('WiFiDirect');
     }
     return this.wifiDirectPlugin;
   }
