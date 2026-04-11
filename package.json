@@ -49,10 +49,7 @@
   "overrides": {
     "serialize-javascript": "^7.0.5",
     "tar": "^7.5.10",
-    "brace-expansion": "^2.0.3",
-    "lodash": "^4.17.21",
-    "@xmldom/xmldom": "^0.8.12",
-    "vite": "^6.4.2"
+    "brace-expansion": "^2.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
