@@ -780,7 +780,6 @@ const App: React.FC = () => {
 
               setChats(prev => {
                 const nostrChat = prev.find(c => c.participant.id === `nostr-${message.from}`);
-                if (!nostrChat) return prev;
                 const newMessage: Message = {
                   id: message.id,
                   senderId: message.from,
@@ -788,9 +787,30 @@ const App: React.FC = () => {
                   timestamp: message.timestamp.getTime(),
                   senderHandle: `nostr-${message.from.substring(0, 8)}`
                 };
+                if (!nostrChat) {
+                  // Auto-create chat when DM arrives from unknown sender
+                  const handle = `@${message.from.substring(0, 8)}`;
+                  const newChat: Chat = {
+                    id: `chat-${Date.now()}`,
+                    type: 'private',
+                    participant: {
+                      id: `nostr-${message.from}`,
+                      name: handle,
+                      handle,
+                      avatar: '',
+                      status: 'Online',
+                      mood: ''
+                    },
+                    lastMessage: normalizedContent,
+                    unreadCount: 1,
+                    messages: [newMessage],
+                    isEncrypted: false
+                  };
+                  return [newChat, ...prev];
+                }
                 return prev.map(c =>
                   c.id === nostrChat.id
-                    ? { ...c, messages: [...c.messages, newMessage], lastMessage: normalizedContent }
+                    ? { ...c, messages: [...c.messages, newMessage], lastMessage: normalizedContent, unreadCount: (c.unreadCount || 0) + 1 }
                     : c
                 );
               });
