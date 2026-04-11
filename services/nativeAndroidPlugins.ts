@@ -148,13 +148,33 @@ export interface WiFiDirectMessage {
 }
 
 // ============================================================================
-// Register Plugins
+// Register Plugins (lazy initialization to avoid .then() issues)
 // ============================================================================
 
-const BluetoothMesh = registerPlugin<BluetoothMeshPlugin>('BluetoothMesh');
-const WiFiDirect = registerPlugin<WiFiDirectPlugin>('WiFiDirect');
+let BluetoothMesh: any = null;
+let WiFiDirect: any = null;
 
-export { BluetoothMesh, WiFiDirect };
+// Synchronous getters — MUST NOT be async.
+// Capacitor plugin proxies respond to ALL property accesses (including .then)
+// via the native bridge. If a plugin proxy is returned from an async function,
+// Promise resolution calls .then() on it, triggering
+// "BluetoothMesh.then() is not implemented on android".
+// registerPlugin() itself is synchronous, so no async is needed here.
+function getBluetoothMesh(): BluetoothMeshPlugin {
+  if (!BluetoothMesh) {
+    BluetoothMesh = registerPlugin<BluetoothMeshPlugin>('BluetoothMesh');
+  }
+  return BluetoothMesh;
+}
+
+function getWiFiDirect(): WiFiDirectPlugin {
+  if (!WiFiDirect) {
+    WiFiDirect = registerPlugin<WiFiDirectPlugin>('WiFiDirect');
+  }
+  return WiFiDirect;
+}
+
+export { getBluetoothMesh, getWiFiDirect };
 
 // ============================================================================
 // Helper Functions
@@ -165,7 +185,7 @@ export { BluetoothMesh, WiFiDirect };
  */
 export async function isBluetoothMeshAvailable(): Promise<boolean> {
     try {
-        const result = await BluetoothMesh.initialize();
+        const result = await getBluetoothMesh().initialize();
         return result.success;
     } catch (error) {
         console.warn('Bluetooth mesh not available:', error);
@@ -178,7 +198,7 @@ export async function isBluetoothMeshAvailable(): Promise<boolean> {
  */
 export async function isWiFiDirectAvailable(): Promise<boolean> {
     try {
-        const result = await WiFiDirect.initialize();
+        const result = await getWiFiDirect().initialize();
         return result.success;
     } catch (error) {
         console.warn('WiFi Direct not available:', error);
@@ -215,11 +235,12 @@ export async function startNativeMesh(options: {
     if (bluetooth) {
         try {
             // Start Bluetooth advertising and scanning
-            await BluetoothMesh.startAdvertising({
+            const bt = getBluetoothMesh();
+            await bt.startAdvertising({
                 deviceName: options.deviceName,
                 deviceId: options.deviceId
             });
-            await BluetoothMesh.startScanning();
+            await bt.startScanning();
             console.log('✅ Bluetooth mesh started');
         } catch (error) {
             console.error('Failed to start Bluetooth mesh:', error);
@@ -229,8 +250,9 @@ export async function startNativeMesh(options: {
     if (wifiDirect) {
         try {
             // Start WiFi Direct discovery and server
-            await WiFiDirect.startDiscovery();
-            await WiFiDirect.startServer();
+            const wd = getWiFiDirect();
+            await wd.startDiscovery();
+            await wd.startServer();
             console.log('✅ WiFi Direct started');
         } catch (error) {
             console.error('Failed to start WiFi Direct:', error);
@@ -243,15 +265,17 @@ export async function startNativeMesh(options: {
  */
 export async function stopNativeMesh(): Promise<void> {
     try {
-        await BluetoothMesh.stopAdvertising();
-        await BluetoothMesh.stopScanning();
+        const bt = getBluetoothMesh();
+        await bt.stopAdvertising();
+        await bt.stopScanning();
         console.log('✅ Bluetooth mesh stopped');
     } catch (error) {
         console.error('Failed to stop Bluetooth mesh:', error);
     }
 
     try {
-        await WiFiDirect.stopDiscovery();
+        const wd = getWiFiDirect();
+        await wd.stopDiscovery();
         console.log('✅ WiFi Direct stopped');
     } catch (error) {
         console.error('Failed to stop WiFi Direct:', error);
@@ -267,7 +291,7 @@ export async function sendNativeMeshMessage(options: {
 }): Promise<boolean> {
     // Try Bluetooth first
     try {
-        const result = await BluetoothMesh.sendMessage({
+        const result = await getBluetoothMesh().sendMessage({
             deviceId: options.deviceId,
             message: options.message
         });
@@ -281,7 +305,7 @@ export async function sendNativeMeshMessage(options: {
 
     // Fallback to WiFi Direct
     try {
-        const result = await WiFiDirect.sendMessage({
+        const result = await getWiFiDirect().sendMessage({
             message: options.message,
             targetAddress: options.deviceId
         });
@@ -307,7 +331,7 @@ export async function getAllDiscoveredPeers(): Promise<{
     const wifiDirect: WiFiDirectPeer[] = [];
 
     try {
-        const btResult = await BluetoothMesh.getDiscoveredDevices();
+        const btResult = await getBluetoothMesh().getDiscoveredDevices();
         // Note: The actual device list would come from event listeners
         console.log('Bluetooth devices discovered:', btResult.devices);
     } catch (error) {
@@ -315,7 +339,7 @@ export async function getAllDiscoveredPeers(): Promise<{
     }
 
     try {
-        const wdResult = await WiFiDirect.getPeers();
+        const wdResult = await getWiFiDirect().getPeers();
         wifiDirect.push(...wdResult.peers);
     } catch (error) {
         console.error('Failed to get WiFi Direct peers:', error);
@@ -338,32 +362,35 @@ export function setupNativeMeshListeners(callbacks: {
 }): () => void {
     const listeners: Array<{ remove: () => void }> = [];
 
+    const bt = getBluetoothMesh();
+    const wd = getWiFiDirect();
+
     // Bluetooth listeners
     if (callbacks.onDeviceDiscovered) {
-        BluetoothMesh.addListener('deviceDiscovered', (event) => {
+        bt.addListener('deviceDiscovered', (event) => {
             callbacks.onDeviceDiscovered?.(event as BluetoothDevice);
         }).then(listener => listeners.push(listener));
     }
 
     if (callbacks.onMessageReceived) {
-        BluetoothMesh.addListener('messageReceived', (event) => {
+        bt.addListener('messageReceived', (event) => {
             callbacks.onMessageReceived?.(event as BluetoothMessage);
         }).then(listener => listeners.push(listener));
     }
 
     if (callbacks.onConnectionChanged) {
-        BluetoothMesh.addListener('deviceConnected', () => {
+        bt.addListener('deviceConnected', () => {
             callbacks.onConnectionChanged?.(true);
         }).then(listener => listeners.push(listener));
 
-        BluetoothMesh.addListener('deviceDisconnected', () => {
+        bt.addListener('deviceDisconnected', () => {
             callbacks.onConnectionChanged?.(false);
         }).then(listener => listeners.push(listener));
     }
 
     // WiFi Direct listeners
     if (callbacks.onDeviceDiscovered) {
-        WiFiDirect.addListener('peersChanged', (event) => {
+        wd.addListener('peersChanged', (event) => {
             event.peers?.forEach((peer: WiFiDirectPeer) => {
                 callbacks.onDeviceDiscovered?.(peer);
             });
@@ -371,13 +398,13 @@ export function setupNativeMeshListeners(callbacks: {
     }
 
     if (callbacks.onMessageReceived) {
-        WiFiDirect.addListener('messageReceived', (event) => {
+        wd.addListener('messageReceived', (event) => {
             callbacks.onMessageReceived?.(event as WiFiDirectMessage);
         }).then(listener => listeners.push(listener));
     }
 
     if (callbacks.onConnectionChanged) {
-        WiFiDirect.addListener('connectionChanged', (event) => {
+        wd.addListener('connectionChanged', (event) => {
             callbacks.onConnectionChanged?.(event.connected);
         }).then(listener => listeners.push(listener));
     }

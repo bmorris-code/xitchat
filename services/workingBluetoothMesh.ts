@@ -159,15 +159,33 @@ class WorkingBluetoothMeshService {
           const BluetoothMesh = registerPlugin<any>('BluetoothMesh');
           this.nativeBluetoothPlugin = BluetoothMesh;
           this.setupNativePluginListeners(BluetoothMesh);
-          await BluetoothMesh.initialize();
-          this.isConnected = true;
-          this.serviceInfo.isConnected = true;
-          this.serviceInfo.isHealthy = true;
-          networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
-          return true;
+          
+          console.log('Calling BluetoothMesh.initialize()...');
+          const result = await BluetoothMesh.initialize();
+          console.log('BluetoothMesh.initialize() result:', result);
+          
+          if (result && result.success) {
+            this.isConnected = true;
+            this.serviceInfo.isConnected = true;
+            this.serviceInfo.isHealthy = true;
+            networkStateManager.updateServiceStatus('bluetoothMesh', true, true);
+            console.log('Native Bluetooth initialized successfully');
+            console.log('Bluetooth details:', {
+              bluetoothEnabled: result.bluetoothEnabled,
+              hasScanner: result.hasScanner,
+              hasAdvertiser: result.hasAdvertiser
+            });
+            return true;
+          } else {
+            console.error('Bluetooth initialization failed:', result);
+            if (result?.message) {
+              console.error('Error message:', result.message);
+            }
+            return this.failUnavailable('init-failed');
+          }
         } catch (error) {
-          console.warn('Native Bluetooth plugin unavailable:', error);
-          return this.failUnavailable('android-native-plugin-unavailable');
+          console.error('Native Bluetooth plugin unavailable:', error);
+          return this.failUnavailable('plugin-unavailable');
         }
       }
 
@@ -350,9 +368,11 @@ class WorkingBluetoothMeshService {
     if ((window as any).Capacitor?.isNativePlatform()) {
       if (!peer.isConnected) return false;
       try {
-        const BluetoothMesh = this.nativeBluetoothPlugin ||
-          (await import('@capacitor/core')).registerPlugin<any>('BluetoothMesh');
-        this.nativeBluetoothPlugin = BluetoothMesh;
+        if (!this.nativeBluetoothPlugin) {
+          const { registerPlugin } = await import('@capacitor/core');
+          this.nativeBluetoothPlugin = registerPlugin<any>('BluetoothMesh');
+        }
+        const BluetoothMesh = this.nativeBluetoothPlugin;
         await BluetoothMesh.sendMessage({ deviceId: peerId, message: content });
         return true;
       } catch (e) {

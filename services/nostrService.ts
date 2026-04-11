@@ -87,11 +87,14 @@ class NostrService {
   };
 
   private readonly defaultRelays = [
+    'wss://relay.damus.io',
     'wss://nos.lol',
     'wss://relay.snort.social',
     'wss://relay.primal.net',
     'wss://nostr.bitcoiner.social',
-    'wss://nostr.mom'
+    'wss://nostr.mom',
+    'wss://nostr.wine',
+    'wss://relay.nostr.band'
   ];
 
   private readonly PRESENCE_KIND = 30315;
@@ -199,6 +202,14 @@ class NostrService {
       return true;
     } catch (error) {
       console.warn('⚠️ Nostr init failed:', error);
+      // Retry once after 15 seconds in case of transient network issues
+      setTimeout(() => {
+        if (!this.isInitialized) {
+          console.log('📡 Retrying Nostr initialization...');
+          this.initPromise = null;
+          this.initialize().catch(() => {});
+        }
+      }, 15000);
       return false;
     }
   }
@@ -250,12 +261,13 @@ class NostrService {
     if (activeRelays.length === 0) return;
 
     // ── FIX #3: store subscription reference ──
+    const since = Math.floor(Date.now() / 1000) - 3600; // last hour of history
     this.eventSubscription = this.pool!.subscribeMany(
       activeRelays,
       [
-        { kinds: [4], '#p': [this.publicKey!], limit: 10 },
-        { kinds: [1], '#t': ['xitchat'], limit: 10 },
-        { kinds: [42], limit: 20 }
+        { kinds: [4], '#p': [this.publicKey!], since, limit: 10 },
+        { kinds: [1], '#t': ['xitchat'], since },
+        { kinds: [42], since, limit: 20 }
       ],
       {
         onevent: (event: any) => {
@@ -264,7 +276,7 @@ class NostrService {
           else if (event.kind === 42) this.emit('channelMessageReceived', event);
         },
         onclose: (reasons: any) => {
-          console.debug('📡 Nostr subscription closed:', reasons);
+          console.log('📡 Nostr subscription closed:', JSON.stringify(reasons));
         }
       }
     );
@@ -288,6 +300,7 @@ class NostrService {
   }
 
   private handleTaggedTextNote(event: any): void {
+    console.log(`[NOSTR] kind:1 from=${event.pubkey?.substring(0, 8)} own=${event.pubkey === this.publicKey} content_prefix=${event.content?.substring(0, 40)}`);
     if (event.pubkey === this.publicKey) return;
     this.emit('messageReceived', {
       id: event.id,
@@ -324,7 +337,7 @@ class NostrService {
       );
 
       try {
-        await this.pool!.publish(this.getPublishRelays(), event);
+        await this.publishToRelays(event);
         return true;
       } catch (publishError: any) {
         if (this.isRelayPolicyError(publishError)) {
@@ -352,7 +365,7 @@ class NostrService {
       );
 
       try {
-        await this.pool!.publish(this.getPublishRelays(), event);
+        await this.publishToRelays(event);
         return true;
       } catch (publishError: any) {
         if (this.isRelayPolicyError(publishError)) {
@@ -376,7 +389,7 @@ class NostrService {
         this.privateKeyBytes
       );
       try {
-        await this.pool!.publish(this.getPublishRelays(), event);
+        await this.publishToRelays(event);
         return true;
       } catch (publishError: any) {
         if (this.isRelayPolicyError(publishError)) return true;
@@ -392,7 +405,7 @@ class NostrService {
         { kind: 0, created_at: Math.floor(Date.now() / 1000), tags: [], content: JSON.stringify(metadata) },
         this.privateKeyBytes
       );
-      await this.pool!.publish(this.getPublishRelays(), event);
+      await this.publishToRelays(event);
       return true;
     } catch { return false; }
   }
@@ -468,7 +481,7 @@ class NostrService {
         },
         this.privateKeyBytes
       );
-      await this.pool!.publish(this.getPublishRelays(), event);
+      await this.publishToRelays(event);
       return true;
     } catch { return false; }
   }
@@ -551,6 +564,23 @@ class NostrService {
       msg.includes('blocked') || msg.includes('Policy violated') ||
       msg.includes('web of trust') || msg.includes('replaced') ||
       msg.includes('newer event');
+  }
+
+  /**
+   * nostr-tools v2 pool.publish() returns Promise<string>[] — one promise per relay.
+   * Awaiting the raw array only resolves the array reference; each per-relay promise
+   * runs fire-and-forget → unhandled rejections in logcat.
+   * This helper settles all of them and throws only when every relay rejected AND
+   * none of the failures are policy errors (which we treat as acceptable).
+   */
+  private async publishToRelays(event: any): Promise<void> {
+    const perRelayPromises: Promise<string>[] = this.pool!.publish(this.getPublishRelays(), event);
+    const results = await Promise.allSettled(perRelayPromises);
+    const accepted = results.some(r => r.status === 'fulfilled');
+    if (accepted) return;
+    // All relays rejected — collect reasons
+    const reasons = (results as PromiseRejectedResult[]).map(r => r.reason?.message || String(r.reason));
+    throw new Error(reasons.join('; '));
   }
 }
 

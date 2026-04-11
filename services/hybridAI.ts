@@ -1,5 +1,5 @@
 // Hybrid AI Service for XitChat
-// Automatically switches between Groq (primary) and Gemini (fallback)
+// Priority: Groq (cloud) → Gemini (cloud) → Mesh AI → Gemma (on-device) → static fallback
 
 import {
   getXitBotResponse as getXitBotResponseGemini,
@@ -16,9 +16,16 @@ import {
   checkGroqHealth
 } from './groq';
 
+import {
+  getXitBotResponseGemmaLocal,
+  streamXitBotResponseGemmaLocal,
+  getQuickRepliesGemmaLocal,
+  isGemmaReadySync
+} from './gemma-local';
+
 import { hybridMesh, HybridMeshPeer } from './hybridMesh';
 
-export type AIProvider = 'groq' | 'gemini' | 'fallback';
+export type AIProvider = 'groq' | 'gemini' | 'gemma' | 'fallback';
 
 export interface BuzzItem {
   title: string;
@@ -123,7 +130,8 @@ class HybridAIService {
     fallbackFn: () => T,
     operation: string,
     skipMesh: boolean = false,
-    userMessage?: string
+    userMessage?: string,
+    gemmaFn?: () => Promise<T>
   ): Promise<T> {
     if (this.primaryProvider === 'groq' && this.isGroqHealthy) {
       try {
@@ -145,6 +153,13 @@ class HybridAIService {
       try {
         const meshResult = await this.requestMeshAI(userMessage);
         if (meshResult) return meshResult as unknown as T;
+      } catch { }
+    }
+
+    // On-device Gemma — works fully offline, no internet required
+    if (gemmaFn) {
+      try {
+        return await gemmaFn();
       } catch { }
     }
 
@@ -182,7 +197,8 @@ class HybridAIService {
       () => this.getFallbackResponse(userMessage),
       'Chat Response',
       skipMesh,
-      userMessage
+      userMessage,
+      () => getXitBotResponseGemmaLocal(userMessage)
     );
   }
 
@@ -215,6 +231,11 @@ class HybridAIService {
       }
     }
 
+    // On-device Gemma — works fully offline
+    try {
+      return await streamXitBotResponseGemmaLocal(userMessage, onToken);
+    } catch { }
+
     const fallback = this.getFallbackResponse(userMessage);
     onToken(fallback, fallback);
     return fallback;
@@ -225,7 +246,10 @@ class HybridAIService {
       () => getQuickRepliesGroq(lastMessage),
       () => getQuickRepliesGemini(lastMessage),
       () => ["Rad!", "On it.", "10-4"],
-      'Quick Replies'
+      'Quick Replies',
+      false,
+      undefined,
+      () => getQuickRepliesGemmaLocal(lastMessage)
     );
   }
 
@@ -268,7 +292,8 @@ class HybridAIService {
     return {
       primary: this.primaryProvider,
       groqHealthy: this.isGroqHealthy,
-      failureCount: this.failureCount
+      failureCount: this.failureCount,
+      gemmaReady: isGemmaReadySync()
     };
   }
 

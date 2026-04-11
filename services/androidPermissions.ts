@@ -81,13 +81,18 @@ export class AndroidPermissionsService {
     }
 
     try {
-      // Use checkPermissions first to avoid unnecessary GPS trigger
-      const check = await Geolocation.checkPermissions();
-      if (check.location === 'granted') {
+      // checkPermissions throws "Location services are not enabled" when GPS is off.
+      // In that case skip straight to requestPermissions, which shows the dialog.
+      let check: any = null;
+      try {
+        check = await Geolocation.checkPermissions();
+      } catch {
+        // GPS/location services disabled — fall through to requestPermissions
+      }
+      if (check?.location === 'granted') {
         return { granted: true, denied: false, permanentlyDenied: false, canAskAgain: true };
       }
 
-      // Only call requestPermissions if not already granted
       const perms = await Geolocation.requestPermissions();
       const p = perms.location;
       return {
@@ -129,48 +134,57 @@ export class AndroidPermissionsService {
       new Promise(resolve => setTimeout(() => resolve(fallback), ms));
 
     try {
-      // ── FIX #1: use cached plugin instances ──
-      const BluetoothMesh = await this.getBluetoothPlugin();
-      const WiFiDirect = await this.getWiFiPlugin();
+      // Import once, then use registerPlugin synchronously — never await the proxy
+      // itself, because Capacitor proxies answer ALL property accesses (including
+      // .then) via the native bridge, making them look like thenables. Resolving a
+      // Promise to a thenable causes JS to call .then() on it, which fires
+      // "BluetoothMesh.then() is not implemented on android".
+      const { registerPlugin } = await import('@capacitor/core');
+      if (!this.bluetoothMeshPlugin) {
+        this.bluetoothMeshPlugin = registerPlugin<any>('BluetoothMesh');
+      }
+      if (!this.wifiDirectPlugin) {
+        this.wifiDirectPlugin = registerPlugin<any>('WiFiDirect');
+      }
+      const BluetoothMesh = this.bluetoothMeshPlugin;
+      const WiFiDirect = this.wifiDirectPlugin;
 
       let btGranted = false;
       let wifiGranted = false;
 
       try {
         const btResult = await Promise.race([
-          BluetoothMesh.requestPermissions(),
-          timeout(5000, null)
+          BluetoothMesh.initialize(),
+          timeout(8000, null)
         ]);
-        if (btResult) {
-          btGranted = btResult.location === 'granted' ||
-            btResult.bluetoothScan === 'granted' ||
-            btResult.bluetooth === 'granted';
+        if (btResult && btResult.success) {
+          btGranted = true;
+          console.log('Bluetooth mesh initialized successfully');
         } else {
-          console.warn('BluetoothMesh.requestPermissions timed out');
+          console.warn('BluetoothMesh.initialize failed or timed out');
           const locStatus = await this.requestLocationPermissions();
           btGranted = locStatus.granted;
         }
       } catch (e) {
-        console.warn('BluetoothMesh.requestPermissions failed (Android < 12):', e);
+        console.warn('BluetoothMesh.initialize failed (Android < 12):', e);
         const locStatus = await this.requestLocationPermissions();
         btGranted = locStatus.granted;
       }
 
       try {
         const wifiResult = await Promise.race([
-          WiFiDirect.requestPermissions(),
-          timeout(5000, null)
+          WiFiDirect.initialize(),
+          timeout(8000, null)
         ]);
-        if (wifiResult) {
-          wifiGranted = wifiResult.location === 'granted' ||
-            wifiResult.nearbyWifiDevices === 'granted' ||
-            wifiResult.wifiState === 'granted';
+        if (wifiResult && wifiResult.success) {
+          wifiGranted = true;
+          console.log('WiFi Direct initialized successfully');
         } else {
-          console.warn('WiFiDirect.requestPermissions timed out');
+          console.warn('WiFiDirect.initialize failed or timed out');
           wifiGranted = btGranted;
         }
       } catch (e) {
-        console.warn('WiFiDirect.requestPermissions failed:', e);
+        console.warn('WiFiDirect.initialize failed:', e);
         wifiGranted = btGranted;
       }
 

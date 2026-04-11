@@ -327,9 +327,23 @@ class WiFiP2PService {
         try {
           const { registerPlugin } = await import('@capacitor/core');
           const WiFiDirect = registerPlugin<any>('WiFiDirect');
-          await WiFiDirect.initialize();
-          this.WiFiDirectPlugin = WiFiDirect;
-          this.setupNativeWiFiDirectListeners(WiFiDirect);
+          
+          console.log('Calling WiFiDirect.initialize()...');
+          const result = await WiFiDirect.initialize();
+          console.log('WiFiDirect.initialize() result:', result);
+          
+          if (result && result.success) {
+            this.WiFiDirectPlugin = WiFiDirect;
+            this.setupNativeWiFiDirectListeners(WiFiDirect);
+            console.log('WiFi Direct initialized successfully');
+            console.log('WiFi Direct details:', result);
+          } else {
+            console.warn('WiFi Direct initialization failed:', result);
+            if (result?.message) {
+              console.warn('Error message:', result.message);
+            }
+            this.WiFiDirectPlugin = null;
+          }
         } catch (error) {
           console.warn('WiFiDirect plugin missing, falling back to WebRTC + Nostr:', error);
           this.WiFiDirectPlugin = null;

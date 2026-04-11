@@ -31,6 +31,8 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import com.getcapacitor.PermissionState;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -66,6 +68,8 @@ public class BluetoothMeshPlugin extends Plugin {
     private BluetoothGattServer gattServer;
     
     private Map<String, BluetoothGatt> connectedDevices = new HashMap<>();
+    // Devices that connected TO our GATT server (we didn't initiate the connection)
+    private Map<String, BluetoothDevice> serverConnectedDevices = new HashMap<>();
     private List<BluetoothDevice> discoveredDevices = new ArrayList<>();
     private Set<String> connectingDevices = new HashSet<>();
     
@@ -95,19 +99,95 @@ public class BluetoothMeshPlugin extends Plugin {
     @PluginMethod
     public void initialize(PluginCall call) {
         Log.d(TAG, "initialize() called");
+        
+        // 1. Ensure we have the Bluetooth Adapter (re-acquire if needed)
         if (bluetoothAdapter == null) {
+            Log.d(TAG, "Bluetooth adapter null, attempting to re-acquire...");
+            bluetoothManager = (BluetoothManager) getContext().getSystemService(Context.BLUETOOTH_SERVICE);
+            if (bluetoothManager != null) {
+                bluetoothAdapter = bluetoothManager.getAdapter();
+                if (bluetoothAdapter != null) {
+                    Log.d(TAG, "Bluetooth adapter re-acquired successfully");
+                }
+            }
+        }
+
+        // 2. Check for Permissions (Android 12+ requires runtime prompts)
+        if (checkPermissions()) {
+            Log.d(TAG, "All permissions already granted, checking hardware...");
+            checkHardwareAndResolve(call);
+        } else {
+            Log.d(TAG, "Permissions not granted, requesting...");
+            // Request all relevant aliases defined in @CapacitorPlugin
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Android 12+: BLUETOOTH_SCAN / CONNECT / ADVERTISE are runtime permissions
+                requestPermissionForAliases(
+                    new String[]{"bluetoothScan", "bluetoothConnect", "bluetoothAdvertise"},
+                    call, "checkHardwareCallback");
+            } else {
+                // Android < 12: legacy BLUETOOTH / BLUETOOTH_ADMIN + location are runtime permissions
+                requestPermissionForAliases(
+                    new String[]{"bluetooth", "bluetoothAdmin", "location"},
+                    call, "checkHardwareLegacyCallback");
+            }
+        }
+    }
+
+    // Callback for Android 12+ permission dialog
+    @PermissionCallback
+    private void checkHardwareCallback(PluginCall call) {
+        if (getPermissionState("bluetoothScan") == PermissionState.GRANTED &&
+            getPermissionState("bluetoothConnect") == PermissionState.GRANTED &&
+            getPermissionState("bluetoothAdvertise") == PermissionState.GRANTED) {
+            checkHardwareAndResolve(call);
+        } else {
+            call.reject("Bluetooth permissions are required for Mesh networking");
+        }
+    }
+
+    // Callback for Android < 12 permission dialog
+    @PermissionCallback
+    private void checkHardwareLegacyCallback(PluginCall call) {
+        if (getPermissionState("bluetooth") == PermissionState.GRANTED &&
+            getPermissionState("bluetoothAdmin") == PermissionState.GRANTED &&
+            getPermissionState("location") == PermissionState.GRANTED) {
+            checkHardwareAndResolve(call);
+        } else {
+            call.reject("Bluetooth permissions are required for Mesh networking");
+        }
+    }
+
+    private void checkHardwareAndResolve(PluginCall call) {
+        // Final check for Bluetooth adapter
+        if (bluetoothAdapter == null) {
+            Log.e(TAG, "Bluetooth adapter is null after re-acquisition attempt");
             call.reject("Bluetooth not supported on this device");
             return;
         }
-        
+
+        // Check if Bluetooth is enabled
         if (!bluetoothAdapter.isEnabled()) {
-            call.reject("Bluetooth is not enabled");
+            Log.w(TAG, "Bluetooth is disabled, attempting to enable...");
+            // Note: On Android 12+, we cannot programmatically enable Bluetooth
+            // User must enable it manually, but we can provide a clear error message
+            call.reject("Bluetooth is not enabled. Please turn on Bluetooth in device settings.");
             return;
         }
-        
+
+        // Re-initialize scanner and advertiser if needed
+        if (bluetoothLeScanner == null || bluetoothLeAdvertiser == null) {
+            Log.d(TAG, "Re-initializing scanner and advertiser...");
+            bluetoothLeScanner = bluetoothAdapter.getBluetoothLeScanner();
+            bluetoothLeAdvertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
+        }
+
+        Log.d(TAG, "Bluetooth hardware check passed");
         JSObject ret = new JSObject();
         ret.put("success", true);
-        ret.put("message", "Bluetooth mesh initialized");
+        ret.put("message", "Bluetooth mesh initialized and permissions granted");
+        ret.put("bluetoothEnabled", bluetoothAdapter.isEnabled());
+        ret.put("hasScanner", bluetoothLeScanner != null);
+        ret.put("hasAdvertiser", bluetoothLeAdvertiser != null);
         call.resolve(ret);
     }
 
@@ -153,13 +233,20 @@ public class BluetoothMeshPlugin extends Plugin {
             .setConnectable(true)
             .build();
         
+        // setIncludeDeviceName(true) + 128-bit UUID exceeds the 31-byte BLE advertising limit
+        // (ADVERTISE_FAILED_DATA_TOO_LARGE). Keep the primary packet lean — service UUID only.
         AdvertiseData data = new AdvertiseData.Builder()
-            .setIncludeDeviceName(true)
+            .setIncludeDeviceName(false)
             .addServiceUuid(new ParcelUuid(SERVICE_UUID))
+            .build();
+
+        // Scan response carries the human-readable name without eating primary packet budget.
+        AdvertiseData scanResponse = new AdvertiseData.Builder()
+            .setIncludeDeviceName(true)
             .build();
         
         try {
-            bluetoothLeAdvertiser.startAdvertising(settings, data, advertiseCallback);
+            bluetoothLeAdvertiser.startAdvertising(settings, data, scanResponse, advertiseCallback);
             isAdvertising = true;
             
             // Start GATT server
@@ -287,26 +374,41 @@ public class BluetoothMeshPlugin extends Plugin {
         }
         
         BluetoothGatt gatt = connectedDevices.get(deviceId);
-        if (gatt == null) {
+        if (gatt != null) {
+            // CLIENT path: we initiated the connection — write the characteristic directly.
+            BluetoothGattService service = gatt.getService(SERVICE_UUID);
+            if (service == null) { call.reject("Service not found"); return; }
+            BluetoothGattCharacteristic characteristic = service.getCharacteristic(CHARACTERISTIC_UUID);
+            if (characteristic == null) { call.reject("Characteristic not found"); return; }
+            characteristic.setValue(message.getBytes(StandardCharsets.UTF_8));
+            boolean success = gatt.writeCharacteristic(characteristic);
+            JSObject ret = new JSObject();
+            ret.put("success", success);
+            call.resolve(ret);
+            return;
+        }
+
+        // SERVER path: the remote device connected to US — use GATT server notification.
+        BluetoothDevice serverDevice = serverConnectedDevices.get(deviceId);
+        if (serverDevice == null) {
             call.reject("Device not connected");
             return;
         }
-        
-        BluetoothGattService service = gatt.getService(SERVICE_UUID);
-        if (service == null) {
-            call.reject("Service not found");
+        if (gattServer == null) {
+            call.reject("GATT server not running");
             return;
         }
-        
-        BluetoothGattCharacteristic characteristic = service.getCharacteristic(CHARACTERISTIC_UUID);
-        if (characteristic == null) {
-            call.reject("Characteristic not found");
-            return;
+        BluetoothGattService serverService = gattServer.getService(SERVICE_UUID);
+        if (serverService == null) { call.reject("Server service not found"); return; }
+        BluetoothGattCharacteristic serverChar = serverService.getCharacteristic(CHARACTERISTIC_UUID);
+        if (serverChar == null) { call.reject("Server characteristic not found"); return; }
+        serverChar.setValue(message.getBytes(StandardCharsets.UTF_8));
+        boolean success = false;
+        try {
+            success = gattServer.notifyCharacteristicChanged(serverDevice, serverChar, false);
+        } catch (Exception e) {
+            Log.e(TAG, "notifyCharacteristicChanged failed", e);
         }
-        
-        characteristic.setValue(message.getBytes(StandardCharsets.UTF_8));
-        boolean success = gatt.writeCharacteristic(characteristic);
-        
         JSObject ret = new JSObject();
         ret.put("success", success);
         call.resolve(ret);
@@ -320,6 +422,10 @@ public class BluetoothMeshPlugin extends Plugin {
     }
 
     private void startGattServer() {
+        if (bluetoothManager == null) {
+            Log.e(TAG, "bluetoothManager is null, cannot start GATT server");
+            return;
+        }
         gattServer = bluetoothManager.openGattServer(getContext(), gattServerCallback);
         
         BluetoothGattService service = new BluetoothGattService(
@@ -376,13 +482,16 @@ public class BluetoothMeshPlugin extends Plugin {
             if (!discoveredDevices.contains(device)) {
                 discoveredDevices.add(device);
                 
+                String deviceName = "Unknown";
+                try { deviceName = device.getName() != null ? device.getName() : "Unknown"; } catch (SecurityException ignored) {}
+
                 JSObject ret = new JSObject();
                 ret.put("deviceId", device.getAddress());
-                ret.put("deviceName", device.getName() != null ? device.getName() : "Unknown");
+                ret.put("deviceName", deviceName);
                 ret.put("rssi", result.getRssi());
-                
+
                 notifyListeners("deviceDiscovered", ret);
-                Log.d(TAG, "Discovered device: " + device.getName() + " (" + device.getAddress() + ")");
+                Log.d(TAG, "Discovered device: " + deviceName + " (" + device.getAddress() + ")");
                 connectToDiscoveredDevice(device);
             }
         }
@@ -409,9 +518,12 @@ public class BluetoothMeshPlugin extends Plugin {
                     gatt.discoverServices();
                 } catch (Exception ignored) {}
 
+                String deviceName = "Unknown";
+                try { deviceName = gatt.getDevice().getName() != null ? gatt.getDevice().getName() : "Unknown"; } catch (SecurityException ignored) {}
+
                 JSObject ret = new JSObject();
                 ret.put("deviceId", deviceId);
-                ret.put("deviceName", gatt.getDevice().getName() != null ? gatt.getDevice().getName() : "Unknown");
+                ret.put("deviceName", deviceName);
                 ret.put("connected", true);
                 notifyListeners("deviceConnected", ret);
                 Log.d(TAG, "Client GATT connected: " + deviceId);
@@ -449,16 +561,22 @@ public class BluetoothMeshPlugin extends Plugin {
         public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
             if (newState == BluetoothGatt.STATE_CONNECTED) {
                 Log.d(TAG, "Device connected: " + device.getAddress());
-                
+                // Track so sendMessage can use notifyCharacteristicChanged for this peer.
+                serverConnectedDevices.put(device.getAddress(), device);
+
+                String devName = "Unknown";
+                try { devName = device.getName() != null ? device.getName() : "Unknown"; } catch (SecurityException ignored) {}
+
                 JSObject ret = new JSObject();
                 ret.put("deviceId", device.getAddress());
-                ret.put("deviceName", device.getName() != null ? device.getName() : "Unknown");
+                ret.put("deviceName", devName);
                 ret.put("connected", true);
                 notifyListeners("deviceConnected", ret);
             } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
                 Log.d(TAG, "Device disconnected: " + device.getAddress());
+                serverConnectedDevices.remove(device.getAddress());
                 connectedDevices.remove(device.getAddress());
-                
+
                 JSObject ret = new JSObject();
                 ret.put("deviceId", device.getAddress());
                 ret.put("connected", false);

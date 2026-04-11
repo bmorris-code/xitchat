@@ -1,0 +1,224 @@
+name: Android Pre-Flight Checks
+
+# Runs on every PR and push to main, plus on-demand.
+# Catches Play-Store-blocking issues BEFORE they reach users.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'services/**'
+      - 'App.tsx'
+      - 'capacitor.config.ts'
+      - 'package.json'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 20
+  JAVA_VERSION: 17
+
+jobs:
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. SOURCE-CODE SANITY — fast checks that need no build tools
+# ──────────────────────────────────────────────────────────────────────────────
+  source-checks:
+    name: Source-code sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Placeholder / TODO scan ──────────────────────────────────────────────
+      - name: Check for placeholder URLs that would block users
+        run: |
+          FAIL=0
+
+          if grep -r "your-cdn\.com" services/ App.tsx 2>/dev/null | grep -v "\.md"; then
+            echo "::error::GEMMA_MODEL_URL still contains placeholder 'your-cdn.com'."
+            echo "  Fix: set a real URL in services/gemma-local.ts, or the Gemma setup"
+            echo "  screen will be skipped silently (safe) but XitBot AI won't work."
+            FAIL=1
+          fi
+
+          if grep -rn "TODO.*REPLACE\|FIXME.*REPLACE\|change.*this.*URL\|replace with real" \
+               services/ App.tsx android/ 2>/dev/null | grep -v ".md:"; then
+            echo "::warning::Unfilled TODO/placeholder found in shipping code."
+          fi
+
+          exit $FAIL
+
+      # ── Capacitor async-getter anti-pattern ─────────────────────────────────
+      # An async function that returns a Capacitor plugin proxy will trigger
+      # "PluginName.then() is not implemented on android" because Promise
+      # resolution calls .then() on thenables — and proxies answer everything.
+      - name: Check for async Capacitor plugin getters
+        run: |
+          # Match:  async function get<Something>  or  async get<Something>()
+          # that are likely to return a registerPlugin() proxy.
+          if grep -rn "async function get.*Plugin\|async get.*Plugin\b" services/ 2>/dev/null; then
+            echo "::error::Async plugin getter detected. Returning a Capacitor proxy from an"
+            echo "  async function calls .then() on it (Promise thenable resolution), which"
+            echo "  fires \"Plugin.then() is not implemented on android\"."
+            echo "  Fix: make the getter synchronous — registerPlugin() is synchronous."
+            exit 1
+          fi
+
+      # ── Required Android files ───────────────────────────────────────────────
+      - name: Verify required Android source files exist
+        run: |
+          FAIL=0
+          for f in \
+            android/app/src/main/AndroidManifest.xml \
+            android/app/src/main/java/com/xitchat/app/MainActivity.java \
+            android/app/src/main/java/com/xitchat/app/BluetoothMeshPlugin.java \
+            android/app/src/main/java/com/xitchat/app/WiFiDirectPlugin.java \
+            android/app/src/main/java/com/xitchat/app/GemmaPlugin.java \
+            android/app/build.gradle \
+            capacitor.config.ts; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Missing required file: $f"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      # ── MainActivity must register all three plugins ─────────────────────────
+      - name: Verify all plugins are registered in MainActivity
+        run: |
+          FAIL=0
+          for plugin in BluetoothMeshPlugin WiFiDirectPlugin GemmaPlugin; do
+            if ! grep -q "registerPlugin($plugin.class)" \
+                android/app/src/main/java/com/xitchat/app/MainActivity.java; then
+              echo "::error::$plugin is not registered in MainActivity.java"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      # ── Capacitor plugin names must match Java @CapacitorPlugin(name=...) ────
+      - name: Verify Capacitor plugin name consistency
+        run: |
+          FAIL=0
+
+          check_name() {
+            local ts_name="$1"
+            local java_file="$2"
+            if ! grep -q "name = \"$ts_name\"" "$java_file"; then
+              echo "::error::Plugin name mismatch: TypeScript uses '$ts_name' but $java_file has a different @CapacitorPlugin name"
+              FAIL=1
+            fi
+          }
+
+          check_name "BluetoothMesh" android/app/src/main/java/com/xitchat/app/BluetoothMeshPlugin.java
+          check_name "WiFiDirect"    android/app/src/main/java/com/xitchat/app/WiFiDirectPlugin.java
+          check_name "GemmaLocal"    android/app/src/main/java/com/xitchat/app/GemmaPlugin.java
+
+          exit $FAIL
+
+      # ── AndroidManifest permission check ─────────────────────────────────────
+      - name: Verify critical permissions are declared
+        run: |
+          FAIL=0
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          for perm in \
+            INTERNET \
+            BLUETOOTH_SCAN \
+            BLUETOOTH_ADVERTISE \
+            BLUETOOTH_CONNECT \
+            ACCESS_FINE_LOCATION \
+            ACCESS_WIFI_STATE \
+            CHANGE_WIFI_STATE \
+            NEARBY_WIFI_DEVICES \
+            CAMERA; do
+            if ! grep -q "android.permission.$perm" "$MANIFEST"; then
+              echo "::error::Missing permission in AndroidManifest: $perm"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+      # ── versionCode must be > 1 for Play Store updates ───────────────────────
+      - name: Check versionCode is set
+        run: |
+          CODE=$(grep -E "versionCode\s+" android/app/build.gradle | grep -oE '[0-9]+' | head -1)
+          if [ -z "$CODE" ] || [ "$CODE" -lt 1 ]; then
+            echo "::error::versionCode not found or is 0 in build.gradle"
+            exit 1
+          fi
+          echo "versionCode = $CODE"
+
+      # ── mediapipe dependency present ─────────────────────────────────────────
+      - name: Check MediaPipe dependency in build.gradle
+        run: |
+          if ! grep -q "mediapipe" android/app/build.gradle; then
+            echo "::error::MediaPipe dependency missing from android/app/build.gradle"
+            exit 1
+          fi
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. JS/TS BUILD — ensures the web layer compiles without errors
+# ──────────────────────────────────────────────────────────────────────────────
+  build-web:
+    name: TypeScript / web build
+    runs-on: ubuntu-latest
+    needs: source-checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build web layer (mobile preset)
+        run: npm run build:mobile
+        env:
+          VITE_API_BASE_URL: ''
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. ANDROID GRADLE BUILD — ensures the APK compiles
+# ──────────────────────────────────────────────────────────────────────────────
+  build-android:
+    name: Android Gradle build
+    runs-on: ubuntu-latest
+    needs: build-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build web layer (mobile preset)
+        run: npm run build:mobile
+        env:
+          VITE_API_BASE_URL: ''
+
+      - name: Sync Capacitor assets to Android
+        run: npx cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Grant Gradle execute permission
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK (compile check)
+        run: cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+        timeout-minutes: 20
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: xitchat-preflight-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7

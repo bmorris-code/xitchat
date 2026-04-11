@@ -9,7 +9,7 @@ export default defineConfig(({ mode }: { mode: string }): UserConfig => {
 
   return {
     esbuild: {
-      drop: mode === 'production' ? ['console', 'debugger'] : [],
+      drop: [],
     },
     base: env.VITE_BASE_URL || (isMobile ? './' : '/'),
 

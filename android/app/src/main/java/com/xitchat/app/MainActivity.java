@@ -21,7 +21,20 @@ public class MainActivity extends BridgeActivity {
             android.util.Log.e("XitChat", "Failed to register WiFiDirectPlugin", e);
         }
 
+        try {
+            registerPlugin(GemmaPlugin.class);
+            android.util.Log.d("XitChat", "GemmaPlugin registered");
+        } catch (Exception e) {
+            android.util.Log.e("XitChat", "Failed to register GemmaPlugin", e);
+        }
+
         super.onCreate(savedInstanceState);
         android.util.Log.d("XitChat", "MainActivity onCreate finished");
+    }
+    
+    @Override
+    public void onStart() {
+        super.onStart();
+        android.util.Log.d("XitChat", "MainActivity onStart - plugins should be available now");
     }
 }

@@ -10,7 +10,6 @@ import { realTorService } from './realTorService';
 import { realPowService } from './realPowService';
 import { hybridMeshWebRTC as ablyWebRTC } from './ablyWebRTC';
 import { networkStateManager } from './networkStateManager';
-import { androidPermissions } from './androidPermissions';
 import { presenceBeacon } from './presenceBeacon';
 import { identityService } from './identityService';
 import { trustStore } from './trustStore';
@@ -129,11 +128,28 @@ class HybridMeshService {
   }
 
   async initialize(): Promise<MeshConnectionType[]> {
+    // Idempotency guard — the useEffect in App.tsx fires on every mount.
+    // A second call would re-subscribe event listeners, causing duplicate messages.
+    if (this.isInitialized) {
+      return (Object.keys(this.activeServices) as MeshConnectionType[])
+        .filter(k => this.activeServices[k]);
+    }
+
     try {
+      console.log('=== HYBRID MESH INITIALIZATION START ===');
+
       const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() &&
         (window as any).Capacitor?.getPlatform() === 'android';
 
-      if (isNativeAndroid) await androidPermissions.requestAllCriticalPermissions();
+      console.log('Platform check - Native Android:', isNativeAndroid);
+
+      // ── Permissions are NOT requested here ──────────────────────────────────
+      // Requesting permissions inside the mesh service fires system dialogs before
+      // the user has seen the Onboarding screen, blocking the app entry flow.
+      // Permissions are requested by the Onboarding component ("Initialize Mesh"
+      // button) via androidPermissions.requestAllCriticalPermissions().
+      // After onboarding, call hybridMesh.startNativeTransports() to bring up
+      // Bluetooth and WiFi Direct with the newly granted permissions.
 
       try {
         const handle = localStorage.getItem('xitchat_handle') || 'anon';
@@ -143,24 +159,56 @@ class HybridMeshService {
 
       const initializedTypes: MeshConnectionType[] = [];
 
+      console.log('Starting Broadcast Mesh...');
       const broadcastSuccess = await this.startBroadcastMesh();
-      if (broadcastSuccess) initializedTypes.push('broadcast');
+      if (broadcastSuccess) {
+        initializedTypes.push('broadcast');
+        console.log('Broadcast Mesh initialized successfully');
+      } else {
+        console.warn('Broadcast Mesh initialization failed');
+      }
 
+      console.log('Starting Nostr...');
       const nostrSuccess = await this.startNostr();
-      if (nostrSuccess) initializedTypes.push('nostr');
+      if (nostrSuccess) {
+        initializedTypes.push('nostr');
+        console.log('Nostr initialized successfully');
+      } else {
+        console.warn('Nostr initialization failed');
+      }
 
+      console.log('Starting WebRTC...');
       const webrtcSuccess = await this.startWebRTC();
-      if (webrtcSuccess) initializedTypes.push('webrtc');
+      if (webrtcSuccess) {
+        initializedTypes.push('webrtc');
+        console.log('WebRTC initialized successfully');
+      } else {
+        console.warn('WebRTC initialization failed');
+      }
 
       if (isNativeAndroid) {
+        console.log('Starting WiFi P2P...');
         const wifiSuccess = await this.startWiFiP2P();
-        if (wifiSuccess) initializedTypes.push('wifi');
+        if (wifiSuccess) {
+          initializedTypes.push('wifi');
+          console.log('WiFi P2P initialized successfully');
+        } else {
+          console.warn('WiFi P2P initialization failed');
+        }
 
+        console.log('Starting Bluetooth...');
         const bluetoothSuccess = await this.startBluetooth();
-        if (bluetoothSuccess) initializedTypes.push('bluetooth');
+        if (bluetoothSuccess) {
+          initializedTypes.push('bluetooth');
+          console.log('Bluetooth initialized successfully');
+        } else {
+          console.warn('Bluetooth initialization failed');
+        }
       }
 
       this.isInitialized = true;
+      console.log('=== HYBRID MESH INITIALIZATION COMPLETE ===');
+      console.log('Initialized connection types:', initializedTypes);
       return initializedTypes;
     } catch (error) {
       console.error('Mesh initialization failed:', error);
@@ -209,6 +257,28 @@ class HybridMeshService {
       }
       return false;
     } catch { return false; }
+  }
+
+  /**
+   * Start only the native Android transports (Bluetooth + WiFi Direct).
+   * Called after the Onboarding flow grants the required permissions.
+   * Safe to call even if initialize() already ran — it only starts services
+   * that are not yet active, and skips on non-Android platforms.
+   */
+  async startNativeTransports(): Promise<void> {
+    const isNativeAndroid = (window as any).Capacitor?.isNativePlatform() &&
+      (window as any).Capacitor?.getPlatform() === 'android';
+    if (!isNativeAndroid) return;
+
+    if (!this.activeServices.wifi) {
+      const wifiOk = await this.startWiFiP2P().catch(() => false);
+      if (wifiOk) console.log('WiFi P2P started after permissions granted');
+    }
+
+    if (!this.activeServices.bluetooth) {
+      const btOk = await this.startBluetooth().catch(() => false);
+      if (btOk) console.log('Bluetooth started after permissions granted');
+    }
   }
 
   private async startBluetooth(): Promise<boolean> {
@@ -374,6 +444,11 @@ class HybridMeshService {
       if (typeof content !== 'string') return;
       if (this.isTransportControlPayload(content)) return;
 
+      // ── FIX: Log geohash messages for debugging ───────────────────────
+      if (content.startsWith('[GEOHASH:')) {
+        console.log(`[HYBRID] Processing geohash message: ${content.substring(0, 100)}...`);
+      }
+
       if (content.startsWith('{')) {
         const parsed = this.tryParseJsonWithRecovery(content);
 
@@ -501,6 +576,12 @@ class HybridMeshService {
       const mId = messageId || Math.random().toString(36).substr(2, 9);
       const torStatus = realTorService.getStatus().connected;
 
+      // ── FIX: Log outgoing messages for debugging ───────────────────────
+      if (content.startsWith('[GEOHASH:')) {
+        console.log(`[HYBRID] Sending geohash message: ${content.substring(0, 100)}...`);
+      }
+      console.log(`[HYBRID] sendMessage targetId=${targetId} activeServices=${JSON.stringify(this.activeServices)}`);
+
       const signed = await identityService.signEnvelope({ content, timestamp, messageId: mId });
 
       let sig = '';
@@ -579,20 +660,28 @@ class HybridMeshService {
 
       let broadcastSuccess = false;
 
+      console.log(`[HYBRID] Broadcasting message - bluetooth:${this.activeServices.bluetooth} wifi:${this.activeServices.wifi} nostr:${this.activeServices.nostr} broadcast:${this.activeServices.broadcast}`);
+
       if (this.activeServices.bluetooth) {
-        for (const p of Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth' && p.isConnected)) {
+        const bluetoothPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth' && p.isConnected);
+        console.log(`[HYBRID] Broadcasting to ${bluetoothPeers.length} Bluetooth peers`);
+        for (const p of bluetoothPeers) {
           try { await workingBluetoothMesh.sendMessage(p.serviceId!, payload); broadcastSuccess = true; } catch {}
         }
       }
       if (this.activeServices.wifi) {
-        for (const p of Array.from(this.peers.values()).filter(p => p.connectionType === 'wifi' && p.isConnected)) {
+        const wifiPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'wifi' && p.isConnected);
+        console.log(`[HYBRID] Broadcasting to ${wifiPeers.length} WiFi peers`);
+        for (const p of wifiPeers) {
           try { await wifiP2P.sendMessage(p.serviceId!, payload); broadcastSuccess = true; } catch {}
         }
       }
       if (this.activeServices.nostr) {
+        console.log(`[HYBRID] Broadcasting to Nostr`);
         try { await nostrService.broadcastMessage(payload); broadcastSuccess = true; } catch {}
       }
       if (this.activeServices.broadcast) {
+        console.log(`[HYBRID] Broadcasting to broadcast mesh`);
         try { await broadcastMesh.broadcastMessage(payload); broadcastSuccess = true; } catch {}
       }
 

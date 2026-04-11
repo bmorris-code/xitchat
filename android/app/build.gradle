@@ -70,6 +70,11 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+    // On-device Gemma inference via MediaPipe LLM Inference API
+    // tasks-genai:0.10.22 is compiled with Java 21 (class version 65) but this
+    // project targets Java 17 (class version 61), causing a compile error.
+    // Stubbed out below until we upgrade to Java 21 or find a Java-17-compatible build.
+    // implementation 'com.google.mediapipe:tasks-genai:0.10.22'
 }
 
 apply from: 'capacitor.build.gradle'

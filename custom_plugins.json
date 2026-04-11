@@ -1,0 +1,14 @@
+[
+	{
+		"pkg": "BluetoothMesh",
+		"classpath": "com.xitchat.app.BluetoothMeshPlugin"
+	},
+	{
+		"pkg": "WiFiDirect",
+		"classpath": "com.xitchat.app.WiFiDirectPlugin"
+	},
+	{
+		"pkg": "Gemma",
+		"classpath": "com.xitchat.app.GemmaPlugin"
+	}
+]

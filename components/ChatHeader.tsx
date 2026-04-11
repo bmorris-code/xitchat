@@ -211,12 +211,14 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
                                 ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
                                 : aiStatus.primary === 'gemini'
                                     ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50'
-                                    : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
+                                    : aiStatus.gemmaReady
+                                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/50'
+                                        : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/50'
                                 }`}
-                            title={aiStatus.groqHealthy ? 'AI Online (Groq)' : aiStatus.primary === 'gemini' ? 'AI Online (Gemini)' : 'AI Mesh Proxy Active'}
+                            title={aiStatus.groqHealthy ? 'AI Online (Groq)' : aiStatus.primary === 'gemini' ? 'AI Online (Gemini)' : aiStatus.gemmaReady ? 'AI On-Device (Gemma — fully offline)' : 'AI Mesh Proxy Active'}
                         >
                             <i className="fa-solid fa-robot text-[8px] sm:text-xs"></i>
-                            <span className="hidden md:inline ml-1">{aiStatus.groqHealthy ? 'AI:GROQ' : aiStatus.primary === 'gemini' ? 'AI:GEMINI' : 'AI:MESH'}</span>
+                            <span className="hidden md:inline ml-1">{aiStatus.groqHealthy ? 'AI:GROQ' : aiStatus.primary === 'gemini' ? 'AI:GEMINI' : aiStatus.gemmaReady ? 'AI:GEMMA' : 'AI:MESH'}</span>
                         </div>
                         {aiStreaming && (
                             <div

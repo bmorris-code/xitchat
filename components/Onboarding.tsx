@@ -1,5 +1,5 @@
-import React from 'react';
-import { androidPermissions } from '../services/androidPermissions';
+import React, { useState, useEffect } from 'react';
+import { androidPermissions, PermissionResult } from '../services/androidPermissions';
 import { releaseInfo } from '../services/releaseInfo';
 import { downloadApk } from '../services/installFlow';
 
@@ -13,23 +13,71 @@ interface OnboardingProps {
 const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isInstalled, onInstallApp }) => {
   const isWeb = !(window as any).Capacitor?.isNativePlatform?.();
   const hasInstallPrompt = Boolean(installPrompt);
+  
+  const [permissionStatus, setPermissionStatus] = useState<{
+    camera: PermissionResult;
+    location: PermissionResult;
+    bluetooth: PermissionResult;
+    push: PermissionResult;
+  } | null>(null);
+  
+  const [isRequesting, setIsRequesting] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Check current permission status on mount
+    const checkPermissions = async () => {
+      if (!isWeb) {
+        try {
+          const status = await androidPermissions.checkPermissionStatus();
+          const cameraResult = { granted: status.camera === 'granted', denied: status.camera === 'denied', permanentlyDenied: false, canAskAgain: true };
+          const locationResult = { granted: status.location === 'granted', denied: status.location === 'denied', permanentlyDenied: false, canAskAgain: true };
+          const pushResult = { granted: status.push === 'granted', denied: status.push === 'denied', permanentlyDenied: false, canAskAgain: true };
+          
+          setPermissionStatus({
+            camera: cameraResult,
+            location: locationResult,
+            bluetooth: { granted: false, denied: false, permanentlyDenied: false, canAskAgain: true }, // Will be checked during request
+            push: pushResult
+          });
+        } catch (error) {
+          console.error('Failed to check permission status:', error);
+        }
+      }
+    };
+    
+    checkPermissions();
+  }, [isWeb]);
 
   const handleGrant = async () => {
+    setIsRequesting(true);
+    setPermissionError(null);
     try {
-      console.log('Starting comprehensive permission requests...');
-      const results = await androidPermissions.requestAllCriticalPermissions();
+      console.log('Starting permission requests...');
 
-      if (androidPermissions.hasPermanentDenials(results)) {
-        console.log('Some permissions are permanently denied. User may need to enable them in settings.');
+      if (!isWeb) {
+        const results = await androidPermissions.requestAllCriticalPermissions();
+        setPermissionStatus(results);
+
+        if (androidPermissions.hasPermanentDenials(results)) {
+          setPermissionError('Some permissions were permanently denied. You can enable them in device Settings later.');
+          // Still proceed — mesh works without all permissions
+        } else if (!results.overallGranted) {
+          setPermissionError('Some permissions were not granted. Mesh features may be limited.');
+          // Still proceed
+        }
       }
 
-      console.log('Permission handshake completed');
+      localStorage.setItem('xitchat_onboarded', 'true');
+      onComplete();
     } catch (e) {
-      console.log('Permission handshake completed with some errors:', e);
+      console.error('Permission request error:', e);
+      // Always proceed — don't block the user
+      localStorage.setItem('xitchat_onboarded', 'true');
+      onComplete();
+    } finally {
+      setIsRequesting(false);
     }
-
-    localStorage.setItem('xitchat_onboarded', 'true');
-    onComplete();
   };
 
   return (
@@ -74,10 +122,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
 
           <div className="space-y-10">
             <div className="flex items-start gap-5">
-              <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
-                <i className="fa-solid fa-bluetooth"></i>
+              <div className="mt-1 w-6 text-center">
+                {permissionStatus?.bluetooth.granted ? (
+                  <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
+                ) : (
+                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                )}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Nearby Devices</h3>
                 <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed">
                   Required to discover and chat with xitchat users via Bluetooth Mesh when offline.
@@ -86,10 +138,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
             </div>
 
             <div className="flex items-start gap-5">
-              <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
-                <i className="fa-solid fa-location-dot"></i>
+              <div className="mt-1 w-6 text-center">
+                {permissionStatus?.location.granted ? (
+                  <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
+                ) : (
+                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                )}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Radar & Local Rooms</h3>
                 <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed mb-2">
                   Required for the Real-time Radar and to automatically join Local Area chat rooms.
@@ -102,10 +158,14 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
             </div>
 
             <div className="flex items-start gap-5">
-              <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
-                <i className="fa-solid fa-camera"></i>
+              <div className="mt-1 w-6 text-center">
+                {permissionStatus?.camera.granted ? (
+                  <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
+                ) : (
+                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                )}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">QR Handshakes</h3>
                 <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed">
                   Required to scan QR codes for instant peer discovery and secure handshakes.
@@ -114,13 +174,17 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
             </div>
 
             <div className="flex items-start gap-5">
-              <div className="mt-1 text-[#00ff41] w-6 text-center text-xl">
-                <i className="fa-solid fa-bell"></i>
+              <div className="mt-1 w-6 text-center">
+                {permissionStatus?.push.granted ? (
+                  <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
+                ) : (
+                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                )}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-[#00ff41] font-bold text-base tracking-tight mb-1">Notifications</h3>
                 <p className="text-[11px] text-[#00ff41] opacity-60 leading-relaxed">
-                  Stay updated when you receive private mesh messages or local buzzes.
+                  To stay updated.
                 </p>
               </div>
             </div>
@@ -197,13 +261,28 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black to-transparent pt-12">
+      <div className="absolute bottom-0 left-0 right-0 p-6 pb-safe bg-gradient-to-t from-black via-black to-transparent pt-12" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
         <div className="max-w-md mx-auto w-full">
+          {permissionError && (
+            <p className="text-[10px] text-amber-400 text-center mb-3 px-2">{permissionError}</p>
+          )}
           <button
             onClick={handleGrant}
-            className="w-full bg-[#00ff41] text-black font-black py-5 rounded-3xl uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(0,255,65,0.3)] active:scale-[0.97] transition-all"
+            disabled={isRequesting}
+            className={`w-full font-black py-5 rounded-3xl uppercase tracking-widest text-xs shadow-[0_0_30px_rgba(0,255,65,0.3)] active:scale-[0.97] transition-all ${
+              isRequesting 
+                ? 'bg-gray-600 text-gray-400 cursor-not-allowed' 
+                : 'bg-[#00ff41] text-black hover:bg-[#00cc33]'
+            }`}
           >
-            Initialize Mesh
+            {isRequesting ? (
+              <span className="flex items-center justify-center gap-2">
+                <i className="fa-solid fa-spinner fa-spin"></i>
+                Requesting Permissions...
+              </span>
+            ) : (
+              'Initialize Mesh'
+            )}
           </button>
         </div>
       </div>

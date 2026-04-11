@@ -1,9 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-import { getGeohashChannelsInstance, GeohashChannel } from '../services/geohashChannels';
-
-// Initialize the service instance
-const geohashChannels = getGeohashChannelsInstance();
+import { geohashChannels, GeohashChannel } from '../services/geohashChannels';
 
 interface RoomsViewProps {
   onJoinRoom: (roomId: string) => void;
@@ -88,27 +84,44 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
   ];
 
   useEffect(() => {
+    console.log('[ROOMS] Initializing RoomsView...');
+    
     // Initial load
-    const rooms = geohashChannels.getNearbyChannels();
-    setNearbyRooms(rooms);
+    try {
+      const rooms = geohashChannels.getNearbyChannels();
+      console.log('[ROOMS] Initial nearby rooms:', rooms);
+      setNearbyRooms(rooms);
+    } catch (error) {
+      console.error('[ROOMS] Failed to get nearby channels:', error);
+      setNearbyRooms([]);
+    }
 
-    if (geohashChannels.getCurrentLocation()) {
+    const location = geohashChannels.getCurrentLocation();
+    console.log('[ROOMS] Current location:', location);
+    if (location) {
       setIsLocating(false);
     }
 
     // Subscribe to real-time updates
-    const unsubscribeNearby = geohashChannels.subscribe('nearbyChannelsUpdated', (rooms) => {
-      setNearbyRooms(rooms);
-    });
+    try {
+      const unsubscribeNearby = geohashChannels.subscribe('nearbyChannelsUpdated', (rooms) => {
+        console.log('[ROOMS] Nearby channels updated:', rooms);
+        setNearbyRooms(rooms);
+      });
 
-    const unsubscribeLocation = geohashChannels.subscribe('locationUpdated', () => {
-      setIsLocating(false);
-    });
+      const unsubscribeLocation = geohashChannels.subscribe('locationUpdated', (loc) => {
+        console.log('[ROOMS] Location updated:', loc);
+        setIsLocating(false);
+      });
 
-    return () => {
-      unsubscribeNearby();
-      unsubscribeLocation();
-    };
+      return () => {
+        unsubscribeNearby();
+        unsubscribeLocation();
+      };
+    } catch (error) {
+      console.error('[ROOMS] Failed to subscribe to updates:', error);
+      return () => {};
+    }
   }, []);
 
   const handleConnectRequest = (room: GeohashChannel) => {
@@ -151,6 +164,11 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
       allRooms.push(room);
     }
   });
+
+  console.log('[ROOMS] Global rooms:', globalRooms.length);
+  console.log('[ROOMS] Nearby rooms:', nearbyRooms.length);
+  console.log('[ROOMS] All rooms total:', allRooms.length);
+  console.log('[ROOMS] Is locating:', isLocating);
 
   return (
     <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto bg-black text-current no-scrollbar relative">

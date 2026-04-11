@@ -78,22 +78,42 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const emojis = ['🙂', '😎', '😜', '🔥', '💀', '👽', '👾', '🚀', '❤️', '👍', '👎', '✨'];
 
+  // Convert GeohashMessage[] to Message[] for MessageList component
+  const convertGeohashMessages = (geohashMsgs: GeohashMessage[]): Message[] => {
+    return geohashMsgs.map(msg => ({
+      id: msg.id,
+      senderId: msg.nodeId,
+      senderHandle: msg.nodeHandle,
+      text: msg.content,
+      timestamp: msg.timestamp,
+      deliveryStatus: 'delivered' as const,
+      type: msg.type
+    }));
+  };
+
   // Subscribe to geohash channel messages for the current chat
   useEffect(() => {
     if (!chat) return;
     const gc = geohashChannelsRef.current;
 
-    const msgs = gc.getChannelMessages(chat.id);
+    // For room-type chats the geohash channel key is participant.id (e.g. 'room-gen'),
+    // not the Chat UI id (e.g. 'chat-1775895866335').
+    const channelKey = chat.type === 'room' ? chat.participant.id : chat.id;
+
+    const msgs = gc.getChannelMessages(channelKey);
+    console.log(`[CW] Loaded ${msgs.length} messages for channel ${channelKey}`);
     setChatMessages(msgs);
 
     const unsubReceived = gc.subscribe('messageReceived', (msg: GeohashMessage) => {
-      if (msg.channelId === chat.id) {
+      console.log(`[CW] Received: ch=${msg.channelId} key=${channelKey} from=${msg.nodeHandle}`);
+      if (msg.channelId === channelKey) {
         setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
       }
     });
 
     const unsubSent = gc.subscribe('messageSent', (msg: GeohashMessage) => {
-      if (msg.channelId === chat.id) {
+      console.log(`[CW] Sent: ch=${msg.channelId} key=${channelKey} from=${msg.nodeHandle}`);
+      if (msg.channelId === channelKey) {
         setChatMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
       }
     });
@@ -102,14 +122,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       unsubReceived();
       unsubSent();
     };
-  }, [chat?.id]);
+  }, [chat?.id, chat?.participant?.id, chat?.type]);
 
   // Scroll to bottom when messages update
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [chat?.messages]);
+  }, [chat?.messages, chatMessages, chat?.type]);
 
   const handleSendMessage = async (
     text: string,
@@ -225,7 +245,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       />
 
       <MessageList
-        messages={chat?.messages || []}
+        messages={chat?.type === 'room' ? convertGeohashMessages(chatMessages) : chat?.messages || []}
         chat={chat}
         myHandle={myHandle}
         scrollRef={scrollRef}

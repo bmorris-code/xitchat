@@ -41,6 +41,14 @@ import { persistChats, loadPersistedChats } from './services/chatPersistence';
 import { defaultRoomsService } from './services/defaultRooms';
 import { isStandalonePwa, type BeforeInstallPromptEvent } from './services/installFlow';
 import { importContactInvite, parseInviteParamFromUrl } from './services/contactInvite';
+import GemmaSetupView from './components/GemmaSetupView';
+import {
+  GEMMA_MODEL_URL,
+  isGemmaSetupDone,
+  getGemmaLocalStatus,
+  initializeGemmaLocal
+} from './services/gemma-local';
+import { Capacitor } from '@capacitor/core';
 
 const mapTransportForAck = (connectionType?: string): 'webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'presence' | 'relay' => {
   switch (connectionType) {
@@ -108,6 +116,7 @@ const App: React.FC = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [isBooting, setIsBooting] = useState(true);
   const [bootLogs, setBootLogs] = useState<string[]>([]);
+  const [showGemmaSetup, setShowGemmaSetup] = useState(false);
   const [theme, setTheme] = useState<'green' | 'amber' | 'cyan' | 'red'>('green');
   const [balance, setBalance] = useState(1240);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -472,12 +481,42 @@ const App: React.FC = () => {
             setChats(prev => {
               const nextChats = [...prev];
               const incomingHandle = normalizeToken(message.senderHandle);
-              let targetIndex = nextChats.findIndex(c => c.participant.id === senderId);
+              
+              // Enhanced chat finding logic - try multiple matching strategies
+              let targetIndex = -1;
+              
+              // 1. Try exact ID match
+              targetIndex = nextChats.findIndex(c => c.participant.id === senderId);
+              
+              // 2. Try handle match if ID didn't match
               if (targetIndex === -1 && incomingHandle) {
                 targetIndex = nextChats.findIndex(c => normalizeToken(c.participant.handle) === incomingHandle);
               }
+              
+              // 3. Try service ID match (for different transport types)
+              if (targetIndex === -1 && message.serviceId) {
+                const serviceToken = normalizeToken(message.serviceId);
+                targetIndex = nextChats.findIndex(c => 
+                  normalizeToken(c.participant.id) === serviceToken ||
+                  normalizeToken(c.participant.handle) === serviceToken
+                );
+              }
+
+              // 4. Try to match with any connected peer by handle
+              if (targetIndex === -1 && incomingHandle) {
+                const connectedPeer = hybridMesh.getPeers().find(p => 
+                  normalizeToken(p.handle) === incomingHandle && p.isConnected
+                );
+                if (connectedPeer) {
+                  targetIndex = nextChats.findIndex(c => 
+                    normalizeToken(c.participant.id) === normalizeToken(connectedPeer.id) ||
+                    normalizeToken(c.participant.handle) === incomingHandle
+                  );
+                }
+              }
 
               if (targetIndex === -1) {
+                // Create new chat if no existing match found
                 const radarPeer = radarPeersRef.current.find(p =>
                   p.id === senderId || (incomingHandle && normalizeToken(p.handle) === incomingHandle)
                 );
@@ -863,24 +902,56 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = geohashChannels.subscribe('messageReceived', (message: any) => {
       if (!message?.id || !message?.channelId) return;
-      setChats(prev => prev.map(chat => {
-        if (chat.type !== 'room' || chat.participant.id !== message.channelId) return chat;
-        const newMsg: Message = {
-          id: message.id,
-          senderId: message.nodeId || 'unknown',
-          senderHandle: message.nodeHandle || `@${String(message.nodeId || 'peer').slice(0, 8)}`,
-          text: message.content || '',
-          timestamp: message.timestamp || Date.now()
-        };
-        if (isSystemMessage(newMsg.text)) return chat;
-        if (chat.messages.some(m => m.id === newMsg.id)) return chat;
-        return {
-          ...chat,
-          messages: [...chat.messages, newMsg],
-          lastMessage: message.content || '',
-          unreadCount: activeChatIdRef.current === chat.id ? chat.unreadCount : (chat.unreadCount || 0) + 1
-        };
-      }));
+      
+      console.log(`[ROOM] Received message from channel: ${message.channelId}, content: ${message.content?.substring(0, 30)}...`);
+      
+      setChats(prev => {
+        return prev.map(chat => {
+          if (chat.type !== 'room') return chat;
+          
+          // Enhanced channel matching logic for room messages
+          let isMatchingRoom = false;
+          
+          // 1. Direct channel ID match
+          if (chat.participant.id === message.channelId) {
+            isMatchingRoom = true;
+          }
+          // 2. Channel name match (for rooms that might have different IDs but same name)
+          else {
+            const channels = geohashChannels.getNearbyChannels();
+            const messageChannel = channels.find(c => c.id === message.channelId);
+            if (messageChannel && 
+                (messageChannel.name.toLowerCase().includes(chat.participant.name.toLowerCase()) ||
+                 chat.participant.name.toLowerCase().includes(messageChannel.name.toLowerCase()))) {
+              isMatchingRoom = true;
+              // Update the chat participant ID to match the actual channel ID
+              chat.participant.id = message.channelId;
+            }
+          }
+          
+          if (!isMatchingRoom) return chat;
+          
+          const newMsg: Message = {
+            id: message.id,
+            senderId: message.nodeId || 'unknown',
+            senderHandle: message.nodeHandle || `@${String(message.nodeId || 'peer').slice(0, 8)}`,
+            text: message.content || '',
+            timestamp: message.timestamp || Date.now()
+          };
+          
+          if (isSystemMessage(newMsg.text)) return chat;
+          if (chat.messages.some(m => m.id === newMsg.id)) return chat;
+          
+          console.log(`[ROOM] Adding message to room ${chat.participant.name}: ${newMsg.text.substring(0, 30)}...`);
+          
+          return {
+            ...chat,
+            messages: [...chat.messages, newMsg],
+            lastMessage: message.content || '',
+            unreadCount: activeChatIdRef.current === chat.id ? chat.unreadCount : (chat.unreadCount || 0) + 1
+          };
+        });
+      });
     });
     return () => unsubscribe();
   }, []);
@@ -935,6 +1006,7 @@ const App: React.FC = () => {
       "GPS: locking_geohash_sector_428F...",
       "SIGNAL: decrypting_incoming_packets...",
       "UPDATE: checking_for_new_versions...",
+      "GEMMA: checking_on_device_ai...",
       "SUCCESS: xitchat_online."
     ];
     let i = 0;
@@ -944,13 +1016,40 @@ const App: React.FC = () => {
         i++;
       } else {
         clearInterval(interval);
-        setTimeout(() => {
+        setTimeout(async () => {
           setIsBooting(false);
+
+          // On native (Android/iOS): check if Gemma model is present
+          // Only show the setup screen if a real model URL is configured —
+          // skip silently when GEMMA_MODEL_URL is still the placeholder so
+          // Play Store users reach onboarding immediately.
+          const gemmaUrlIsReal = !GEMMA_MODEL_URL.includes('your-cdn.com');
+          if (Capacitor.isNativePlatform()) {
+            if (isGemmaSetupDone()) {
+              // Model was previously downloaded — load it silently in the background
+              const status = await getGemmaLocalStatus();
+              if (status?.modelExists) {
+                initializeGemmaLocal().catch(() => {/* non-fatal */});
+              }
+            } else if (gemmaUrlIsReal) {
+              // First install and a real model URL is configured — show the one-time download screen
+              setShowGemmaSetup(true);
+              return; // checkOnboardingStatus called after setup completes
+            }
+            // else: URL is still placeholder — skip Gemma setup, proceed to app
+          }
+
           checkOnboardingStatus();
           appUpdateService.startPeriodicChecks();
         }, 800);
       }
     }, 120);
+  };
+
+  const handleGemmaSetupComplete = () => {
+    setShowGemmaSetup(false);
+    checkOnboardingStatus();
+    appUpdateService.startPeriodicChecks();
   };
 
   const checkOnboardingStatus = () => {
@@ -977,10 +1076,20 @@ const App: React.FC = () => {
   const handleOnboardingComplete = async () => {
     localStorage.setItem('xitchat_onboarded', 'true');
     setShowOnboarding(false);
+    
+    // Start native transports now that the user has granted permissions.
+    // hybridMesh.initialize() already ran on mount (Nostr/WebRTC/Broadcast).
+    // This call adds Bluetooth + WiFi Direct without re-subscribing everything.
+    try {
+      await hybridMesh.startNativeTransports();
+    } catch (error) {
+      console.error('Native transport start failed after onboarding:', error);
+    }
+    
     try {
       await defaultRoomsService.initializeDefaultRooms();
     } catch (error) {
-      console.error('❌ Failed to auto-join default rooms:', error);
+      console.error('Failed to auto-join default rooms:', error);
     }
     setView('profile');
   };
@@ -1158,9 +1267,44 @@ const App: React.FC = () => {
 
       if (activeChat?.type === 'room' && !options?.imageUrl && !options?.videoUrl) {
         try {
-          await geohashChannels.sendMessage(activeChat.participant.id, text, 'text');
+          // Ensure we're using the correct channel ID for room messages
+          let channelId = activeChat.participant.id;
+          
+          // If the channel ID doesn't look like a geohash channel, try to find the correct one
+          if (!channelId.includes('xitchat-local-') && !channelId.startsWith('room-')) {
+            // Try to find a matching channel by name or create a new one
+            const channels = geohashChannels.getNearbyChannels();
+            const matchingChannel = channels.find(c => 
+              c.name.toLowerCase().includes(activeChat.participant.name.toLowerCase()) ||
+              c.id.toLowerCase().includes(activeChat.participant.name.toLowerCase())
+            );
+            
+            if (matchingChannel) {
+              channelId = matchingChannel.id;
+            } else {
+              // Create a new channel for this room if it doesn't exist
+              channelId = await geohashChannels.createChannel(
+                activeChat.participant.name,
+                `Room for ${activeChat.participant.name}`,
+                true, // public
+                false, // doesn't require invite
+                false // not trading
+              );
+              
+              // Update the chat participant ID to match the new channel
+              setChats(prev => prev.map(c =>
+                c.id === activeChatId
+                  ? { ...c, participant: { ...c.participant, id: channelId } }
+                  : c
+              ));
+            }
+          }
+          
+          console.log(`[ROOM] Sending message to channel: ${channelId}, content: ${text.substring(0, 50)}...`);
+          await geohashChannels.sendMessage(channelId, text, 'text');
           setMessageDeliveryState(newMessage.id, 'delivered', 'room');
         } catch (error) {
+          console.error('Failed to send room message:', error);
           setMessageDeliveryState(newMessage.id, 'failed', 'room_send_failed');
         }
       } else {
@@ -1169,9 +1313,22 @@ const App: React.FC = () => {
           const activePeers = hybridMesh.getPeers().filter(peer => peer.isConnected);
           const participantHandle = normalizePeerToken(activeChat?.participant?.handle);
 
-          if (participantHandle) {
-            const livePeerByHandle = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
-            if (livePeerByHandle && meshTargetId !== livePeerByHandle.id) {
+          // Enhanced peer matching logic
+          if (participantHandle && activePeers.length > 0) {
+            // First try to find peer by exact handle match
+            let livePeerByHandle = activePeers.find(peer => normalizePeerToken(peer.handle) === participantHandle);
+            
+            // If not found, try by ID variations
+            if (!livePeerByHandle && meshTargetId) {
+              const targetToken = normalizePeerToken(meshTargetId);
+              livePeerByHandle = activePeers.find(p => 
+                normalizePeerToken(p.id) === targetToken || 
+                normalizePeerToken(p.serviceId) === targetToken
+              );
+            }
+
+            // If we found a live peer, update the target
+            if (livePeerByHandle && (!meshTargetId || meshTargetId !== livePeerByHandle.id)) {
               meshTargetId = livePeerByHandle.id;
               setChats(prev => prev.map(c =>
                 c.id === activeChatId
@@ -1181,30 +1338,15 @@ const App: React.FC = () => {
             }
           }
 
+          // Clean up ID prefixes for different transport types
           if (meshTargetId) {
-            const targetToken = normalizePeerToken(meshTargetId);
-            const hasLiveTarget = activePeers.some(p =>
-              normalizePeerToken(p.id) === targetToken || normalizePeerToken(p.serviceId) === targetToken
-            );
-            if (!hasLiveTarget && participantHandle) {
-              const remappedPeer = activePeers.find(p => normalizePeerToken(p.handle) === participantHandle);
-              if (remappedPeer) {
-                meshTargetId = remappedPeer.id;
-                setChats(prev => prev.map(c =>
-                  c.id === activeChatId
-                    ? { ...c, participant: { ...c.participant, id: remappedPeer.id, name: remappedPeer.name || c.participant.name, handle: remappedPeer.handle || c.participant.handle } }
-                    : c
-                ));
-              }
+            if (meshTargetId.startsWith('nostr-')) {
+              const nostrPeerId = meshTargetId.replace('nostr-', '');
+              const nostrPeer = nostrPeers.find(p => p.id === nostrPeerId);
+              meshTargetId = nostrPeer?.publicKey || nostrPeerId;
+            } else if (meshTargetId.startsWith('node-')) {
+              meshTargetId = meshTargetId.replace('node-', '');
             }
-          }
-
-          if (meshTargetId?.startsWith('nostr-')) {
-            const nostrPeerId = meshTargetId.replace('nostr-', '');
-            const nostrPeer = nostrPeers.find(p => p.id === nostrPeerId);
-            meshTargetId = nostrPeer?.publicKey || nostrPeerId;
-          } else if (meshTargetId?.startsWith('node-')) {
-            meshTargetId = meshTargetId.replace('node-', '');
           }
 
           if (meshTargetId) messageACKService.trackOutgoingMessage(newMessage.id, meshTargetId, text, 'relay', true);
@@ -1214,7 +1356,16 @@ const App: React.FC = () => {
             setMessageDeliveryState(newMessage.id, 'delivered', 'mesh');
             if (meshTargetId) messageACKService.markMessageDelivered(newMessage.id, meshTargetId, 'relay');
           } else {
-            setMessageDeliveryState(newMessage.id, 'failed', 'send_failed');
+            // Fallback: try broadcast if direct messaging fails
+            console.log(`[FALLBACK] Direct message failed, trying broadcast for: ${text.substring(0, 30)}...`);
+            const broadcastSuccess = await hybridMesh.sendMessage(text, undefined, options?.encryptedData, newMessage.id);
+            if (broadcastSuccess) {
+              setMessageDeliveryState(newMessage.id, 'delivered', 'broadcast');
+              console.log(`[FALLBACK] Broadcast successful`);
+            } else {
+              setMessageDeliveryState(newMessage.id, 'failed', 'send_failed');
+              console.error(`[FALLBACK] Both direct and broadcast failed`);
+            }
           }
         } catch (error) {
           console.error('❌ Failed to send via hybrid mesh:', error);
@@ -1629,6 +1780,10 @@ const App: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  if (showGemmaSetup) {
+    return <GemmaSetupView onComplete={handleGemmaSetupComplete} />;
   }
 
   if (showOnboarding) {

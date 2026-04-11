@@ -102,6 +102,7 @@ class GeohashChannelsService {
     this.initializeLocationServices();
     this.subscribeToNostrMessages();
     this.subscribeToMeshMessages();
+    this.subscribeToSeedMessages();
     this.startBackgroundSync();
   }
 
@@ -128,60 +129,95 @@ class GeohashChannelsService {
 
     this.unsubs.push(
       nostrService.subscribe('messageReceived', (message) => {
+        console.log(`[XC] NOSTR RAW content_prefix=${message.content?.substring(0, 40)}`);
         if (!message.content?.startsWith('[GEOHASH:')) return;
-        const match = message.content.match(/\[GEOHASH:([^\]]+)\]/);
-        if (match && this.isNearbyGeohash(match[1])) {
-          const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
-          this.addReceivedMessage({
-            id: message.id || generateUUID(),
-            channelId: `${this.nostrChannelPrefix}${match[1]}`,
-            nodeId: message.from,
-            nodeHandle: `@${message.from?.substring(0, 8) || 'unknown'}`,
-            content: cleanContent,
-            timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
-            type: 'text'
-          });
-        }
-      })
-    );
-  }
-
-  // ── FIX #2: store unsub function ──
-  private subscribeToMeshMessages() {
-    this.unsubs.push(
-      hybridMesh.subscribe('messageReceived', async (message) => {
-        if (!message.content?.startsWith('[GEOHASH:')) return;
-        const match = message.content.match(/\[GEOHASH:([^\]]+)\]/);
-        if (!match) return;
-
-        const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').trim();
-        let finalContent = cleanContent;
-
-        if (cleanContent.startsWith('{') && cleanContent.includes('data') && cleanContent.includes('iv')) {
-          try {
-            const parsed = JSON.parse(cleanContent);
-            finalContent = await encryptionService.decryptGroupMessage(parsed, match[1]);
-          } catch {}
-        }
-
+        const geohashMatch = message.content.match(/\[GEOHASH:([^\]]+)\]/);
+        if (!geohashMatch) return;
+        const channelMatch = message.content.match(/\[CHANNEL:([^\]]+)\]/);
+        const channelId = channelMatch ? channelMatch[1] : `${this.nostrChannelPrefix}${geohashMatch[1]}`;
+        // Skip geohash proximity filter for named rooms (they are global, not geo-local)
+        const isNamedRoom = channelMatch !== null;
+        if (!isNamedRoom && !this.isNearbyGeohash(geohashMatch[1])) return;
+        console.log(`[XC] NOSTR MATCH ch=${channelId}`);
+        const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').replace(/\[CHANNEL:[^\]]+\]/, '').trim();
         this.addReceivedMessage({
           id: message.id || generateUUID(),
-          channelId: `${this.nostrChannelPrefix}${match[1]}`,
+          channelId,
           nodeId: message.from,
-          nodeHandle: message.senderHandle || `@${message.from?.substring(0, 8) || 'unknown'}`,
-          content: finalContent,
-          timestamp: message.timestamp || Date.now(),
+          nodeHandle: `@${message.from?.substring(0, 8) || 'unknown'}`,
+          content: cleanContent,
+          timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
           type: 'text'
         });
       })
     );
   }
 
+  // ---- FIX #2: store unsub function ----
+  private subscribeToSeedMessages() {
+    const handleSeedMessage = (event: CustomEvent) => {
+      const message = event.detail as GeohashMessage;
+      console.log(`[XC] SEED MESSAGE: ch=${message.channelId} from=${message.nodeHandle}`);
+      this.addReceivedMessage(message);
+    };
+    
+    window.addEventListener('geohashSeedMessage', handleSeedMessage as EventListener);
+    
+    this.unsubs.push(() => {
+      window.removeEventListener('geohashSeedMessage', handleSeedMessage as EventListener);
+    });
+  }
+
+  // ---- FIX #2: store unsub function ----
+  private subscribeToMeshMessages() {
+    this.unsubs.push(
+      hybridMesh.subscribe('messageReceived', async (message) => {
+        console.log(`[XC] MESH RAW message from=${message.from} content_prefix=${message.content?.substring(0, 40)}`);
+        if (!message.content?.startsWith('[GEOHASH:')) return;
+        console.log(`[XC] MESH Processing geohash message`);
+        const geohashMatch = message.content.match(/\[GEOHASH:([^\]]+)\]/);
+        if (!geohashMatch) return;
+
+        const channelMatch = message.content.match(/\[CHANNEL:([^\]]+)\]/);
+        const channelId = channelMatch ? channelMatch[1] : `${this.nostrChannelPrefix}${geohashMatch[1]}`;
+        // Skip geohash proximity filter for named rooms (they are global, not geo-local)
+        const isNamedRoom = channelMatch !== null;
+        if (!isNamedRoom && !this.isNearbyGeohash(geohashMatch[1])) return;
+        const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').replace(/\[CHANNEL:[^\]]+\]/, '').trim();
+        let finalContent = cleanContent;
+
+        if (cleanContent.startsWith('{') && cleanContent.includes('data') && cleanContent.includes('iv')) {
+          try {
+            const parsed = JSON.parse(cleanContent);
+            finalContent = await encryptionService.decryptGroupMessage(parsed, geohashMatch[1]);
+          } catch {}
+        }
+
+        const geohashMessage: GeohashMessage = {
+          id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          channelId: channelId,
+          nodeId: message.nodeId,
+          nodeHandle: message.nodeHandle,
+          content: finalContent,
+          timestamp: message.timestamp || Date.now(),
+          type: 'text' as const
+        };
+        console.log(`[XC] Adding received message: ch=${channelId} from=${geohashMessage.nodeHandle} content=${finalContent.substring(0, 50)}...`);
+        this.addReceivedMessage(geohashMessage);
+      })
+    );
+  }
+
   private addReceivedMessage(message: GeohashMessage) {
+    console.log(`[XC] addReceivedMessage: id=${message.id} ch=${message.channelId} from=${message.nodeHandle}`);
     if (!message?.id) return;
-    if (message.nodeHandle === this.myHandle) return;
+    if (message.nodeHandle === this.myHandle) {
+      console.log(`[XC] Skipping own message from ${message.nodeHandle}`);
+      return;
+    }
 
     if (!this.messages.has(message.channelId)) {
+      console.log(`[XC] Creating new message array for channel ${message.channelId}`);
       this.messages.set(message.channelId, []);
     }
 
@@ -193,8 +229,7 @@ class GeohashChannelsService {
     // ── FIX #3: debounced save instead of immediate write per message ──
     this.saveMessagesDebounced();
     this.notifyListeners('messageReceived', message);
-    // ── FIX #8: downgraded to debug ──
-    console.debug(`📨 Received: ${message.content}`);
+    console.log(`[XC] MSG IN ch=${message.channelId} from=${message.nodeHandle} content=${message.content?.substring(0, 50)}`);
   }
 
   // ── FIX #3: debounced saveMessages ──
@@ -414,7 +449,7 @@ class GeohashChannelsService {
     channel.lastActivity = Date.now();
     channel.messageCount++;
 
-    await this.broadcastMessage(message.id, broadcastContent, this.currentLocation?.geohash || 'unknown');
+    await this.broadcastMessage(channelId, message.id, broadcastContent, this.currentLocation?.geohash || 'unknown');
 
     this.saveChannels();
     // ── FIX #3: use debounced save ──
@@ -423,17 +458,19 @@ class GeohashChannelsService {
     return message.id;
   }
 
-  private async broadcastMessage(messageId: string, content: string, geohash: string) {
-    const tagged = `[GEOHASH:${geohash}]${content}`;
-    await Promise.allSettled([
+  private async broadcastMessage(channelId: string, messageId: string, content: string, geohash: string) {
+    const tagged = `[GEOHASH:${geohash}][CHANNEL:${channelId}]${content}`;
+    console.log(`[XC] SEND ch=${channelId} geohash=${geohash} len=${content.length}`);
+    const [meshResult, nostrResult] = await Promise.allSettled([
       hybridMesh.sendMessage(tagged),
       nostrService.broadcastMessage(tagged)
     ]);
+    console.log(`[XC] SENT mesh=${meshResult.status} nostr=${nostrResult.status}`);
   }
 
   async broadcastToNearby(content: string): Promise<void> {
     const geohash = this.currentLocation?.geohash || 'unknown';
-    await this.broadcastMessage(generateUUID(), content, geohash);
+    await this.broadcastMessage('broadcast', generateUUID(), content, geohash);
   }
 
   async joinChannel(channelId: string): Promise<void> {
