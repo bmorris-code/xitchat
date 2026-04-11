@@ -1043,7 +1043,7 @@ const App: React.FC = () => {
           // Only show the setup screen if a real model URL is configured —
           // skip silently when GEMMA_MODEL_URL is still the placeholder so
           // Play Store users reach onboarding immediately.
-          const gemmaUrlIsReal = !GEMMA_MODEL_URL.includes('your-cdn.com');
+          const gemmaUrlIsReal = GEMMA_MODEL_URL.length > 0;
           if (Capacitor.isNativePlatform()) {
             if (isGemmaSetupDone()) {
               // Model was previously downloaded — load it silently in the background
