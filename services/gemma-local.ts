@@ -10,8 +10,7 @@
  * Recommended model: gemma-3-1b-it-cpu-int4.bin (~1 GB, works on all modern Android)
  * Available from: https://www.kaggle.com/models/google/gemma/tfLite
  */
-export const GEMMA_MODEL_URL =
-  'https://your-cdn.com/gemma-3-1b-it-cpu-int4.bin'; // ← replace with real URL
+export const GEMMA_MODEL_URL = ''; // Set to a hosted .bin URL to enable on-device AI
 
 const GEMMA_SETUP_KEY = 'xitchat_gemma_setup_done';
 
