@@ -1,20 +1,7 @@
 import * as secp256k1 from '@noble/secp256k1';
-import { sha256 } from '@noble/hashes/sha256';
-import { hmac } from '@noble/hashes/hmac';
 import { localStorageService } from './localStorageService';
 
-// Configure noble-secp256k1 v3 with sync hash primitives for schnorr signing.
-if (typeof (secp256k1 as any).hashes !== 'undefined') {
-  const hashes = (secp256k1 as any).hashes;
-  const concatBytes = (secp256k1 as any).etc?.concatBytes;
-  if (!hashes.sha256 && concatBytes) {
-    hashes.sha256 = (...messages: Uint8Array[]) => sha256(concatBytes(...messages));
-  }
-  if (!hashes.hmacSha256 && concatBytes) {
-    hashes.hmacSha256 = (key: Uint8Array, ...messages: Uint8Array[]) =>
-      hmac(sha256, key, concatBytes(...messages));
-  }
-}
+// NOTE: nostr-tools v2.x handles hash configuration automatically
 
 const STORAGE_KEY = 'identity_secp256k1_sk_hex_v1';
 
@@ -32,9 +19,7 @@ function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
-function sha256Bytes(data: Uint8Array): Uint8Array {
-  return sha256(data);
-}
+// sha256Bytes function removed - use secp256k1.utils.hashMessage instead
 
 function normalizePubkeyHex(pubkey: string): string {
   return pubkey.replace(/^0x/i, '').toLowerCase();
@@ -77,7 +62,7 @@ class IdentityService {
     const skHex = await this.getOrCreateSecretKeyHex();
     const pkHex = await this.getPublicKeyHex();
     const payload = `${fields.content}|${fields.timestamp}|${fields.messageId}`;
-    const hash = sha256Bytes(new TextEncoder().encode(payload));
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
     const sigBytes = await (secp256k1.schnorr as any).sign(hash, hexToBytes(skHex));
     return { pk: pkHex, sig: bytesToHex(sigBytes as Uint8Array) };
   }
@@ -98,7 +83,7 @@ class IdentityService {
       if (!/^[0-9a-f]{128}$/.test(pkHex)) return false;
 
       const payload = `${fields.content}|${fields.timestamp}|${fields.messageId}`;
-      const hash = sha256Bytes(new TextEncoder().encode(payload));
+      const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload));
       return await (secp256k1.schnorr as any).verify(
         hexToBytes(sigHex),
         hash,
@@ -116,7 +101,7 @@ class IdentityService {
     // Canonical order — lower hex first for determinism on both sides
     const [p1, p2] = a < b ? [a, b] : [b, a];
     const input = new TextEncoder().encode(`xitchat-safety-v1|${p1}|${p2}`);
-    const hash = sha256Bytes(input);
+    const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', input));
     // 5 groups of 4 digits (big-endian uint16 mod 10000) = 60 bits of entropy
     const view = new DataView(hash.buffer);
     return [0, 2, 4, 6, 8]

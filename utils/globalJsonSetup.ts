@@ -2,44 +2,10 @@
 import { safeJsonStringify } from './jsonUtils';
 
 // ============================================================================
-// FIX: Configure @noble/hashes for nostr-tools v2.x
+// NOTE: nostr-tools v2.x handles hash configuration automatically
 // ============================================================================
-// nostr-tools v2.x requires explicit hash configuration
-// This must be done BEFORE any nostr-tools imports are used
-import { sha256 } from '@noble/hashes/sha256';
-import { sha512 } from '@noble/hashes/sha512';
-import { hmac } from '@noble/hashes/hmac';
-import { pbkdf2 } from '@noble/hashes/pbkdf2';
-import { ripemd160 } from '@noble/hashes/ripemd160';
-
-// Set up the hashes object for nostr-tools
-if (typeof window !== 'undefined') {
-  (window as any).nobleHashes = {
-    sha256,
-    sha512,
-    hmac,
-    pbkdf2,
-    ripemd160
-  };
-}
-
-// Also configure for @noble/secp256k1 v3.x
-import * as secp256k1 from '@noble/secp256k1';
-if (typeof secp256k1.etc !== 'undefined') {
-  // Set hmacSha256Sync for general operations
-  if (!(secp256k1.etc as any).hmacSha256Sync) {
-    (secp256k1.etc as any).hmacSha256Sync = (key: Uint8Array, ...messages: Uint8Array[]) => {
-      return hmac(sha256, key, secp256k1.etc.concatBytes(...messages));
-    };
-  }
-
-  // Set sha256Sync for schnorr operations (v3.x requirement)
-  if (!(secp256k1.etc as any).sha256Sync) {
-    (secp256k1.etc as any).sha256Sync = (...messages: Uint8Array[]) => {
-      return sha256(secp256k1.etc.concatBytes(...messages));
-    };
-  }
-}
+// Manual noble hashes setup removed to avoid build issues
+// nostr-tools v2.19.4+ includes proper hash configuration
 
 // Override JSON.stringify globally to handle BigInt and Date objects
 const originalStringify = JSON.stringify;

@@ -1,26 +1,14 @@
 // Nostr Protocol Service for XitChat
 // Implements decentralized global communication using Nostr relays
 
-// CRITICAL: Import hash functions BEFORE nostr-tools to prevent "hashes.sha256 not set" error
-import { sha256 } from '@noble/hashes/sha256';
-import { hmac } from '@noble/hashes/hmac';
+// NOTE: nostr-tools v2.x handles hash configuration automatically
 
 import * as nostrTools from 'nostr-tools';
 import * as secp256k1 from '@noble/secp256k1';
 import { networkStateManager, NetworkService } from './networkStateManager';
 import { localStorageService } from './localStorageService';
 
-if (typeof (secp256k1 as any).hashes !== 'undefined') {
-  const hashes = (secp256k1 as any).hashes;
-  const concatBytes = (secp256k1 as any).etc?.concatBytes;
-  if (!hashes.sha256 && concatBytes) {
-    hashes.sha256 = (...messages: Uint8Array[]) => sha256(concatBytes(...messages));
-  }
-  if (!hashes.hmacSha256 && concatBytes) {
-    hashes.hmacSha256 = (key: Uint8Array, ...messages: Uint8Array[]) =>
-      hmac(sha256, key, concatBytes(...messages));
-  }
-}
+// Hash configuration handled automatically by nostr-tools v2.x
 
 export interface NostrPeer {
   id: string;
