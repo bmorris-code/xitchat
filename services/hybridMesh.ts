@@ -631,10 +631,14 @@ class HybridMeshService {
           try {
             switch (peer.connectionType) {
               case 'bluetooth':
-                if (peer.serviceId) { await workingBluetoothMesh.sendMessage(peer.serviceId, payload); sentSuccessfully = true; }
+                if (peer.serviceId) {
+                  sentSuccessfully = await workingBluetoothMesh.sendMessage(peer.serviceId, payload);
+                }
                 break;
               case 'wifi':
-                if (peer.serviceId) { await wifiP2P.sendMessage(peer.serviceId, payload); sentSuccessfully = true; }
+                if (peer.serviceId) {
+                  sentSuccessfully = await wifiP2P.sendMessage(peer.serviceId, payload);
+                }
                 break;
               case 'nostr':
                 const nostrTarget = peer.serviceId || peer.id;
@@ -643,7 +647,9 @@ class HybridMeshService {
                 }
                 break;
               case 'broadcast':
-                if (peer.serviceId) { await broadcastMesh.sendMessage(peer.serviceId, payload); sentSuccessfully = true; }
+                if (peer.serviceId) {
+                  sentSuccessfully = await broadcastMesh.sendMessage(peer.serviceId, payload);
+                }
                 break;
               case 'webrtc':
                 await ablyWebRTC.sendMessage(payload);

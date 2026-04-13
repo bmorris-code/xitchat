@@ -196,10 +196,12 @@ class GeohashChannelsService {
         const geohashMessage: GeohashMessage = {
           id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           channelId: channelId,
-          nodeId: message.nodeId,
-          nodeHandle: message.nodeHandle,
+          nodeId: message.nodeId || message.from || 'unknown',
+          nodeHandle: message.nodeHandle ||
+            message.senderHandle ||
+            `@${String(message.from || message.nodeId || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`,
           content: finalContent,
-          timestamp: message.timestamp || Date.now(),
+          timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : (message.timestamp || Date.now()),
           type: 'text' as const
         };
         console.log(`[XC] Adding received message: ch=${channelId} from=${geohashMessage.nodeHandle} content=${finalContent.substring(0, 50)}...`);

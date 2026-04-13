@@ -328,14 +328,16 @@ const App: React.FC = () => {
                 existing.lastSeen === peer.lastSeen
               ) return; // skip — nothing changed
 
-              const isNativeAndroid =
-                (window as any).Capacitor?.isNativePlatform?.() &&
-                (window as any).Capacitor?.getPlatform?.() === 'android';
-              const mappedType =
-                peer.connectionType === 'bluetooth' ? 'bluetooth' :
-                peer.connectionType === 'wifi' ? 'wifi' :
-                (peer.connectionType === 'webrtc' && !isNativeAndroid) ? 'webrtc' :
-                'nostr';
+              // Radar presence does not guarantee a live direct transport route.
+              // Prefer a known connected mesh transport for this peer; otherwise route via Nostr.
+              const existingConnectedType =
+                existing?.isConnected &&
+                  (existing.connectionType === 'bluetooth' ||
+                    existing.connectionType === 'wifi' ||
+                    existing.connectionType === 'webrtc')
+                  ? existing.connectionType
+                  : null;
+              const mappedType = existingConnectedType || 'nostr';
 
               hybridMesh.addExternalPeer({
                 id: peer.id,
@@ -931,6 +933,7 @@ const App: React.FC = () => {
           
           // Enhanced channel matching logic for room messages
           let isMatchingRoom = false;
+          let nextParticipantId = chat.participant.id;
           
           // 1. Direct channel ID match
           if (chat.participant.id === message.channelId) {
@@ -944,8 +947,8 @@ const App: React.FC = () => {
                 (messageChannel.name.toLowerCase().includes(chat.participant.name.toLowerCase()) ||
                  chat.participant.name.toLowerCase().includes(messageChannel.name.toLowerCase()))) {
               isMatchingRoom = true;
-              // Update the chat participant ID to match the actual channel ID
-              chat.participant.id = message.channelId;
+              // Keep chat state immutable while aligning room chat to the canonical channel ID
+              nextParticipantId = message.channelId;
             }
           }
           
@@ -966,6 +969,9 @@ const App: React.FC = () => {
           
           return {
             ...chat,
+            participant: nextParticipantId !== chat.participant.id
+              ? { ...chat.participant, id: nextParticipantId }
+              : chat.participant,
             messages: [...chat.messages, newMsg],
             lastMessage: message.content || '',
             unreadCount: activeChatIdRef.current === chat.id ? chat.unreadCount : (chat.unreadCount || 0) + 1
