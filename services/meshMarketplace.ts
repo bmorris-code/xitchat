@@ -361,55 +361,12 @@ class MeshMarketplaceService {
     try {
       // Ensure hybrid mesh is initialized
       const meshInfo = hybridMesh.getConnectionInfo();
-
-      // Add some demo listings if none exist
-      if (this.localListings.length === 0) {
-        this.addDemoListings();
-      }
-
-      return meshInfo.isConnected;
+      // Real-time only: do not inject demo/mock marketplace listings.
+      return !!meshInfo.isRealConnection;
     } catch (error) {
       console.error('Failed to initialize mesh marketplace:', error);
       return false;
     }
-  }
-
-  private addDemoListings(): void {
-    // Simulate nearby users broadcasting listings
-    const mockListings = [
-      {
-        id: 'mesh_1',
-        title: 'Bluetooth Speaker',
-        price: '200 XC',
-        senderHandle: '@tech_guru',
-        timestamp: Date.now() - 300000,
-        category: 'HAVE' as const,
-        description: 'Portable speaker, great condition. Looking for quick trade.',
-        location: 'Sector 428F - Zone A'
-      },
-      {
-        id: 'mesh_2',
-        title: 'Need Phone Charger',
-        price: '50 XC',
-        senderHandle: '@battery_low',
-        timestamp: Date.now() - 600000,
-        category: 'WANT' as const,
-        description: 'USB-C charger needed urgently. Can pay extra for delivery.',
-        location: 'Sector 428F - Zone B'
-      }
-    ];
-
-    mockListings.forEach((listing, index) => {
-      setTimeout(() => {
-        this.handleIncomingListing({
-          ...listing,
-          nodeId: `peer_${index + 1}`,
-          nodeHandle: listing.senderHandle,
-          isProximity: true,
-          distance: Math.random() * 30 + 5 // 5-35 meters away
-        });
-      }, index * 1000);
-    });
   }
 }
 

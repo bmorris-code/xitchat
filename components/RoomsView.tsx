@@ -30,7 +30,7 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
       createdBy: 'system',
       createdAt: 0,
       lastActivity: Date.now(),
-      messageCount: 1240,
+      messageCount: 0,
       isEncrypted: false
     } as any,
     {
@@ -46,7 +46,7 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
       createdBy: 'system',
       createdAt: 0,
       lastActivity: Date.now(),
-      messageCount: 452,
+      messageCount: 0,
       isEncrypted: false
     } as any,
     {
@@ -62,7 +62,7 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
       createdBy: 'system',
       createdAt: 0,
       lastActivity: Date.now(),
-      messageCount: 89,
+      messageCount: 0,
       isEncrypted: false
     } as any,
     {
@@ -78,7 +78,7 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
       createdBy: 'system',
       createdAt: 0,
       lastActivity: Date.now(),
-      messageCount: 324,
+      messageCount: 0,
       isEncrypted: false
     } as any,
   ];

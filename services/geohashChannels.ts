@@ -102,7 +102,6 @@ class GeohashChannelsService {
     this.initializeLocationServices();
     this.subscribeToNostrMessages();
     this.subscribeToMeshMessages();
-    this.subscribeToSeedMessages();
     this.startBackgroundSync();
   }
 
@@ -151,21 +150,6 @@ class GeohashChannelsService {
         });
       })
     );
-  }
-
-  // ---- FIX #2: store unsub function ----
-  private subscribeToSeedMessages() {
-    const handleSeedMessage = (event: CustomEvent) => {
-      const message = event.detail as GeohashMessage;
-      console.log(`[XC] SEED MESSAGE: ch=${message.channelId} from=${message.nodeHandle}`);
-      this.addReceivedMessage(message);
-    };
-    
-    window.addEventListener('geohashSeedMessage', handleSeedMessage as EventListener);
-    
-    this.unsubs.push(() => {
-      window.removeEventListener('geohashSeedMessage', handleSeedMessage as EventListener);
-    });
   }
 
   // ---- FIX #2: store unsub function ----
