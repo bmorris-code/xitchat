@@ -126,7 +126,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
                 {permissionStatus?.bluetooth.granted ? (
                   <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
                 ) : (
-                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                  <i className="fa-solid fa-square text-white/40 text-xl"></i>
                 )}
               </div>
               <div className="flex-1">
@@ -142,7 +142,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
                 {permissionStatus?.location.granted ? (
                   <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
                 ) : (
-                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                  <i className="fa-solid fa-square text-white/40 text-xl"></i>
                 )}
               </div>
               <div className="flex-1">
@@ -162,7 +162,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
                 {permissionStatus?.camera.granted ? (
                   <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
                 ) : (
-                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                  <i className="fa-solid fa-square text-white/40 text-xl"></i>
                 )}
               </div>
               <div className="flex-1">
@@ -178,7 +178,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
                 {permissionStatus?.push.granted ? (
                   <i className="fa-solid fa-check-square text-[#00ff41] text-xl"></i>
                 ) : (
-                  <i className="fa-regular fa-square text-white/40 text-xl"></i>
+                  <i className="fa-solid fa-square text-white/40 text-xl"></i>
                 )}
               </div>
               <div className="flex-1">
@@ -291,3 +291,4 @@ const Onboarding: React.FC<OnboardingProps> = ({ onComplete, installPrompt, isIn
 };
 
 export default Onboarding;
+

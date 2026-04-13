@@ -485,7 +485,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
                   onClick={(e) => { e.stopPropagation(); handleComment(shout.id); }}
                   className="flex items-center gap-2 text-[10px] font-bold opacity-40 hover:opacity-100 text-white/60"
                 >
-                  <i className="fa-regular fa-comment"></i>
+                  <i className="fa-solid fa-comment"></i>
                   <span>{shout.comments}</span>
                 </button>
                 <button
@@ -658,4 +658,5 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 };
 
 export default BuzzView;
+
 

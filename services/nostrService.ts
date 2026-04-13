@@ -89,12 +89,9 @@ class NostrService {
   private readonly defaultRelays = [
     'wss://relay.damus.io',
     'wss://nos.lol',
-    'wss://relay.snort.social',
     'wss://relay.primal.net',
-    'wss://nostr.bitcoiner.social',
     'wss://nostr.mom',
-    'wss://nostr.wine',
-    'wss://relay.nostr.band'
+    'wss://nostr.wine'
   ];
 
   private readonly PRESENCE_KIND = 30315;
