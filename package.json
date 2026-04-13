@@ -44,6 +44,7 @@
     "nostr-tools": "^2.19.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "workbox-window": "^7.1.0",
     "ws": "^8.19.0"
   },
   "overrides": {
