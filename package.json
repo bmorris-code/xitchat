@@ -53,6 +53,13 @@
     "brace-expansion": "^2.0.3",
     "tar@6.2.1": "npm:tar@7.5.13"
   },
+  "pnpm": {
+    "overrides": {
+      "tar": "^7.5.13",
+      "serialize-javascript": "^7.0.5",
+      "brace-expansion": "^2.0.3"
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-legacy": "^6.1.1",
