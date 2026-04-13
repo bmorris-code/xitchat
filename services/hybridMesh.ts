@@ -64,6 +64,16 @@ class HybridMeshService {
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
   private bridgeStats = { bridgedIn: 0, bridgedOut: 0 };
   private isBridgeEnabled = true;
+  private readonly inboundDedupWindowMs = 2 * 60 * 1000;
+  private recentInboundMessages: Map<string, number> = new Map();
+  private readonly serviceHealthTtlMs = 10000;
+  private serviceHealthCache: Record<MeshConnectionType, { healthy: boolean; checkedAt: number }> = {
+    bluetooth: { healthy: false, checkedAt: 0 },
+    webrtc: { healthy: false, checkedAt: 0 },
+    broadcast: { healthy: false, checkedAt: 0 },
+    wifi: { healthy: false, checkedAt: 0 },
+    nostr: { healthy: false, checkedAt: 0 }
+  };
 
   private fallbackHandle(id?: string): string {
     const source = (id || 'peer').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
@@ -78,6 +88,109 @@ class HybridMeshService {
   private isLikelyNostrId(id?: string): boolean {
     if (!id) return false;
     return /^[0-9a-f]{64}$/i.test(id) || id.startsWith('npub');
+  }
+
+  private makeStableMessageKey(from: string, content: string, messageId?: string, timestamp?: number): string {
+    if (messageId) return `${from}:${messageId}`;
+    const signature = `${from}|${timestamp || 0}|${content}`;
+    let hash = 0;
+    for (let i = 0; i < signature.length; i++) {
+      hash = ((hash << 5) - hash + signature.charCodeAt(i)) | 0;
+    }
+    return `${from}:derived:${Math.abs(hash)}`;
+  }
+
+  private pruneRecentInboundMessages(now: number): void {
+    for (const [key, seenAt] of this.recentInboundMessages.entries()) {
+      if (now - seenAt > this.inboundDedupWindowMs) this.recentInboundMessages.delete(key);
+    }
+  }
+
+  private isDuplicateIncoming(messageKey: string): boolean {
+    const now = Date.now();
+    this.pruneRecentInboundMessages(now);
+    if (this.recentInboundMessages.has(messageKey)) return true;
+    this.recentInboundMessages.set(messageKey, now);
+    return false;
+  }
+
+  private async checkServiceHealth(service: MeshConnectionType): Promise<boolean> {
+    const cached = this.serviceHealthCache[service];
+    const now = Date.now();
+    if (cached && (now - cached.checkedAt) < this.serviceHealthTtlMs) {
+      return cached.healthy;
+    }
+
+    let healthy = false;
+    try {
+      switch (service) {
+        case 'nostr':
+          healthy = this.activeServices.nostr && nostrService.isConnected();
+          break;
+        case 'bluetooth':
+          healthy = this.activeServices.bluetooth && workingBluetoothMesh.isConnectedToMesh();
+          break;
+        case 'wifi':
+          healthy = this.activeServices.wifi && wifiP2P.getConnectedPeers().length > 0;
+          break;
+        case 'webrtc':
+          healthy = this.activeServices.webrtc && ablyWebRTC.isConnectedToMesh();
+          break;
+        case 'broadcast':
+          healthy = this.activeServices.broadcast && broadcastMesh.isConnectedToMesh();
+          break;
+      }
+    } catch {
+      healthy = false;
+    }
+
+    this.serviceHealthCache[service] = { healthy, checkedAt: now };
+    return healthy;
+  }
+
+  private async getServiceHealthSnapshot(): Promise<Record<MeshConnectionType, boolean>> {
+    const [bluetooth, webrtc, broadcast, wifi, nostr] = await Promise.all([
+      this.checkServiceHealth('bluetooth'),
+      this.checkServiceHealth('webrtc'),
+      this.checkServiceHealth('broadcast'),
+      this.checkServiceHealth('wifi'),
+      this.checkServiceHealth('nostr')
+    ]);
+
+    return { bluetooth, webrtc, broadcast, wifi, nostr };
+  }
+
+  private async sendBroadcastViaBluetooth(payload: string): Promise<boolean> {
+    const bluetoothPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth' && p.isConnected && !!p.serviceId);
+    if (bluetoothPeers.length === 0) return false;
+    let sent = false;
+    for (const p of bluetoothPeers) {
+      try {
+        if (await workingBluetoothMesh.sendMessage(p.serviceId!, payload)) sent = true;
+      } catch {}
+    }
+    return sent;
+  }
+
+  private async sendBroadcastViaWifi(payload: string): Promise<boolean> {
+    const wifiPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'wifi' && p.isConnected && !!p.serviceId);
+    if (wifiPeers.length === 0) return false;
+    let sent = false;
+    for (const p of wifiPeers) {
+      try {
+        if (await wifiP2P.sendMessage(p.serviceId!, payload)) sent = true;
+      } catch {}
+    }
+    return sent;
+  }
+
+  private async sendBroadcastViaWebRTC(payload: string): Promise<boolean> {
+    try {
+      await ablyWebRTC.sendMessage(payload);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private normalizePeerName(name: any, id: string): string {
@@ -359,8 +472,12 @@ class HybridMeshService {
       encryptedData?: any; sig?: string; pk?: string; sig2?: string; pk2?: string; verified?: boolean;
     }
   ) {
+    const dedupKey = this.makeStableMessageKey(from, content, metadata?.messageId, metadata?.timestamp);
+    if (this.isDuplicateIncoming(dedupKey)) return;
+
+    const resolvedMessageId = metadata?.messageId || dedupKey;
     const hybridMessage: HybridMeshMessage = {
-      id: metadata?.messageId || Math.random().toString(36).substr(2, 9),
+      id: resolvedMessageId,
       from,
       to: 'me',
       content,
@@ -607,6 +724,7 @@ class HybridMeshService {
 
       let sentSuccessfully = false;
       let connectionType: MeshConnectionType | null = null;
+      const health = await this.getServiceHealthSnapshot();
 
       if (targetId) {
         let peer = this.peers.get(targetId);
@@ -631,29 +749,31 @@ class HybridMeshService {
           try {
             switch (peer.connectionType) {
               case 'bluetooth':
-                if (peer.serviceId) {
+                if (health.bluetooth && peer.serviceId) {
                   sentSuccessfully = await workingBluetoothMesh.sendMessage(peer.serviceId, payload);
                 }
                 break;
               case 'wifi':
-                if (peer.serviceId) {
+                if (health.wifi && peer.serviceId) {
                   sentSuccessfully = await wifiP2P.sendMessage(peer.serviceId, payload);
                 }
                 break;
               case 'nostr':
                 const nostrTarget = peer.serviceId || peer.id;
-                if (this.isLikelyNostrId(nostrTarget)) {
+                if (health.nostr && this.isLikelyNostrId(nostrTarget)) {
                   sentSuccessfully = await nostrService.sendDirectMessage(nostrTarget, payload);
                 }
                 break;
               case 'broadcast':
-                if (peer.serviceId) {
+                if (health.broadcast && peer.serviceId) {
                   sentSuccessfully = await broadcastMesh.sendMessage(peer.serviceId, payload);
                 }
                 break;
               case 'webrtc':
-                await ablyWebRTC.sendMessage(payload);
-                sentSuccessfully = true;
+                if (health.webrtc) {
+                  await ablyWebRTC.sendMessage(payload);
+                  sentSuccessfully = true;
+                }
                 break;
             }
             if (sentSuccessfully) {
@@ -665,30 +785,40 @@ class HybridMeshService {
       }
 
       let broadcastSuccess = false;
+      const isGeohashOrRoomMessage = typeof content === 'string' && content.startsWith('[GEOHASH:');
+      const routingPlan: MeshConnectionType[] = isGeohashOrRoomMessage
+        ? ['bluetooth', 'wifi', 'webrtc', 'nostr', 'broadcast']
+        : ['nostr', 'webrtc', 'broadcast', 'bluetooth', 'wifi'];
 
-      console.log(`[HYBRID] Broadcasting message - bluetooth:${this.activeServices.bluetooth} wifi:${this.activeServices.wifi} nostr:${this.activeServices.nostr} broadcast:${this.activeServices.broadcast}`);
+      console.log(`[HYBRID] Broadcast routing plan=${routingPlan.join('>')} health=${JSON.stringify(health)}`);
 
-      if (this.activeServices.bluetooth) {
-        const bluetoothPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'bluetooth' && p.isConnected);
-        console.log(`[HYBRID] Broadcasting to ${bluetoothPeers.length} Bluetooth peers`);
-        for (const p of bluetoothPeers) {
-          try { await workingBluetoothMesh.sendMessage(p.serviceId!, payload); broadcastSuccess = true; } catch {}
-        }
-      }
-      if (this.activeServices.wifi) {
-        const wifiPeers = Array.from(this.peers.values()).filter(p => p.connectionType === 'wifi' && p.isConnected);
-        console.log(`[HYBRID] Broadcasting to ${wifiPeers.length} WiFi peers`);
-        for (const p of wifiPeers) {
-          try { await wifiP2P.sendMessage(p.serviceId!, payload); broadcastSuccess = true; } catch {}
-        }
-      }
-      if (this.activeServices.nostr) {
-        console.log(`[HYBRID] Broadcasting to Nostr`);
-        try { await nostrService.broadcastMessage(payload); broadcastSuccess = true; } catch {}
-      }
-      if (this.activeServices.broadcast) {
-        console.log(`[HYBRID] Broadcasting to broadcast mesh`);
-        try { await broadcastMesh.broadcastMessage(payload); broadcastSuccess = true; } catch {}
+      for (const route of routingPlan) {
+        if (!health[route]) continue;
+        try {
+          let sent = false;
+          switch (route) {
+            case 'bluetooth':
+              sent = await this.sendBroadcastViaBluetooth(payload);
+              break;
+            case 'wifi':
+              sent = await this.sendBroadcastViaWifi(payload);
+              break;
+            case 'webrtc':
+              sent = await this.sendBroadcastViaWebRTC(payload);
+              break;
+            case 'nostr':
+              sent = await nostrService.broadcastMessage(payload);
+              break;
+            case 'broadcast':
+              sent = await broadcastMesh.broadcastMessage(payload);
+              break;
+          }
+          if (sent) {
+            broadcastSuccess = true;
+            connectionType = route;
+            break; // smart routing: stop after first successful transport
+          }
+        } catch {}
       }
 
       if (broadcastSuccess) {
@@ -738,7 +868,11 @@ class HybridMeshService {
     return {
       type: (active[0] as MeshConnectionType) || 'broadcast',
       peerCount: this.peers.size,
-      isRealConnection: active.length > 0
+      isRealConnection: active.length > 0,
+      activeServices: { ...this.activeServices },
+      serviceHealth: Object.fromEntries(
+        Object.entries(this.serviceHealthCache).map(([key, value]) => [key, value.healthy])
+      )
     };
   }
 
