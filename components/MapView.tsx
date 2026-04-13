@@ -177,7 +177,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                       id: node.id,
                       name: node.name || node.handle,
                       handle: node.handle,
-                      avatar: `https://picsum.photos/seed/${node.handle}/200`,
+                      avatar: `/icon-192.png`,
                       mood: `Connected via ${type.toUpperCase()}`,
                       moodEmoji: '📡',
                       reputation: 800,
@@ -247,7 +247,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                           id: node.id,
                           name: node.name,
                           handle: node.handle,
-                          avatar: `https://picsum.photos/seed/${node.handle}/200`,
+                          avatar: `/icon-192.png`,
                           mood: 'Bluetooth Node',
                           moodEmoji: '📡',
                           reputation: 750,
@@ -282,7 +282,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                           id: peer.id,
                           name: peer.name,
                           handle: peer.handle,
-                          avatar: `https://picsum.photos/seed/${peer.handle}/200`,
+                          avatar: `/icon-192.png`,
                           mood: 'WiFi P2P Node',
                           moodEmoji: '📶',
                           reputation: 800,
@@ -316,7 +316,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                         id: peer.id,
                         name: peer.name,
                         handle: peer.handle,
-                        avatar: `https://picsum.photos/seed/${peer.handle}/200`,
+                        avatar: `/icon-192.png`,
                         mood: 'WebRTC Peer',
                         moodEmoji: '🔴',
                         reputation: 950,
@@ -346,7 +346,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                         id: peer.id,
                         name: peer.name,
                         handle: peer.handle,
-                        avatar: `https://picsum.photos/seed/${peer.handle}/200`,
+                        avatar: `/icon-192.png`,
                         mood: 'Radar Peer',
                         moodEmoji: '📡',
                         reputation: 850,
@@ -387,7 +387,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                 selectedPeer.connectionType === 'wifi' ? 'border-cyan-400' :
                   'border-red-500'
                 } rounded-full overflow-hidden`}>
-                <img src={`https://picsum.photos/seed/${selectedPeer.handle}/200`} className="w-full h-full object-cover grayscale" alt="" />
+                <img src={`/icon-192.png`} className="w-full h-full object-cover grayscale" alt="" />
               </div>
               <div className="flex-1">
                 <h3 className={`text-lg font-bold ${selectedPeer.connectionType === 'bluetooth' ? 'text-green-500' :
@@ -413,7 +413,7 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
                     id: selectedPeer.id,
                     name: selectedPeer.name || selectedPeer.handle,
                     handle: selectedPeer.handle,
-                    avatar: `https://picsum.photos/seed/${selectedPeer.handle}/200`,
+                    avatar: `/icon-192.png`,
                     mood: `Connected via ${selectedPeer.connectionType}`,
                     moodEmoji: '📡',
                     reputation: 800,
@@ -445,3 +445,4 @@ const MapView: React.FC<MapViewProps> = ({ onUserSelect, userLocation }) => {
 };
 
 export default MapView;
+

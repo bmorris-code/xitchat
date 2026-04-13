@@ -18,7 +18,7 @@ const GamesView: React.FC<GamesViewProps> = ({ onWinXC, onBack }) => {
       category: 'Arcade', 
       xc: 'Win up to 500XC', 
       players: '12k', 
-      img: 'https://picsum.photos/seed/snake/400/200',
+      img: '/icon-192.png',
       description: 'Classic snake game with XC rewards'
     },
     { 
@@ -27,7 +27,7 @@ const GamesView: React.FC<GamesViewProps> = ({ onWinXC, onBack }) => {
       category: 'Strategy', 
       xc: 'Win 5XC per game', 
       players: '8k', 
-      img: 'https://picsum.photos/seed/tictactoe/400/200',
+      img: '/icon-192.png',
       description: 'Play vs AI or friends'
     },
     { 
@@ -36,7 +36,7 @@ const GamesView: React.FC<GamesViewProps> = ({ onWinXC, onBack }) => {
       category: 'Puzzle', 
       xc: 'Win up to 100XC', 
       players: '15k', 
-      img: 'https://picsum.photos/seed/memory/400/200',
+      img: '/icon-192.png',
       description: 'Test your memory skills'
     },
     { 
@@ -45,7 +45,7 @@ const GamesView: React.FC<GamesViewProps> = ({ onWinXC, onBack }) => {
       category: 'Quick Play', 
       xc: 'Win 2XC per round', 
       players: '25k', 
-      img: 'https://picsum.photos/seed/rps/400/200',
+      img: '/icon-192.png',
       description: 'Classic hand game'
     }
   ];

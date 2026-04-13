@@ -255,7 +255,7 @@ class MeshDataSyncService {
         status = {
           nodeId: peer.id,
           handle: peer.handle,
-          avatar: `https://picsum.photos/seed/${peer.handle}/200`,
+          avatar: `/icon-192.png`,
           mood: 'Connected to mesh',
           status: 'online',
           lastSeen: Date.now(),
@@ -396,3 +396,4 @@ class MeshDataSyncService {
 }
 
 export const meshDataSync = new MeshDataSyncService();
+

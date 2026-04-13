@@ -144,46 +144,16 @@ class RealTorService {
         }
       }
 
-      // If no signaling servers connected, enable simulation mode
       if (!connected) {
-        console.log('🔄 All TOR signaling servers failed - enabling simulation mode');
-        this.enableSimulationMode();
+        console.warn('All TOR signaling servers failed; staying disconnected');
+        this.status.connected = false;
+        this.notifyListeners('offlineMode', true);
       }
       
     } catch (error) {
       console.error('Failed to connect to any TOR signaling server:', error);
-      // Don't throw error, just log and continue with offline mode
-      this.enableSimulationMode();
-    }
-  }
-
-  private enableSimulationMode(): void {
-    console.log('🔄 TOR signaling unavailable - running in offline mode with bootstrap nodes');
-    // Don't throw error, instead continue with bootstrap nodes only
-    this.initializeWithBootstrapNodes();
-  }
-
-  private initializeWithBootstrapNodes(): void {
-    try {
-      // Add bootstrap nodes immediately
-      const bootstrapNodes = this.createBootstrapNodes();
-      bootstrapNodes.forEach(node => {
-        this.knownNodes.set(node.id, node);
-      });
-      this.status.nodeCount = this.knownNodes.size;
-      
-      console.log(`🚀 Initialized with ${bootstrapNodes.length} bootstrap nodes in offline mode`);
-      
-      // Set status to indicate offline mode
       this.status.connected = false;
-      this.status.bootstrapProgress = 50; // Partial progress since we have nodes
-      
-      // Notify listeners about offline mode
       this.notifyListeners('offlineMode', true);
-      this.notifyListeners('bootstrapProgress', this.status.bootstrapProgress);
-      
-    } catch (error) {
-      console.error('Failed to initialize with bootstrap nodes:', error);
     }
   }
 
@@ -356,15 +326,6 @@ class RealTorService {
         console.warn('DHT discovery failed:', error);
       }
       
-      // Method 2: Create bootstrap nodes from known TOR relays
-      if (this.knownNodes.size < 3) {
-        const bootstrapNodes = this.createBootstrapNodes();
-        bootstrapNodes.forEach(node => {
-          this.knownNodes.set(node.id, node);
-        });
-        console.log(`🚀 Added ${bootstrapNodes.length} bootstrap nodes`);
-      }
-      
       console.log(`🌐 Total real nodes discovered: ${this.knownNodes.size}`);
       
       if (this.knownNodes.size === 0) {
@@ -377,30 +338,6 @@ class RealTorService {
     }
   }
   
-  private createBootstrapNodes(): TorNode[] {
-    // Known stable TOR relays for bootstrap
-    const bootstrapRelays = [
-      { ip: '171.25.193.9', port: 443, country: 'DE', name: 'tor26' },
-      { ip: '154.35.22.10', port: 443, country: 'US', name: 'torproject1' },
-      { ip: '154.35.22.11', port: 443, country: 'US', name: 'torproject2' },
-      { ip: '204.13.164.118', port: 443, country: 'US', name: 'moria1' },
-      { ip: '131.188.40.189', port: 443, country: 'DE', name: 'turtles' }
-    ];
-    
-    return bootstrapRelays.map(relay => ({
-      id: `bootstrap_${relay.name}`,
-      publicKey: this.generatePublicKey(),
-      ip: relay.ip,
-      port: relay.port,
-      country: relay.country,
-      nickname: `Bootstrap-${relay.name}`,
-      flags: ['Guard', 'Stable', 'Fast'],
-      bandwidth: 10485760, // 10 MB/s
-      uptime: 99,
-      lastSeen: Date.now()
-    }));
-  }
-
   private async discoverRealDHTNodes(): Promise<void> {
     try {
       // Use WebRTC to discover real peers through STUN/TURN servers

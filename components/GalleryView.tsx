@@ -38,10 +38,10 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
         setImages(JSON.parse(savedImages));
       } catch (error) {
         console.error('Failed to load gallery images:', error);
-        loadDefaultImages();
+        setImages([]);
       }
     } else {
-      loadDefaultImages();
+      setImages([]);
     }
 
     // Listen for mesh gallery items
@@ -58,121 +58,6 @@ const GalleryView: React.FC<GalleryViewProps> = ({ onBack }) => {
     window.addEventListener('meshGalleryItem', handleMeshItem);
     return () => window.removeEventListener('meshGalleryItem', handleMeshItem);
   }, []);
-
-  const loadDefaultImages = () => {
-    const defaultImages: GalleryImage[] = [
-      {
-        id: 'default-1',
-        url: 'https://picsum.photos/seed/cyberpunk1/400/300',
-        caption: 'Neon city streets at midnight',
-        timestamp: Date.now() - 86400000,
-        uploader: 'node_alpha',
-        likes: 42,
-        isLiked: false
-      },
-      {
-        id: 'default-2',
-        url: 'https://picsum.photos/seed/tech1/400/300',
-        caption: 'Retro terminal interface',
-        timestamp: Date.now() - 172800000,
-        uploader: 'mesh_node_7',
-        likes: 28,
-        isLiked: false
-      },
-      {
-        id: 'default-3',
-        url: 'https://picsum.photos/seed/matrix1/400/300',
-        caption: 'Digital rain patterns',
-        timestamp: Date.now() - 259200000,
-        uploader: 'system_admin',
-        likes: 15,
-        isLiked: false
-      },
-      {
-        id: 'default-4',
-        url: 'https://picsum.photos/seed/space1/400/300',
-        caption: 'Satellite mesh network',
-        timestamp: Date.now() - 345600000,
-        uploader: 'space_station',
-        likes: 67,
-        isLiked: false
-      },
-      {
-        id: 'default-5',
-        url: 'https://picsum.photos/seed/abstract1/400/300',
-        caption: 'Glitch art visualization',
-        timestamp: Date.now() - 432000000,
-        uploader: 'digital_artist',
-        likes: 33,
-        isLiked: false
-      },
-      {
-        id: 'default-6',
-        url: 'https://picsum.photos/seed/nature1/400/300',
-        caption: 'Hidden forest node',
-        timestamp: Date.now() - 518400000,
-        uploader: 'nature_node',
-        likes: 51,
-        isLiked: false
-      },
-      {
-        id: 'default-7',
-        url: 'https://picsum.photos/seed/urban1/400/300',
-        caption: 'Underground network access',
-        timestamp: Date.now() - 604800000,
-        uploader: 'urban_explorer',
-        likes: 29,
-        isLiked: false
-      },
-      {
-        id: 'default-8',
-        url: 'https://picsum.photos/seed/minimal1/400/300',
-        caption: 'Clean interface design',
-        timestamp: Date.now() - 691200000,
-        uploader: 'ui_designer',
-        likes: 44,
-        isLiked: false
-      },
-      {
-        id: 'default-9',
-        url: 'https://picsum.photos/seed/retro1/400/300',
-        caption: 'Vintage computer setup',
-        timestamp: Date.now() - 777600000,
-        uploader: 'retro_hacker',
-        likes: 38,
-        isLiked: false
-      },
-      {
-        id: 'default-10',
-        url: 'https://picsum.photos/seed/future1/400/300',
-        caption: 'Future city concept',
-        timestamp: Date.now() - 864000000,
-        uploader: 'future_vision',
-        likes: 72,
-        isLiked: false
-      },
-      {
-        id: 'default-11',
-        url: 'https://picsum.photos/seed/code1/400/300',
-        caption: 'Binary code waterfall',
-        timestamp: Date.now() - 950400000,
-        uploader: 'code_master',
-        likes: 56,
-        isLiked: false
-      },
-      {
-        id: 'default-12',
-        url: 'https://picsum.photos/seed/network1/400/300',
-        caption: 'Node connection map',
-        timestamp: Date.now() - 1036800000,
-        uploader: 'network_admin',
-        likes: 41,
-        isLiked: false
-      }
-    ];
-    setImages(defaultImages);
-    localStorage.setItem('xitchat_gallery_images', JSON.stringify(defaultImages));
-  };
 
   const saveImages = (newImages: GalleryImage[]) => {
     setImages(newImages);

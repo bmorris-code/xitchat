@@ -69,9 +69,7 @@ class LocalEncryptionService {
   // ── FIX #1: persist key pair to survive page refresh ──
   async generateKeyPair(userId: string): Promise<EncryptionKey> {
     if (!this.isSupported) {
-      console.warn('⚠️ Web Crypto API not available - using mock encryption');
-      this.keyPairs.set(userId, { publicKey: {} as any, privateKey: {} as any });
-      return { key: 'mock-public-key', fingerprint: 'mock-fingerprint' };
+      throw new Error('Web Crypto API not available');
     }
 
     try {
@@ -133,8 +131,7 @@ class LocalEncryptionService {
 
   async importPublicKey(userId: string, publicKeyBase64: string): Promise<void> {
     if (!this.isSupported) {
-      this.keyPairs.set(userId, { publicKey: {} as any, privateKey: null as any });
-      return;
+      throw new Error('Web Crypto API not available');
     }
 
     try {
@@ -154,7 +151,7 @@ class LocalEncryptionService {
   // ── FIX #2: return null instead of throwing when recipient key missing ──
   async encryptMessage(message: string, recipientId: string): Promise<EncryptedData | null> {
     if (!this.isSupported) {
-      return { data: btoa(message), iv: 'mock-iv', salt: 'mock-salt', timestamp: Date.now() };
+      return null;
     }
 
     const recipientKeyPair = this.keyPairs.get(recipientId);
@@ -191,7 +188,7 @@ class LocalEncryptionService {
 
   async decryptMessage(encryptedData: EncryptedData, senderId: string): Promise<string> {
     if (!this.isSupported) {
-      try { return atob(encryptedData.data); } catch { return '[Decryption Failed - Mock]'; }
+      throw new Error('Web Crypto API not available');
     }
 
     try {
@@ -220,7 +217,7 @@ class LocalEncryptionService {
 
   async encryptImage(imageData: ArrayBuffer, recipientId: string): Promise<EncryptedData | null> {
     if (!this.isSupported) {
-      return { data: this.arrayBufferToBase64(imageData), iv: 'mock-iv', salt: 'mock-salt', timestamp: Date.now() };
+      return null;
     }
 
     const recipientKeyPair = this.keyPairs.get(recipientId);
@@ -250,7 +247,7 @@ class LocalEncryptionService {
   }
 
   async decryptImage(encryptedData: EncryptedData, senderId: string): Promise<ArrayBuffer> {
-    if (!this.isSupported) return this.base64ToArrayBuffer(encryptedData.data);
+    if (!this.isSupported) throw new Error('Web Crypto API not available');
 
     try {
       const myKeyPair = this.keyPairs.get('me');
@@ -276,7 +273,7 @@ class LocalEncryptionService {
   }
 
   private async generateFingerprint(publicKey: ArrayBuffer): Promise<string> {
-    if (!this.isSupported) return 'mock-fingerprint';
+    if (!this.isSupported) throw new Error('Web Crypto API not available');
     const hashBuffer = await window.crypto.subtle.digest('SHA-256', publicKey);
     return Array.from(new Uint8Array(hashBuffer))
       .map(b => b.toString(16).padStart(2, '0'))
@@ -339,7 +336,7 @@ class LocalEncryptionService {
 
   async encryptGroupMessage(message: string, geohash: string): Promise<EncryptedData> {
     if (!this.isSupported) {
-      return { data: btoa(message), iv: 'mock-iv', salt: 'mock-salt', timestamp: Date.now() };
+      throw new Error('Web Crypto API not available');
     }
     try {
       const groupKey = await this.deriveGroupKey(geohash);
@@ -361,7 +358,7 @@ class LocalEncryptionService {
 
   async decryptGroupMessage(encryptedData: EncryptedData, geohash: string): Promise<string> {
     if (!this.isSupported) {
-      try { return atob(encryptedData.data); } catch { return '[Group Decrypt Failed]'; }
+      throw new Error('Web Crypto API not available');
     }
     try {
       const groupKey = await this.deriveGroupKey(geohash);
@@ -394,10 +391,10 @@ class LocalEncryptionService {
   }
 
   async encryptSymmetric(data: string, key?: CryptoKey): Promise<EncryptedData> {
-    const targetKey = key || this.masterKey || await this.getDeviceMasterKey();
     if (!this.isSupported) {
-      return { data: btoa(data), iv: 'mock', salt: 'mock', timestamp: Date.now() };
+      throw new Error('Web Crypto API not available');
     }
+    const targetKey = key || this.masterKey || await this.getDeviceMasterKey();
     try {
       const iv = window.crypto.getRandomValues(new Uint8Array(12));
       const encryptedData = await window.crypto.subtle.encrypt(
@@ -416,10 +413,10 @@ class LocalEncryptionService {
   }
 
   async decryptSymmetric(encryptedData: EncryptedData, key?: CryptoKey): Promise<string> {
-    const targetKey = key || this.masterKey || await this.getDeviceMasterKey();
     if (!this.isSupported) {
-      try { return atob(encryptedData.data); } catch { return ''; }
+      throw new Error('Web Crypto API not available');
     }
+    const targetKey = key || this.masterKey || await this.getDeviceMasterKey();
     try {
       const iv = this.base64ToArrayBuffer(encryptedData.iv);
       const data = this.base64ToArrayBuffer(encryptedData.data);

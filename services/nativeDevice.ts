@@ -152,17 +152,10 @@ export class NativeDeviceService {
       return [];
     }
 
-    // This would require a custom Capacitor plugin for Bluetooth LE
-    // For now, return mock data
+    // Requires native Bluetooth scanning plugin implementation.
     console.log('Scanning for mesh nodes...');
     await this.triggerHaptic(ImpactStyle.Light);
-
-    // Simulate found nodes
-    return [
-      'XIT-NODE-48F2',
-      'XIT-NODE-A812',
-      'XIT-NODE-7B3C'
-    ];
+    return [];
   }
 }
 

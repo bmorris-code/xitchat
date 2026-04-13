@@ -114,12 +114,7 @@ class AppUpdateService {
     const currentVersion = this.getCurrentVersion();
     
     try {
-      // For development/testing, simulate update check
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return await this.simulateUpdateCheck(currentVersion);
-      }
-
-      // Production: Check against server
+      // Check against server first
       const response = await fetch(this.UPDATE_API_URL);
       if (!response.ok) {
         throw new Error('Failed to check for updates');
@@ -130,41 +125,35 @@ class AppUpdateService {
       return this.compareVersions(currentVersion, serverVersion);
 
     } catch (error) {
-      console.debug('Update check failed:', error);
-      return {
-        hasUpdate: false,
-        currentVersion: currentVersion.version,
-        currentVersionCode: currentVersion.versionCode
-      };
-    }
-  }
+      console.debug('Update check API failed, trying release config fallback:', error);
+      try {
+        const config = await this.loadReleaseConfig();
+        const hostname = window.location.hostname;
+        const downloadUrl =
+          hostname.includes('staging')
+            ? config.apkUrls.staging
+            : hostname === 'localhost' || hostname === '127.0.0.1'
+              ? config.apkUrls.development
+              : config.apkUrls.production;
 
-  /**
-   * Simulate update check for development
-   */
-  private async simulateUpdateCheck(currentVersion: { version: string; versionCode: number }): Promise<UpdateCheckResult> {
-    const config = await this.loadReleaseConfig();
-    
-    // Determine environment and get appropriate URL
-    let downloadUrl: string;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      downloadUrl = config.apkUrls.development;
-    } else if (window.location.hostname.includes('staging')) {
-      downloadUrl = config.apkUrls.staging;
-    } else {
-      downloadUrl = config.apkUrls.production;
+        const serverVersion: UpdateInfo = {
+          version: config.version,
+          versionCode: config.versionCode,
+          downloadUrl,
+          releaseNotes: config.releaseNotes,
+          forceUpdate: config.forceUpdate,
+          apkSize: config.apkSize
+        };
+        return this.compareVersions(currentVersion, serverVersion);
+      } catch (fallbackError) {
+        console.debug('Update check fallback failed:', fallbackError);
+        return {
+          hasUpdate: false,
+          currentVersion: currentVersion.version,
+          currentVersionCode: currentVersion.versionCode
+        };
+      }
     }
-    
-    const serverVersion: UpdateInfo = {
-      version: config.version,
-      versionCode: config.versionCode,
-      downloadUrl,
-      releaseNotes: config.releaseNotes,
-      forceUpdate: config.forceUpdate,
-      apkSize: config.apkSize
-    };
-
-    return this.compareVersions(currentVersion, serverVersion);
   }
 
   /**

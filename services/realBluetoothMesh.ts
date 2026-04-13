@@ -91,20 +91,8 @@ class RealBluetoothMeshService {
       });
 
     } catch (error) {
-      console.log('XitChat service not found, creating simulation mode');
-      // Fall back to simulation for testing
-      this.setupSimulationMode();
+      console.warn('XitChat service not available on this device:', error);
     }
-  }
-
-  private setupSimulationMode(): void {
-    // Create mock service for testing when real Bluetooth isn't available
-    console.log('📱 Setting up simulation mode for testing');
-    
-    // Simulate finding peers every 5 seconds
-    this.scanTimer = setInterval(() => {
-      this.simulatePeerDiscovery();
-    }, 5000);
   }
 
   private async startDiscovery(): Promise<void> {
@@ -123,8 +111,7 @@ class RealBluetoothMeshService {
       });
 
     } catch (error) {
-      console.log('Real scanning not available, using simulation');
-      this.simulatePeerDiscovery();
+      console.warn('Real Bluetooth scanning unavailable:', error);
     }
   }
 
@@ -148,38 +135,6 @@ class RealBluetoothMeshService {
     };
 
     this.addPeer(peer);
-  }
-
-  private simulatePeerDiscovery(): void {
-    // Generate realistic mock peers for testing
-    const mockPeerCount = Math.floor(Math.random() * 3) + 1;
-    
-    for (let i = 0; i < mockPeerCount; i++) {
-      const peerId = `sim-peer-${Date.now()}-${i}`;
-      
-      // Don't duplicate existing peers
-      if (this.peers.has(peerId)) continue;
-
-      const mockPeer: RealMeshNode = {
-        id: peerId,
-        name: `Test User ${i + 1}`,
-        handle: `@testuser${i + 1}`,
-        device: null as any, // Mock device
-        distance: Math.random() * 10 + 1,
-        lastSeen: new Date(),
-        capabilities: ['chat', 'relay', 'trade'],
-        isRelay: Math.random() > 0.5,
-        signalStrength: Math.random() * 40 + 60
-      };
-
-      this.addPeer(mockPeer);
-    }
-
-    // Remove old peers
-    this.cleanupOldPeers();
-    
-    console.log(`📱 Simulated discovery: ${this.peers.size} peers found`);
-    this.emit('peersUpdated', Array.from(this.peers.values()));
   }
 
   private addPeer(peer: RealMeshNode): void {
@@ -268,10 +223,8 @@ class RealBluetoothMeshService {
       if (peer.device && peer.device.gatt?.connected) {
         return await this.sendDirectMessage(peer.device, message);
       } else {
-        // Fall back to simulation
-        console.log(`📤 Sending message to ${peer.name}: ${content}`);
-        this.emit('messageSent', message);
-        return true;
+        console.warn(`Peer ${peerId} is not connected for direct Bluetooth send`);
+        return false;
       }
 
     } catch (error) {
@@ -300,8 +253,7 @@ class RealBluetoothMeshService {
       const messageData = new TextEncoder().encode(JSON.stringify(data));
       this.broadcastChannel.writeValue(messageData);
     } else {
-      // Simulation mode
-      console.log('📡 Broadcasting message:', data);
+      console.warn('Bluetooth broadcast channel unavailable');
     }
   }
 
@@ -318,7 +270,7 @@ class RealBluetoothMeshService {
       isRealConnection: this.myDevice !== null,
       peerCount: this.peers.size,
       type: 'bluetooth',
-      deviceId: this.myDevice?.id || 'simulation'
+      deviceId: this.myDevice?.id || 'unknown'
     };
   }
 

@@ -231,7 +231,7 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
       user: {
         name: 'Symbolic',
         handle: '@symbolic',
-        avatar: 'https://picsum.photos/seed/me/200'
+        avatar: '/icon-192.png'
       },
       timestamp: Date.now()
     };
@@ -658,3 +658,4 @@ const BuzzView: React.FC<BuzzViewProps> = ({ onBack }) => {
 };
 
 export default BuzzView;
+

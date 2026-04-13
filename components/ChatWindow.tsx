@@ -290,11 +290,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           handleSendMessage('', { imageUrl: img.url });
           setShowGallery(false);
         }}
-        sampleImages={[
-          { id: 's1', url: 'https://picsum.photos/seed/cyber1/400/400.jpg', caption: 'Cyber City', category: 'tech', size: '2.1MB' },
-          { id: 's2', url: 'https://picsum.photos/seed/nature1/400/400.jpg', caption: 'Nature', category: 'nature', size: '1.8MB' },
-          { id: 's3', url: 'https://picsum.photos/seed/matrix1/400/400.jpg', caption: 'Matrix', category: 'tech', size: '1.7MB' }
-        ]}
+        sampleImages={[]}
         imageInputRef={imageInputRef}
         videoInputRef={videoInputRef}
       />
