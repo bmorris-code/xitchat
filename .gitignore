@@ -83,9 +83,8 @@ temp/
 *.swo
 *~
 
-# Lock files (keep package-lock.json but ignore others)
+# Lock files
 yarn.lock
-pnpm-lock.yaml
 
 # Build artifacts
 *.tgz
