@@ -78,8 +78,12 @@ class HybridMeshService {
     return /^[0-9a-f]{64}$/i.test(id) || id.startsWith('npub');
   }
 
-  /** Returns false for internal mesh protocol messages that should NOT be relayed to Nostr */
+  /** Returns false for messages that should NOT be re-broadcast via hybridMesh's Nostr path */
   private isNostrWorthyContent(content: string): boolean {
+    // [GEOHASH:] room messages are sent directly to Nostr by geohashChannels —
+    // don't re-broadcast here or the rate limiter and duplicate payloads break delivery
+    if (content.startsWith('[GEOHASH:')) return false;
+
     try {
       const parsed = JSON.parse(content);
       const systemTypes = [
@@ -90,7 +94,7 @@ class HybridMeshService {
       ];
       return !systemTypes.includes(parsed?.type);
     } catch {
-      // Not JSON = plain chat text — always Nostr-worthy
+      // Not JSON = plain DM chat text — Nostr-worthy
       return true;
     }
   }

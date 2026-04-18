@@ -290,7 +290,10 @@ class NostrService {
 
   private handleTaggedTextNote(event: any): void {
     console.log(`[NOSTR] kind:1 from=${event.pubkey?.substring(0, 8)} own=${event.pubkey === this.publicKey} content_prefix=${event.content?.substring(0, 40)}`);
-    if (event.pubkey === this.publicKey) return;
+    // Don't filter own-pubkey for room/channel messages — if both devices share a key,
+    // or if a sent message echoes back from the relay, dedup by message ID handles it downstream.
+    // Only skip plain DM-style echoes (non-geohash content from self).
+    if (event.pubkey === this.publicKey && !event.content?.startsWith('[GEOHASH:')) return;
     this.emit('messageReceived', {
       id: event.id,
       from: event.pubkey,
@@ -348,11 +351,14 @@ class NostrService {
         return false;
       }
 
-      // Enforce 1-per-second rate limit to avoid relay bans
-      const now = Date.now();
-      const elapsed = now - this.lastBroadcastTime;
-      if (elapsed < this.BROADCAST_MIN_INTERVAL_MS) {
-        await new Promise(r => setTimeout(r, this.BROADCAST_MIN_INTERVAL_MS - elapsed));
+      // Enforce 1-per-second rate limit for non-chat messages to avoid relay bans.
+      // Room messages ([GEOHASH:] prefixed) are user actions — send immediately.
+      if (!content.startsWith('[GEOHASH:')) {
+        const now = Date.now();
+        const elapsed = now - this.lastBroadcastTime;
+        if (elapsed < this.BROADCAST_MIN_INTERVAL_MS) {
+          await new Promise(r => setTimeout(r, this.BROADCAST_MIN_INTERVAL_MS - elapsed));
+        }
       }
       this.lastBroadcastTime = Date.now();
 
