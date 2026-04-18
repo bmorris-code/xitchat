@@ -361,8 +361,7 @@ class MeshMarketplaceService {
     try {
       // Ensure hybrid mesh is initialized
       const meshInfo = hybridMesh.getConnectionInfo();
-      // Real-time only: do not inject demo/mock marketplace listings.
-      return !!meshInfo.isConnected;
+            return !!meshInfo.isConnected;
     } catch (error) {
       console.error('Failed to initialize mesh marketplace:', error);
       return false;

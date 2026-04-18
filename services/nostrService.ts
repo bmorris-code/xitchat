@@ -60,6 +60,10 @@ class NostrService {
   // ── FIX #1: shared init promise to prevent concurrent initialize() races ──
   private initPromise: Promise<boolean> | null = null;
 
+  // Rate limiter: max 1 broadcast per second to avoid relay rate-limiting
+  private lastBroadcastTime = 0;
+  private readonly BROADCAST_MIN_INTERVAL_MS = 1100; // ~1 per second max
+
   // ── FIX #3: track subscriptions so they can be closed on re-init ──
   private eventSubscription: any = null;
   private presenceSubscription: any = null;
@@ -343,6 +347,14 @@ class NostrService {
         console.warn('⚠️ Cannot broadcast: Not ready');
         return false;
       }
+
+      // Enforce 1-per-second rate limit to avoid relay bans
+      const now = Date.now();
+      const elapsed = now - this.lastBroadcastTime;
+      if (elapsed < this.BROADCAST_MIN_INTERVAL_MS) {
+        await new Promise(r => setTimeout(r, this.BROADCAST_MIN_INTERVAL_MS - elapsed));
+      }
+      this.lastBroadcastTime = Date.now();
 
       const event = nostrTools.finalizeEvent(
         { kind: 1, created_at: Math.floor(Date.now() / 1000), tags: [['t', 'xitchat']], content },

@@ -104,7 +104,6 @@ class RealtimeRadarService {
   }
 
   private handleNostrPresenceEvent(presenceData: any): void {
-    if (this.isSimulatedPeerId(presenceData?.pubkey)) return;
 
     const radarPeer: RadarPeer = {
       id: presenceData.pubkey,
@@ -136,7 +135,6 @@ class RealtimeRadarService {
 
     presencePeers.forEach(presencePeer => {
       if (myPubkey && presencePeer.pubkey === myPubkey) return;
-      if (this.isSimulatedPeerId(presencePeer.pubkey)) return;
 
       const isVisible = now - presencePeer.lastSeen < presencePeer.ttl * 1000;
       if (!isVisible) {
@@ -220,13 +218,7 @@ class RealtimeRadarService {
     return `@${pubkey.substring(0, 6)}`;
   }
 
-  private isSimulatedPeerId(id?: string): boolean {
-    if (!id) return true;
-    const n = id.toLowerCase();
-    return n.startsWith('sim_') || n.startsWith('sim-') || n.startsWith('simulated-') ||
-      n.includes('mock') || n.includes('test-');
-  }
-
+  
   private handleLifecycleEvent(event: any): void {
     switch (event.data?.action) {
       case 'resume_mesh': this.resumeRadarOperations(); break;
@@ -325,7 +317,7 @@ class RealtimeRadarService {
 
   private addOrUpdatePeer(peerData: any, transport: RadarPeer['connectionType']) {
     const id = peerData.pubkey || peerData.id;
-    if (!id || this.isSimulatedPeerId(id)) return;
+    if (!id) return;
 
     const radarPeer: RadarPeer = {
       id,

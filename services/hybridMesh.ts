@@ -78,6 +78,23 @@ class HybridMeshService {
     return /^[0-9a-f]{64}$/i.test(id) || id.startsWith('npub');
   }
 
+  /** Returns false for internal mesh protocol messages that should NOT be relayed to Nostr */
+  private isNostrWorthyContent(content: string): boolean {
+    try {
+      const parsed = JSON.parse(content);
+      const systemTypes = [
+        'mesh_data', 'sync_request', 'typing', 'health_check',
+        'marketplace_listing', 'marketplace_request', 'listing_broadcast', 'listing_update',
+        'trade_request', 'trade_response', 'payment_request', 'payment_response',
+        'presence', 'ble_device_list', 'signal', 'sdp', 'ice', 'peer_info',
+      ];
+      return !systemTypes.includes(parsed?.type);
+    } catch {
+      // Not JSON = plain chat text — always Nostr-worthy
+      return true;
+    }
+  }
+
   private isLikelyLocalNetworkAddress(id?: string): boolean {
     if (!id) return false;
     const ipv4 = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -674,7 +691,9 @@ class HybridMeshService {
 
     const isLocalSource = message.connectionType === 'bluetooth' || message.connectionType === 'wifi';
 
-    if (isLocalSource && this.activeServices.nostr) {
+    // Only bridge actual chat/SOS content to Nostr — skip internal protocol messages
+    const bridgeContent = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+    if (isLocalSource && this.activeServices.nostr && this.isNostrWorthyContent(bridgeContent)) {
       console.log(`≡ƒôí Bridging message from ${message.from} to Nostr layer`);
       this.bridgeStats.bridgedOut++;
       void nostrService.broadcastMessage(JSON.stringify({ ...message, isBridged: true })).catch((error) => {
@@ -823,7 +842,7 @@ class HybridMeshService {
                   .filter(p => p.connectionType === 'bluetooth' && p.isConnected && !!p.serviceId);
                 btPeers.forEach(p => finalFallbackPromises.push(workingBluetoothMesh.sendMessage(p.serviceId!, payload).catch(() => false)));
               }
-              if (this.activeServices.nostr) {
+              if (this.activeServices.nostr && this.isNostrWorthyContent(content)) {
                 finalFallbackPromises.push(nostrService.broadcastMessage(payload).catch(() => false));
               }
 
@@ -865,7 +884,9 @@ class HybridMeshService {
           broadcastPromises.push(wifiP2P.sendMessage(p.serviceId!, payload).catch(e => console.log('WiFi P2P failed:', e)));
         });
       }
-      if (this.activeServices.nostr) {
+      // Only send actual chat/SOS messages to Nostr — not internal mesh protocol messages
+      // (mesh_data, sync_request, typing, etc. flood relays and trigger rate-limiting)
+      if (this.activeServices.nostr && this.isNostrWorthyContent(content)) {
         broadcastPromises.push(nostrService.broadcastMessage(payload).catch(e => console.log('Nostr broadcast failed:', e)));
       }
       if (this.activeServices.bluetooth) {

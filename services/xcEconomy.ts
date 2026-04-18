@@ -1,5 +1,4 @@
 // XC Economy Service - Virtual Currency System
-import { nostrService } from './nostrService';
 
 export interface XCTransaction {
   id: string;
@@ -39,8 +38,6 @@ class XCEconomyService {
     nextBonus: 10
   };
   private listeners: { [key: string]: ((data: any) => void)[] } = {};
-  private syncTimeout: any = null;
-
   // ── FIX #3: cap transactions stored to prevent unbounded localStorage growth ──
   private readonly MAX_TRANSACTIONS = 200;
 
@@ -85,14 +82,7 @@ class XCEconomyService {
       console.warn('Failed to save XC economy state:', error);
     }
 
-    // Sync to Nostr (cross-device) with debounce
-    if (this.syncTimeout) clearTimeout(this.syncTimeout);
-    this.syncTimeout = setTimeout(() => {
-      if (nostrService.getPublicKey()) {
-        nostrService.broadcastMessage(`xitchat-economy-sync:${JSON.stringify(state)}`)
-          .catch(err => console.debug('Economy sync to Nostr failed:', err));
-      }
-    }, 2000);
+    // Economy state is local-only — no Nostr sync (would flood relay rate limits)
   }
 
   private initializeAchievements() {
@@ -255,7 +245,6 @@ class XCEconomyService {
   }
 
   destroy() {
-    if (this.syncTimeout) { clearTimeout(this.syncTimeout); this.syncTimeout = null; }
     this.listeners = {};
   }
 

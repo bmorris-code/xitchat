@@ -152,21 +152,7 @@ class MeshService {
 
   Future<void> _startSimulatedDiscovery() async {
     // Simulate peer discovery for testing
-    for (int i = 0; i < 5; i++) {
-      await Future.delayed(const Duration(seconds: 2));
-
-      final simulatedPeer = User(
-        id: 'simulated_peer_$i',
-        handle: 'user$i',
-        name: 'Simulated User $i',
-        isOnline: true,
-        discoveryMethod: 'Simulated',
-        signalStrength: 70 + (i * 5),
-        distance: 10.0 + (i * 5.0),
-      );
-
-      _addDiscoveredPeer(simulatedPeer);
-    }
+    // Simulated users removed - only real peers will be discovered
   }
 
   Future<void> _discoverWiFiPeers() async {
