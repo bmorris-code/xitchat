@@ -435,6 +435,10 @@ const App: React.FC = () => {
         handshakePersistence.startBackgroundMaintenance();
 
         meshUnsubscribers.push(hybridMesh.subscribe('messageReceived', (message) => {
+          // Room channel messages are handled exclusively by geohashChannels — skip here
+          // to prevent room messages from creating bogus DM chats.
+          if (typeof message.content === 'string' && message.content.startsWith('[GEOHASH:')) return;
+
           const senderId = message.from || message.senderId;
 
           if (message.type === 'typing' && senderId && senderId !== 'me') {
@@ -745,6 +749,7 @@ const App: React.FC = () => {
             const unsubMsg = nostrService.subscribe('messageReceived', (message) => {
               let normalizedContent = typeof message.content === 'string' ? message.content : '';
               const trimmed = normalizedContent.trim();
+              let nostrSenderHandle: string | undefined;
 
               // Room channel messages — handled exclusively by geohashChannels service
               if (trimmed.startsWith('[GEOHASH:')) return;
@@ -756,6 +761,8 @@ const App: React.FC = () => {
                     messageACKService.markMessageDelivered(outer.messageId, message.from, 'nostr');
                     return;
                   }
+                  // Preserve senderHandle from hybridMesh JSON envelope
+                  if (typeof outer?.senderHandle === 'string') nostrSenderHandle = outer.senderHandle;
                   if (typeof outer?.content === 'string') {
                     normalizedContent = outer.content;
                   } else if (outer && (outer.timestamp !== undefined || outer.messageId !== undefined || outer.sig !== undefined || outer.pk !== undefined)) {
@@ -796,7 +803,7 @@ const App: React.FC = () => {
               setChats(prev => {
                 // Enhanced matching: try nostr-prefixed, raw pubkey, node-prefixed, and handle match
                 const senderPubkey = message.from;
-                const senderHandleShort = `@${senderPubkey.substring(0, 8)}`;
+                const resolvedHandle = nostrSenderHandle || `@${senderPubkey.substring(0, 8)}`;
                 const nostrChat = prev.find(c =>
                   c.participant.id === `nostr-${senderPubkey}` ||
                   c.participant.id === senderPubkey ||
@@ -809,20 +816,20 @@ const App: React.FC = () => {
                   senderId: message.from,
                   text: normalizedContent,
                   timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
-                  senderHandle: senderHandleShort
+                  senderHandle: resolvedHandle
                 };
                 const isDMActive = activeChatIdRef.current === nostrChat?.id;
                 if (!isDMActive) {
                   window.dispatchEvent(new CustomEvent('newTransmission', {
                     detail: {
-                      message: `DM from @${message.from.substring(0, 8)}: ${normalizedContent.substring(0, 60)}`,
+                      message: `DM from ${resolvedHandle}: ${normalizedContent.substring(0, 60)}`,
                       type: 'chat'
                     }
                   }));
                 }
                 if (!nostrChat) {
                   // Auto-create chat when DM arrives from unknown sender
-                  const handle = `@${message.from.substring(0, 8)}`;
+                  const handle = resolvedHandle;
                   const newChat: Chat = {
                     id: `chat-${Date.now()}`,
                     type: 'private',

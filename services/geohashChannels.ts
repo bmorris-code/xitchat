@@ -139,12 +139,18 @@ class GeohashChannelsService {
         const isNamedRoom = channelMatch !== null;
         if (!isNamedRoom && !this.isNearbyGeohash(geohashMatch[1])) return;
         console.log(`[XC] NOSTR MATCH ch=${channelId}`);
-        const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').replace(/\[CHANNEL:[^\]]+\]/, '').trim();
+        const fromMatch = message.content.match(/\[FROM:([^\]]+)\]/);
+        const nodeHandle = fromMatch ? fromMatch[1] : `@${message.from?.substring(0, 8) || 'unknown'}`;
+        const cleanContent = message.content
+          .replace(/\[GEOHASH:[^\]]+\]/, '')
+          .replace(/\[CHANNEL:[^\]]+\]/, '')
+          .replace(/\[FROM:[^\]]+\]/, '')
+          .trim();
         this.addReceivedMessage({
           id: message.id || generateUUID(),
           channelId,
           nodeId: message.from,
-          nodeHandle: `@${message.from?.substring(0, 8) || 'unknown'}`,
+          nodeHandle,
           content: cleanContent,
           timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
           type: 'text'
@@ -157,6 +163,9 @@ class GeohashChannelsService {
   private subscribeToMeshMessages() {
     this.unsubs.push(
       hybridMesh.subscribe('messageReceived', async (message) => {
+        // Skip nostr-originated messages — subscribeToNostrMessages handles them directly.
+        // Only process BT/WiFi path here to avoid duplicate adds.
+        if (message.connectionType === 'nostr') return;
         console.log(`[XC] MESH RAW message from=${message.from} content_prefix=${message.content?.substring(0, 40)}`);
         if (!message.content?.startsWith('[GEOHASH:')) return;
         console.log(`[XC] MESH Processing geohash message`);
@@ -168,7 +177,13 @@ class GeohashChannelsService {
         // Skip geohash proximity filter for named rooms (they are global, not geo-local)
         const isNamedRoom = channelMatch !== null;
         if (!isNamedRoom && !this.isNearbyGeohash(geohashMatch[1])) return;
-        const cleanContent = message.content.replace(/\[GEOHASH:[^\]]+\]/, '').replace(/\[CHANNEL:[^\]]+\]/, '').trim();
+
+        const fromMatch = message.content.match(/\[FROM:([^\]]+)\]/);
+        const cleanContent = message.content
+          .replace(/\[GEOHASH:[^\]]+\]/, '')
+          .replace(/\[CHANNEL:[^\]]+\]/, '')
+          .replace(/\[FROM:[^\]]+\]/, '')
+          .trim();
         let finalContent = cleanContent;
 
         if (cleanContent.startsWith('{') && cleanContent.includes('data') && cleanContent.includes('iv')) {
@@ -182,9 +197,9 @@ class GeohashChannelsService {
           id: message.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           channelId: channelId,
           nodeId: message.nodeId || message.from || 'unknown',
-          nodeHandle: message.nodeHandle ||
+          nodeHandle: fromMatch ? fromMatch[1] : (message.nodeHandle ||
             message.senderHandle ||
-            `@${String(message.from || message.nodeId || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`,
+            `@${String(message.from || message.nodeId || 'peer').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8).toLowerCase() || 'peer'}`),
           content: finalContent,
           timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : (message.timestamp || Date.now()),
           type: 'text' as const
@@ -453,7 +468,7 @@ class GeohashChannelsService {
   }
 
   private async broadcastMessage(channelId: string, messageId: string, content: string, geohash: string) {
-    const tagged = `[GEOHASH:${geohash}][CHANNEL:${channelId}]${content}`;
+    const tagged = `[GEOHASH:${geohash}][CHANNEL:${channelId}][FROM:${this.myHandle}]${content}`;
     console.log(`[XC] SEND ch=${channelId} geohash=${geohash} len=${content.length}`);
     const [meshResult, nostrResult] = await Promise.allSettled([
       hybridMesh.sendMessage(tagged),
