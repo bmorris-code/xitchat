@@ -1272,9 +1272,11 @@ const App: React.FC = () => {
 
   const handleSendMessage = useCallback(async (text: string, options?: { imageUrl?: string; videoUrl?: string; replyTo?: Message['replyTo'], nostrRecipient?: string, encryptedData?: any }) => {
     if (!activeChatId) return;
-    const isXitBotHandle = normalizePeerToken(activeChat?.participant?.handle) === 'xitbot';
+    // Always read from chatsRef so we never have a stale closure over chats
+    const currentChat = chatsRef.current.find(c => c.id === activeChatId) || null;
+    const isXitBotHandle = normalizePeerToken(currentChat?.participant?.handle) === 'xitbot';
     const isLocalXitBotChat =
-      (activeChat?.participant.id === 'xit-bot' || isXitBotHandle) &&
+      (currentChat?.participant.id === 'xit-bot' || isXitBotHandle) &&
       !options?.imageUrl && !options?.videoUrl;
 
     const newMessage: Message = {
@@ -1309,42 +1311,32 @@ const App: React.FC = () => {
         }
       }
 
-      if (activeChat?.type === 'room' && !options?.imageUrl && !options?.videoUrl) {
+      // Route to geohashChannels for any room chat (type='room' OR participant.id starts with 'room-')
+      const isRoomChat = currentChat?.type === 'room' || currentChat?.participant?.id?.startsWith('room-');
+      if (isRoomChat && !options?.imageUrl && !options?.videoUrl) {
         try {
-          // Ensure we're using the correct channel ID for room messages
-          let channelId = activeChat.participant.id;
-          
-          // If the channel ID doesn't look like a geohash channel, try to find the correct one
+          let channelId = currentChat!.participant.id;
+          // If channel ID isn't a known room format, try to find/create the right one
           if (!channelId.includes('xitchat-local-') && !channelId.startsWith('room-')) {
-            // Try to find a matching channel by name or create a new one
             const channels = geohashChannels.getNearbyChannels();
-            const matchingChannel = channels.find(c => 
-              c.name.toLowerCase().includes(activeChat.participant.name.toLowerCase()) ||
-              c.id.toLowerCase().includes(activeChat.participant.name.toLowerCase())
+            const matchingChannel = channels.find(c =>
+              c.name.toLowerCase().includes(currentChat!.participant.name.toLowerCase()) ||
+              c.id.toLowerCase().includes(currentChat!.participant.name.toLowerCase())
             );
-            
             if (matchingChannel) {
               channelId = matchingChannel.id;
             } else {
-              // Create a new channel for this room if it doesn't exist
               channelId = await geohashChannels.createChannel(
-                activeChat.participant.name,
-                `Room for ${activeChat.participant.name}`,
-                true, // public
-                false, // doesn't require invite
-                false // not trading
+                currentChat!.participant.name,
+                `Room for ${currentChat!.participant.name}`,
+                true, false, false
               );
-              
-              // Update the chat participant ID to match the new channel
               setChats(prev => prev.map(c =>
-                c.id === activeChatId
-                  ? { ...c, participant: { ...c.participant, id: channelId } }
-                  : c
+                c.id === activeChatId ? { ...c, participant: { ...c.participant, id: channelId } } : c
               ));
             }
           }
-          
-          console.log(`[ROOM] Sending message to channel: ${channelId}, content: ${text.substring(0, 50)}...`);
+          console.log(`[ROOM] Sending to channel: ${channelId} text: ${text.substring(0, 50)}`);
           await geohashChannels.sendMessage(channelId, text, 'text');
           setMessageDeliveryState(newMessage.id, 'delivered', 'room');
         } catch (error) {
@@ -1353,9 +1345,9 @@ const App: React.FC = () => {
         }
       } else {
         try {
-          let meshTargetId = activeChat?.participant?.id;
+          let meshTargetId = currentChat?.participant?.id;
           const activePeers = hybridMesh.getPeers().filter(peer => peer.isConnected);
-          const participantHandle = normalizePeerToken(activeChat?.participant?.handle);
+          const participantHandle = normalizePeerToken(currentChat?.participant?.handle);
 
           // Enhanced peer matching logic
           if (participantHandle && activePeers.length > 0) {
@@ -1409,8 +1401,8 @@ const App: React.FC = () => {
         text: newMessage.text, timestamp: newMessage.timestamp, replyTo: newMessage.replyTo,
         imageUrl: newMessage.imageUrl, videoUrl: newMessage.videoUrl
       };
-      const compactParticipant = activeChat?.participant
-        ? { id: activeChat.participant.id, name: activeChat.participant.name, handle: activeChat.participant.handle }
+      const compactParticipant = currentChat?.participant
+        ? { id: currentChat.participant.id, name: currentChat.participant.name, handle: currentChat.participant.handle }
         : undefined;
       await meshDataSync.syncChatMessage({ chatId: activeChatId, message: compactMessage, participant: compactParticipant });
     }
@@ -1466,7 +1458,7 @@ const App: React.FC = () => {
         setBotStreamState({ active: false, provider: streamProvider });
       }
     }
-  }, [activeChatId, activeChat?.type, activeChat?.participant?.id, myHandle, nostrConnected, nostrPeers, setMessageDeliveryState]);
+  }, [activeChatId, myHandle, nostrConnected, nostrPeers, setMessageDeliveryState]);
 
   const handleDeleteMessage = useCallback((messageId: string) => {
     if (!activeChatId) return;
