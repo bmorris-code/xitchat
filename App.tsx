@@ -1462,11 +1462,20 @@ const App: React.FC = () => {
 
   const handleDeleteMessage = useCallback((messageId: string) => {
     if (!activeChatId) return;
-    setChats(prev => prev.map(chat => {
-      if (chat.id !== activeChatId) return chat;
-      const updatedMessages = chat.messages.filter(msg => msg.id !== messageId);
-      return { ...chat, messages: updatedMessages, lastMessage: updatedMessages.at(-1)?.text || 'No messages' };
-    }));
+    
+    // Update local state and persist to storage
+    setChats(prev => {
+      const updatedChats = prev.map(chat => {
+        if (chat.id !== activeChatId) return chat;
+        const updatedMessages = chat.messages.filter(msg => msg.id !== messageId);
+        return { ...chat, messages: updatedMessages, lastMessage: updatedMessages.at(-1)?.text || 'No messages' };
+      });
+      
+      // Persist the updated chats to storage
+      persistChats(updatedChats);
+      
+      return updatedChats;
+    });
   }, [activeChatId]);
 
   const handleForwardMessage = useCallback((message: Message, targetChatId: string) => {
