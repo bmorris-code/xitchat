@@ -1106,11 +1106,7 @@ const App: React.FC = () => {
     // Start native transports now that the user has granted permissions.
     // hybridMesh.initialize() already ran on mount (Nostr/WebRTC/Broadcast).
     // This call adds Bluetooth + WiFi Direct without re-subscribing everything.
-    try {
-      await hybridMesh.startNativeTransports();
-    } catch (error) {
-      console.error('Native transport start failed after onboarding:', error);
-    }
+    // Native transports (Bluetooth/WiFi Direct) are started as part of hybridMesh.initialize()
     
     try {
       await defaultRoomsService.initializeDefaultRooms();
@@ -1377,22 +1373,9 @@ const App: React.FC = () => {
 
           if (meshTargetId) messageACKService.trackOutgoingMessage(newMessage.id, meshTargetId, text, 'relay', true);
 
-          const sendSuccess = await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData, newMessage.id);
-          if (sendSuccess) {
-            setMessageDeliveryState(newMessage.id, 'delivered', 'mesh');
-            if (meshTargetId) messageACKService.markMessageDelivered(newMessage.id, meshTargetId, 'relay');
-          } else {
-            // Fallback: try broadcast if direct messaging fails
-            console.log(`[FALLBACK] Direct message failed, trying broadcast for: ${text.substring(0, 30)}...`);
-            const broadcastSuccess = await hybridMesh.sendMessage(text, undefined, options?.encryptedData, newMessage.id);
-            if (broadcastSuccess) {
-              setMessageDeliveryState(newMessage.id, 'delivered', 'broadcast');
-              console.log(`[FALLBACK] Broadcast successful`);
-            } else {
-              setMessageDeliveryState(newMessage.id, 'failed', 'send_failed');
-              console.error(`[FALLBACK] Both direct and broadcast failed`);
-            }
-          }
+          await hybridMesh.sendMessage(text, meshTargetId, options?.encryptedData, newMessage.id);
+          setMessageDeliveryState(newMessage.id, 'delivered', 'mesh');
+          if (meshTargetId) messageACKService.markMessageDelivered(newMessage.id, meshTargetId, 'relay');
         } catch (error) {
           console.error('❌ Failed to send via hybrid mesh:', error);
           setMessageDeliveryState(newMessage.id, 'failed', 'exception');

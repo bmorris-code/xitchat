@@ -32,7 +32,7 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onChatSelect, 
       const info = hybridMesh.getConnectionInfo();
       // ── FIX #1: use isRealConnection + peerCount — isConnected doesn't exist on this shape ──
       setMeshStatus({
-        connected: !!(info.isRealConnection || info.peerCount > 0),
+        connected: !!(info.isConnected || info.peerCount > 0),
         peerCount: info.peerCount
       });
     };

@@ -103,7 +103,7 @@ class SOSService {
 
         // 2. Post to Nostr (reaches any online relays globally)
         try {
-            await nostrService.publishNote(
+            await nostrService.broadcastMessage(
                 `🆘 SOS from <${handle}> — ${sos.message}${lat ? ` | GPS: ${lat.toFixed(4)}, ${lng?.toFixed(4)}` : ''} | Zone: ${geohash} | via XitChat`
             );
         } catch {
