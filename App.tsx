@@ -996,7 +996,7 @@ const App: React.FC = () => {
           if (isSystemMessage(newMsg.text)) return chat;
           if (chat.messages.some(m => m.id === newMsg.id)) return chat;
 
-          const isActiveRoom = activeChatIdRef.current === chat.id;
+          const isActiveRoom = activeChatIdRef.current === chat.id || (activeChatIdRef.current && chatsRef.current.find(c => c.id === activeChatIdRef.current)?.participant?.id === chat.participant?.id);
           if (!isActiveRoom) {
             window.dispatchEvent(new CustomEvent('newTransmission', {
               detail: {
