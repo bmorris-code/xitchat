@@ -1219,6 +1219,8 @@ const App: React.FC = () => {
   }, []);
 
   const activeChat = chats.find(c => c.id === activeChatId) || null;
+  const chatsRef = useRef(chats);
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
   const normalizePeerToken = (value?: string) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   const handleOpenChat = (user: User) => {
