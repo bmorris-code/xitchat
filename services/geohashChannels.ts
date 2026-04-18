@@ -555,6 +555,30 @@ class GeohashChannelsService {
   getChannel(channelId: string): GeohashChannel | undefined { return this.channels.get(channelId); }
   getChannelMessages(channelId: string) { return this.messages?.get(channelId) || []; }
 
+  async deleteChannelMessage(channelId: string, messageId: string) {
+    if (!this.messages.has(channelId)) return false;
+    
+    const channelMessages = this.messages.get(channelId)!;
+    const updatedMessages = channelMessages.filter(msg => msg.id !== messageId);
+    this.messages.set(channelId, updatedMessages);
+    
+    // Save to storage
+    this.saveMessagesDebounced();
+    
+    // Broadcast deletion through mesh network
+    try {
+      await meshDataSync.syncChatMessageDelete(channelId, messageId);
+    } catch (error) {
+      console.error('Failed to sync room message deletion:', error);
+    }
+    
+    // Notify listeners
+    this.notifyListeners('messageDeleted', { channelId, messageId });
+    console.log(`[XC] MSG DELETED ch=${channelId} msg=${messageId}`);
+    
+    return true;
+  }
+
   getLocalAreaChannel() {
     return this.currentLocation
       ? this.channels.get(`${this.nostrChannelPrefix}${this.currentLocation.geohash.substring(0, 5)}`) || null
