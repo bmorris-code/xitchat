@@ -736,6 +736,9 @@ const App: React.FC = () => {
               let normalizedContent = typeof message.content === 'string' ? message.content : '';
               const trimmed = normalizedContent.trim();
 
+              // Room channel messages — handled exclusively by geohashChannels service
+              if (trimmed.startsWith('[GEOHASH:')) return;
+
               if (trimmed.startsWith('{')) {
                 try {
                   const outer = JSON.parse(trimmed);
@@ -786,9 +789,18 @@ const App: React.FC = () => {
                   id: message.id,
                   senderId: message.from,
                   text: normalizedContent,
-                  timestamp: message.timestamp.getTime(),
-                  senderHandle: `nostr-${message.from.substring(0, 8)}`
+                  timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
+                  senderHandle: `@${message.from.substring(0, 8)}`
                 };
+                const isDMActive = activeChatIdRef.current === nostrChat?.id;
+                if (!isDMActive) {
+                  window.dispatchEvent(new CustomEvent('newTransmission', {
+                    detail: {
+                      message: `DM from @${message.from.substring(0, 8)}: ${normalizedContent.substring(0, 60)}`,
+                      type: 'chat'
+                    }
+                  }));
+                }
                 if (!nostrChat) {
                   // Auto-create chat when DM arrives from unknown sender
                   const handle = `@${message.from.substring(0, 8)}`;
@@ -964,9 +976,17 @@ const App: React.FC = () => {
           
           if (isSystemMessage(newMsg.text)) return chat;
           if (chat.messages.some(m => m.id === newMsg.id)) return chat;
-          
-          console.log(`[ROOM] Adding message to room ${chat.participant.name}: ${newMsg.text.substring(0, 30)}...`);
-          
+
+          const isActiveRoom = activeChatIdRef.current === chat.id;
+          if (!isActiveRoom) {
+            window.dispatchEvent(new CustomEvent('newTransmission', {
+              detail: {
+                message: `${newMsg.senderHandle || chat.participant.name}: ${newMsg.text.substring(0, 60)}`,
+                type: 'chat'
+              }
+            }));
+          }
+
           return {
             ...chat,
             participant: nextParticipantId !== chat.participant.id
@@ -974,7 +994,7 @@ const App: React.FC = () => {
               : chat.participant,
             messages: [...chat.messages, newMsg],
             lastMessage: message.content || '',
-            unreadCount: activeChatIdRef.current === chat.id ? chat.unreadCount : (chat.unreadCount || 0) + 1
+            unreadCount: isActiveRoom ? chat.unreadCount : (chat.unreadCount || 0) + 1
           };
         });
       });

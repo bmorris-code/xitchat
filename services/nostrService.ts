@@ -539,7 +539,7 @@ class NostrService {
   }
 
   private emit(event: string, data?: any): void {
-    (this.listeners[event] || []).forEach(cb => cb(data));
+    (this.listeners[event] || []).forEach(cb => { try { cb(data); } catch (e) { console.warn('[Nostr] emit handler error', e); } });
   }
 
   // ── Helper: relay policy error detection (DRY) ────────────────────────────
