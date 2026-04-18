@@ -6,6 +6,8 @@ import { nostrService, NostrPresenceEvent } from './nostrService';
 
 export interface PresenceBeaconPeer {
   pubkey: string;
+  name?: string;
+  handle?: string;
   device: 'mobile' | 'desktop' | 'server';
   role: 'edge' | 'anchor';
   caps: ('webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'broadcast')[];
@@ -130,6 +132,8 @@ class PresenceBeaconService {
   private handleNostrPresenceEvent(presenceData: any): void {
     const presencePeer: PresenceBeaconPeer = {
       pubkey: presenceData.pubkey,
+      name: presenceData.name,
+      handle: presenceData.handle,
       device: presenceData.device,
       role: presenceData.role,
       caps: presenceData.caps,
@@ -150,6 +154,8 @@ class PresenceBeaconService {
     try {
       const nostrPresence: NostrPresenceEvent = {
         pubkey: this.myPresence.pubkey,
+        name: this.myPresence.name,
+        handle: this.myPresence.handle,
         device: this.myPresence.device,
         role: this.myPresence.role,
         caps: this.myPresence.caps,
@@ -262,6 +268,8 @@ class PresenceBeaconService {
 
       this.myPresence = {
         pubkey,
+        name,
+        handle: handle.startsWith('@') ? handle : `@${handle}`,
         device: this.config.isMobile ? 'mobile' : 'desktop',
         role: this.currentRole,
         caps: this.getDeviceCapabilities(),
@@ -277,6 +285,13 @@ class PresenceBeaconService {
       console.error('❌ Failed to initialize Presence Beacon:', error);
       return false;
     }
+  }
+
+  updateIdentity(info: { name?: string; handle?: string }): void {
+    if (!this.myPresence) return;
+    if (info.name) this.myPresence.name = info.name;
+    if (info.handle) this.myPresence.handle = info.handle.startsWith('@') ? info.handle : `@${info.handle}`;
+    if (this.isRunning && !this.isBackground) this.broadcastPresence();
   }
 
   private getDeviceCapabilities(): ('webrtc' | 'nostr' | 'bluetooth' | 'wifi' | 'broadcast')[] {

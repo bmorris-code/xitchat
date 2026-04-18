@@ -98,9 +98,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     // For room-type chats the geohash channel key is participant.id (e.g. 'room-gen'),
     // not the Chat UI id (e.g. 'chat-1775895866335').
-    const channelKey = chat.type === 'room' ? chat.participant.id : chat.id;
+    let channelKey = chat.type === 'room' ? chat.participant.id : chat.id;
 
-    const msgs = gc.getChannelMessages(channelKey);
+    // If the direct key yields no messages, try to resolve via name-match against known channels.
+    // This handles the case where participant.id doesn't yet match the actual channel ID
+    // (e.g. before the first send triggers ID alignment in handleSendMessage).
+    let msgs = gc.getChannelMessages(channelKey);
+    if (msgs.length === 0 && chat.type === 'room') {
+      const nearbyChannels = gc.getNearbyChannels();
+      const matched = nearbyChannels.find(ch =>
+        ch.id !== channelKey && (
+          ch.name.toLowerCase().includes(chat.participant.name.toLowerCase()) ||
+          chat.participant.name.toLowerCase().includes(ch.name.toLowerCase())
+        )
+      );
+      if (matched) {
+        channelKey = matched.id;
+        msgs = gc.getChannelMessages(channelKey);
+      }
+    }
     console.log(`[CW] Loaded ${msgs.length} messages for channel ${channelKey}`);
     setChatMessages(msgs);
 

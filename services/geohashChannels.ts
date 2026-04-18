@@ -198,8 +198,15 @@ class GeohashChannelsService {
   private addReceivedMessage(message: GeohashMessage) {
     console.log(`[XC] addReceivedMessage: id=${message.id} ch=${message.channelId} from=${message.nodeHandle}`);
     if (!message?.id) return;
-    if (message.nodeHandle === this.myHandle) {
-      console.log(`[XC] Skipping own message from ${message.nodeHandle}`);
+    // Use pubkey for self-detection when available; handle-based fallback only when handle is
+    // not the default '@anon' (avoids false positives when multiple devices share the same default).
+    const myPubkey = (nostrService as any).getPublicKey?.() as string | undefined;
+    if (myPubkey && message.nodeId === myPubkey) {
+      console.log(`[XC] Skipping own message (pubkey match) from ${message.nodeHandle}`);
+      return;
+    }
+    if (!myPubkey && this.myHandle !== '@anon' && message.nodeHandle === this.myHandle) {
+      console.log(`[XC] Skipping own message (handle match) from ${message.nodeHandle}`);
       return;
     }
 
@@ -596,6 +603,10 @@ class GeohashChannelsService {
       geohash: this.encodeGeohash(-26.2041, 28.0473, 7),
       accuracy: 150, timestamp: Date.now()
     };
+  }
+
+  setMyHandle(handle: string): void {
+    this.myHandle = handle.startsWith('@') ? handle : `@${handle}`;
   }
 
   // ── FIX #1, #2, #5: full cleanup ──

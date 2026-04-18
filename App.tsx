@@ -994,9 +994,8 @@ const App: React.FC = () => {
           };
           
           if (isSystemMessage(newMsg.text)) return chat;
-          if (chat.messages.some(m => m.id === newMsg.id)) return chat;
 
-          const isActiveRoom = activeChatIdRef.current === chat.id || (activeChatIdRef.current && chatsRef.current.find(c => c.id === activeChatIdRef.current)?.participant?.id === chat.participant?.id);
+          const isActiveRoom = activeChatIdRef.current === chat.id || (activeChatIdRef.current && chatsRef.current.find((c: Chat) => c.id === activeChatIdRef.current)?.participant?.id === chat.participant?.id);
           if (!isActiveRoom) {
             window.dispatchEvent(new CustomEvent('newTransmission', {
               detail: {
@@ -1011,7 +1010,8 @@ const App: React.FC = () => {
             participant: nextParticipantId !== chat.participant.id
               ? { ...chat.participant, id: nextParticipantId }
               : chat.participant,
-            messages: [...chat.messages, newMsg],
+            // Room messages are displayed directly from geohashChannels in ChatWindow — don't
+            // duplicate them into chat.messages (causes localStorage bloat and stale reads).
             lastMessage: message.content || '',
             unreadCount: isActiveRoom ? chat.unreadCount : (chat.unreadCount || 0) + 1
           };
@@ -1124,7 +1124,11 @@ const App: React.FC = () => {
     const savedMood = localStorage.getItem('xitchat_mood');
     const savedUplinkCore = localStorage.getItem('xitchat_uplink_core');
 
-    if (savedHandle) setMyHandle(savedHandle);
+    if (savedHandle) {
+      setMyHandle(savedHandle);
+      geohashChannels.setMyHandle(savedHandle);
+      presenceBeacon.updateIdentity({ handle: savedHandle, name: savedHandle });
+    }
     if (savedAvatar) setMyAvatar(savedAvatar);
     if (savedMood) setMyMood(JSON.parse(savedMood));
     if (savedUplinkCore) window.dispatchEvent(new CustomEvent('setUplinkCore', { detail: savedUplinkCore }));
@@ -1196,6 +1200,8 @@ const App: React.FC = () => {
     const clean = val.replace(/[^a-z0-9_]/gi, '').toLowerCase();
     setMyHandle(clean);
     localStorage.setItem('xitchat_handle', clean);
+    geohashChannels.setMyHandle(clean);
+    presenceBeacon.updateIdentity({ handle: clean, name: clean });
   };
 
   const handleAvatarChange = (val: string) => {
@@ -1215,18 +1221,9 @@ const App: React.FC = () => {
     broadcastProfileChange('uplinkCore', val);
   };
 
-  const broadcastProfileChange = (type: string, value: any) => {
-    const profileUpdateMessage: Message = {
-      id: `profile-update-${Date.now()}`,
-      senderId: 'system',
-      text: `[PROFILE_UPDATE] ${myHandle} updated their ${type}`,
-      timestamp: Date.now()
-    };
-    setChats(prev => prev.map(chat => ({
-      ...chat,
-      messages: [...chat.messages, profileUpdateMessage],
-      lastMessage: profileUpdateMessage.text
-    })));
+  const broadcastProfileChange = (_type: string, _value: any) => {
+    // Profile updates propagate via mesh presence beacons — injecting local chat messages caused
+    // every avatar/mood save to spam "[PROFILE_UPDATE]" as a visible message in every conversation.
   };
 
   useEffect(() => { document.body.className = `theme-${isSOSActive ? 'red' : theme} crt`; }, [theme, isSOSActive]);

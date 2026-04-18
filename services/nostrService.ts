@@ -33,6 +33,8 @@ export interface NostrMessage {
 
 export interface NostrPresenceEvent {
   pubkey: string;
+  name?: string;
+  handle?: string;
   device: 'mobile' | 'desktop' | 'server';
   role: 'edge' | 'anchor';
   caps: string[];
