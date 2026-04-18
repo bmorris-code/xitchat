@@ -567,7 +567,7 @@ class GeohashChannelsService {
     
     // Broadcast deletion through mesh network
     try {
-      await meshDataSync.syncChatMessageDelete(channelId, messageId);
+      await meshDataSync.syncChatMessageDelete(messageId, channelId);
     } catch (error) {
       console.error('Failed to sync room message deletion:', error);
     }

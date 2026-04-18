@@ -767,6 +767,31 @@ class HybridMeshService {
           .forEach(p => wifiP2P.sendMessage(p.serviceId!, bridged).catch(() => { }));
       }
     }
+
+    // Bridge Local Sources (BT/WiFi) to Local Relay
+    if (isLocalSource && this.activeServices.local) {
+      void localMeshRelay.sendMessage(JSON.stringify({ ...message, isBridged: true }));
+    }
+
+    // Bridge Nostr to Local Relay
+    if (message.connectionType === 'nostr' && this.activeServices.local) {
+      void localMeshRelay.sendMessage(JSON.stringify({ ...message, isBridged: true }));
+    }
+
+    // Bridge Relay to Local Mesh (BT/WiFi)
+    if (message.connectionType === 'relay' && (this.activeServices.bluetooth || this.activeServices.wifi)) {
+      const bridged = JSON.stringify({ ...message, isBridged: true });
+      if (this.activeServices.bluetooth) {
+        Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'bluetooth')
+          .forEach(p => workingBluetoothMesh.sendMessage(p.serviceId!, bridged).catch(() => { }));
+      }
+      if (this.activeServices.wifi) {
+        Array.from(this.peers.values())
+          .filter(p => p.connectionType === 'wifi' && !!p.serviceId)
+          .forEach(p => wifiP2P.sendMessage(p.serviceId!, bridged).catch(() => { }));
+      }
+    }
   }
 
   async sendMessage(content: string, targetId?: string, encryptedData?: any, messageId?: string): Promise<void> {

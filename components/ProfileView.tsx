@@ -8,6 +8,8 @@ import { releaseInfo } from '../services/releaseInfo';
 import { trustStore, type VerifiedPeer } from '../services/trustStore';
 import { downloadApk } from '../services/installFlow';
 
+import { localMeshRelay } from '../services/localMeshRelay';
+
 interface ProfileViewProps {
   myHandle: string;
   setMyHandle: (val: string) => void;
@@ -47,9 +49,41 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   isInstalled,
   onInstallApp,
 }) => {
+  const [relayUrl, setRelayUrl] = useState('');
+  const [relayConnected, setRelayConnected] = useState(false);
+  const [relayClientId, setRelayClientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRelayUrl(localMeshRelay.getRelayUrl() || '');
+    setRelayConnected(localMeshRelay.isConnected());
+    setRelayClientId(localMeshRelay.getClientId());
+
+    const unsubConnected = localMeshRelay.subscribe('connected', ({ url }: { url: string }) => {
+      setRelayUrl(url);
+      setRelayConnected(true);
+      setRelayClientId(localMeshRelay.getClientId());
+    });
+    const unsubDisconnected = localMeshRelay.subscribe('disconnected', () => {
+      setRelayConnected(false);
+      setRelayClientId(null);
+    });
+
+    return () => {
+      unsubConnected();
+      unsubDisconnected();
+    };
+  }, []);
+
+  const handleUpdateRelay = () => {
+    if (!relayUrl) return;
+    localMeshRelay.setRelayUrl(relayUrl);
+    alert('Relay URL updated. Attempting to connect...');
+  };
+
   const isWeb = !(window as any).Capacitor?.isNativePlatform?.();
   const hasInstallPrompt = Boolean(installPrompt);
   const avatarInputRef = React.useRef<HTMLInputElement>(null);
+
   const [appearance, setAppearance] = useState<'system' | 'light' | 'dark'>('dark');
   const [pow, setPow] = useState(false);
   const [tor, setTor] = useState(true);
@@ -648,6 +682,45 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </button>
           </div>
           )}
+
+          {/* Local Mesh Relay Section */}
+          <div className="mb-6 p-4 border border-current border-opacity-30 bg-[#050505] rounded-lg space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <i className={`fa-solid fa-server ${relayConnected ? 'text-[#00ff41]' : 'text-white/20'} text-lg`}></i>
+                <h4 className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/70">local_mesh_relay</h4>
+              </div>
+              <div className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-widest ${relayConnected ? 'bg-[#112211] text-[#00ff41]' : 'bg-red-900/20 text-red-500/50'}`}>
+                {relayConnected ? 'connected' : 'offline'}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="bg-black/40 border border-white/5 p-3 space-y-1">
+                <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest text-white/40">mesh_client_id</p>
+                <code className="text-[10px] text-white opacity-80 font-mono">{relayClientId || 'awaiting_connection...'}</code>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-[8px] font-bold opacity-30 uppercase tracking-widest text-white/40">relay_uplink_url</p>
+                <div className="flex gap-2">
+                  <input
+                    value={relayUrl}
+                    onChange={(e) => setRelayUrl(e.target.value)}
+                    placeholder="ws://localhost:4200"
+                    className="flex-1 bg-black border border-white/10 px-3 py-2 text-[10px] text-white font-mono focus:border-current outline-none"
+                  />
+                  <button
+                    onClick={handleUpdateRelay}
+                    className="terminal-btn px-4 text-[10px] font-bold uppercase"
+                  >
+                    Set
+                  </button>
+                </div>
+                <p className="text-[8px] opacity-30 italic">Used for browser-to-mobile chat without internet. Auto-discovers on localhost:4200.</p>
+              </div>
+            </div>
+          </div>
 
           <button
             onClick={onSOS}
