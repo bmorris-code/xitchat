@@ -118,9 +118,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     });
 
+    const unsubDeleted = gc.subscribe('messageDeleted', ({ channelId, messageId }: { channelId: string, messageId: string }) => {
+      if (channelId === channelKey) {
+        setChatMessages(prev => prev.filter(m => m.id !== messageId));
+      }
+    });
+
     return () => {
       unsubReceived();
       unsubSent();
+      unsubDeleted();
     };
   }, [chat?.id, chat?.participant?.id, chat?.type]);
 

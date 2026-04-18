@@ -1487,7 +1487,7 @@ const App: React.FC = () => {
     // Check if this is a room chat - if so, use geohashChannels delete
     if (currentChat?.type === 'room') {
       try {
-        const success = await geohashChannels.deleteChannelMessage(activeChatId, messageId);
+        const success = await geohashChannels.deleteChannelMessage(currentChat.participant.id, messageId);
         if (success) {
           // Update local state for room chat
           setChats(prev => {
