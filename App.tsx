@@ -1482,7 +1482,34 @@ const App: React.FC = () => {
   const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (!activeChatId) return;
     
-    // Update local state and persist to storage
+    const currentChat = chats.find(c => c.id === activeChatId);
+    
+    // Check if this is a room chat - if so, use geohashChannels delete
+    if (currentChat?.type === 'room') {
+      try {
+        const success = await geohashChannels.deleteChannelMessage(activeChatId, messageId);
+        if (success) {
+          // Update local state for room chat
+          setChats(prev => {
+            const updatedChats = prev.map(chat => {
+              if (chat.id !== activeChatId) return chat;
+              const updatedMessages = chat.messages.filter(msg => msg.id !== messageId);
+              return { ...chat, messages: updatedMessages, lastMessage: updatedMessages.at(-1)?.text || 'No messages' };
+            });
+            
+            // Persist the updated chats to storage
+            persistChats(updatedChats);
+            
+            return updatedChats;
+          });
+        }
+      } catch (error) {
+        console.error('Failed to delete room message:', error);
+      }
+      return;
+    }
+    
+    // For private chats, use the original mesh sync logic
     setChats(prev => {
       const updatedChats = prev.map(chat => {
         if (chat.id !== activeChatId) return chat;
@@ -1496,13 +1523,13 @@ const App: React.FC = () => {
       return updatedChats;
     });
 
-    // Broadcast deletion through mesh network
+    // Broadcast deletion through mesh network for private chats
     try {
       await meshDataSync.syncChatMessageDelete(activeChatId, messageId);
     } catch (error) {
       console.error('Failed to sync message deletion:', error);
     }
-  }, [activeChatId]);
+  }, [activeChatId, chats]);
 
   const handleForwardMessage = useCallback((message: Message, targetChatId: string) => {
     const fwdMessage: Message = {
