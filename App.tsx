@@ -490,12 +490,22 @@ const App: React.FC = () => {
               // 1. Try exact ID match
               targetIndex = nextChats.findIndex(c => c.participant.id === senderId);
               
-              // 2. Try handle match if ID didn't match
+              // 2. Try nostr-prefixed ID match (chats store `nostr-<pubkey>` but messages arrive with raw pubkey)
+              if (targetIndex === -1) {
+                targetIndex = nextChats.findIndex(c => 
+                  c.participant.id === `nostr-${senderId}` ||
+                  c.participant.id === `node-${senderId}` ||
+                  c.participant.id.replace('nostr-', '') === senderId ||
+                  c.participant.id.replace('node-', '') === senderId
+                );
+              }
+
+              // 3. Try handle match if ID didn't match
               if (targetIndex === -1 && incomingHandle) {
                 targetIndex = nextChats.findIndex(c => normalizeToken(c.participant.handle) === incomingHandle);
               }
               
-              // 3. Try service ID match (for different transport types)
+              // 4. Try service ID match (for different transport types)
               if (targetIndex === -1 && message.serviceId) {
                 const serviceToken = normalizeToken(message.serviceId);
                 targetIndex = nextChats.findIndex(c => 
@@ -504,7 +514,7 @@ const App: React.FC = () => {
                 );
               }
 
-              // 4. Try to match with any connected peer by handle
+              // 5. Try to match with any connected peer by handle
               if (targetIndex === -1 && incomingHandle) {
                 const connectedPeer = hybridMesh.getPeers().find(p => 
                   normalizeToken(p.handle) === incomingHandle && p.isConnected

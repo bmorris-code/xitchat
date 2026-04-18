@@ -436,6 +436,11 @@ class HybridMeshService {
       senderName: metadata?.senderName
     };
 
+    // Update peer identity from message metadata (for both plain DMs and mesh_data messages)
+    if (from && (metadata?.senderHandle || metadata?.senderName)) {
+      this.updatePeerIdentityFromMessage(from, from, metadata.senderHandle, metadata.senderName);
+    }
+
     // Emit message for chat system to handle
     this.notifyListeners('messageReceived', hybridMessage);
 
@@ -532,7 +537,9 @@ class HybridMeshService {
             pow: parsed.pow,
             timestamp: parsed.timestamp,
             messageId: parsed.messageId,
-            encryptedData: parsed.encryptedData
+            encryptedData: parsed.encryptedData,
+            senderHandle: parsed.senderHandle,
+            senderName: parsed.senderName
           };
         } else if (!parsed) {
           const recovered = this.extractWrappedContentFallback(content);
