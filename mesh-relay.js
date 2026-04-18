@@ -14,11 +14,11 @@
 // on localhost:4200 or <your-LAN-IP>:4200.
 // ═══════════════════════════════════════════════════════════════════
 
-const WebSocket = require('ws');
-const os = require('os');
+import { WebSocketServer, WebSocket } from 'ws';
+import os from 'os';
 
 const PORT = parseInt(process.argv[2], 10) || 4200;
-const wss = new WebSocket.Server({ port: PORT });
+const wss = new WebSocketServer({ port: PORT });
 
 // Track connected clients
 const clients = new Map(); // ws -> { id, handle, joinedAt }
