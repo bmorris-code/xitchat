@@ -727,13 +727,19 @@ class HybridMeshService {
       const torEnabled = realTorService.getStatus().connected;
       const powSolution = undefined;
 
+      // Include sender identity so receivers can match the message to the correct chat
+      const myHandle = localStorage.getItem('xitchat_handle') || 'anon';
+      const myName = localStorage.getItem('xitchat_name') || myHandle || 'Anonymous';
+
       const payload = JSON.stringify({
         content,
         encryptedData,
         tor: torEnabled,
         pow: powSolution,
         timestamp: Date.now(),
-        messageId: messageId || Math.random().toString(36).substr(2, 9)
+        messageId: messageId || Math.random().toString(36).substr(2, 9),
+        senderHandle: myHandle.startsWith('@') ? myHandle : `@${myHandle}`,
+        senderName: myName
       });
 
       console.log('≡ƒô¿ Sending message:', { targetId, content: content.substring(0, 50), networks: this.getActiveServices() });
@@ -894,9 +900,12 @@ class HybridMeshService {
           broadcastPromises.push(wifiP2P.sendMessage(p.serviceId!, payload).catch(e => console.log('WiFi P2P failed:', e)));
         });
       }
-      // Only send actual chat/SOS messages to Nostr — not internal mesh protocol messages
-      // (mesh_data, sync_request, typing, etc. flood relays and trigger rate-limiting)
-      if (this.activeServices.nostr && this.isNostrWorthyContent(content)) {
+      // Only send actual chat/SOS messages to Nostr — not internal mesh protocol messages.
+      // IMPORTANT: Skip [GEOHASH:] content here — geohashChannels.broadcastMessage() already
+      // sends room messages directly to Nostr with the raw tagged string. Re-sending here
+      // would double-wrap the content in JSON, making the [GEOHASH: prefix undetectable
+      // on the receiving side and causing message delivery failures.
+      if (this.activeServices.nostr && this.isNostrWorthyContent(content) && !content.startsWith('[GEOHASH:')) {
         broadcastPromises.push(nostrService.broadcastMessage(payload).catch(e => console.log('Nostr broadcast failed:', e)));
       }
       if (this.activeServices.bluetooth) {
