@@ -3,6 +3,7 @@ import { meshPermissions } from './meshPermissions';
 import { nostrService } from './nostrService';
 import { hybridMesh } from './hybridMesh';
 import { encryptionService, EncryptedData } from './encryptionService';
+import { meshDataSync } from './meshDataSync';
 
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
