@@ -791,6 +791,12 @@ class HybridMeshService {
               break;
           }
 
+          // Always ALSO send via Nostr for non-Nostr peers so browser clients receive it
+          // (browsers can only receive via Nostr — BLE/WiFi are Android-only)
+          if (peer.connectionType !== 'nostr' && this.activeServices.nostr && this.isNostrWorthyContent(content)) {
+            nostrService.broadcastMessage(payload).catch(() => {});
+          }
+
           // If primary network fails, try fallback networks
           if (!success) {
             console.log(`ΓÜá∩╕Å Primary network ${peer.connectionType} failed for ${peer.handle}, trying fallback networks...`);

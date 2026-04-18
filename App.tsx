@@ -1934,7 +1934,10 @@ const App: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <button onClick={() => handleOpenChat(selectedUser)} className="terminal-btn active py-4 font-bold uppercase text-[10px] tracking-widest">message</button>
                 <button className="terminal-btn py-4 font-bold uppercase text-[10px] tracking-widest"
-                  onClick={() => alert(`PING: Node ${selectedUser.handle} has been pinged.`)}>ping</button>
+                  onClick={() => {
+                    hybridMesh.sendMessage(`[PING] from ${myHandle} to ${selectedUser.handle}`, selectedUser.id);
+                    setSelectedUser(null);
+                  }}>ping</button>
               </div>
             </div>
           </div>
