@@ -12,8 +12,9 @@ import { hybridMeshWebRTC as ablyWebRTC } from './ablyWebRTC';
 import { networkStateManager } from './networkStateManager';
 import { androidPermissions } from './androidPermissions';
 import { presenceBeacon } from './presenceBeacon';
+import { localMeshRelay } from './localMeshRelay';
 
-export type MeshConnectionType = 'bluetooth' | 'webrtc' | 'broadcast' | 'wifi' | 'nostr';
+export type MeshConnectionType = 'bluetooth' | 'webrtc' | 'broadcast' | 'wifi' | 'nostr' | 'relay';
 
 export interface HybridMeshPeer {
   id: string;
@@ -195,6 +196,11 @@ class HybridMeshService {
       const broadcastSuccess = await this.startBroadcastMesh();
       if (broadcastSuccess) initializedTypes.push('broadcast');
 
+      // Start local mesh relay — this is the ONLY offline transport that works
+      // between a laptop BROWSER and a mobile app (BLE/WiFi Direct are Android-only).
+      const relaySuccess = await this.startLocalRelay();
+      if (relaySuccess) initializedTypes.push('relay' as MeshConnectionType);
+
       // ANDROID SERVERLESS: prioritize direct local P2P on Android
       if (isNativeAndroid) {
         // 1. Start WiFi Direct (direct P2P - no server)
@@ -233,6 +239,39 @@ class HybridMeshService {
     } catch (error) {
       console.error('Serverless mesh initialization failed:', error);
       return [];
+    }
+  }
+
+  private async startLocalRelay(): Promise<boolean> {
+    try {
+      const success = await localMeshRelay.initialize();
+      if (success) {
+        this.activeServices.local = true;
+        localMeshRelay.subscribe('messageReceived', (msg: any) => this.handleMessage('relay', msg));
+        localMeshRelay.subscribe('peersUpdated', (peers: any[]) => {
+          peers.forEach(p => this.updateSinglePeer({
+            id: p.id,
+            name: p.name || p.handle || 'Relay Peer',
+            handle: p.handle || `@${p.id.slice(0, 8)}`,
+            isConnected: true,
+            lastSeen: p.joinedAt || Date.now(),
+            capabilities: ['chat']
+          }, 'relay'));
+        });
+        console.log('📡 Local mesh relay connected — offline cross-device chat enabled');
+        return true;
+      }
+      // Even if initial probe fails, the relay client keeps retrying in background
+      localMeshRelay.subscribe('connected', () => {
+        this.activeServices.local = true;
+        localMeshRelay.subscribe('messageReceived', (msg: any) => this.handleMessage('relay', msg));
+        console.log('📡 Local mesh relay connected (late join)');
+        this.notifyPeersUpdated();
+      });
+      return false;
+    } catch (e) {
+      console.debug('Local relay startup skipped:', e);
+      return false;
     }
   }
 
@@ -803,6 +842,16 @@ class HybridMeshService {
                 success = false;
               }
               break;
+            case 'relay':
+              success = await localMeshRelay.sendMessage(payload);
+              if (success) console.log(`✅ Message sent via Local Relay to ${peer.handle}`);
+              break;
+          }
+
+          // Mirroring to Relay: Always ALSO send via Relay for non-relay peers if active.
+          // This ensures browser peers on the same network receive messages sent via BLE/WiFi/Nostr.
+          if (peer.connectionType !== 'relay' && this.activeServices.local) {
+            localMeshRelay.sendMessage(payload).catch(() => {});
           }
 
           // Always ALSO send via Nostr for non-Nostr peers so browser clients receive it
@@ -867,6 +916,9 @@ class HybridMeshService {
                   .filter(p => p.connectionType === 'bluetooth' && p.isConnected && !!p.serviceId);
                 btPeers.forEach(p => finalFallbackPromises.push(workingBluetoothMesh.sendMessage(p.serviceId!, payload).catch(() => false)));
               }
+              if (this.activeServices.local) {
+                finalFallbackPromises.push(localMeshRelay.sendMessage(payload).catch(() => false));
+              }
               if (this.activeServices.nostr && this.isNostrWorthyContent(content) && !content.startsWith('[GEOHASH:')) {
                 finalFallbackPromises.push(nostrService.broadcastMessage(payload).catch(() => false));
               }
@@ -901,6 +953,9 @@ class HybridMeshService {
 
       if (this.activeServices.broadcast) {
         broadcastPromises.push(broadcastMesh.broadcastMessage(payload).catch(e => console.log('Broadcast failed:', e)));
+      }
+      if (this.activeServices.local) {
+        broadcastPromises.push(localMeshRelay.sendMessage(payload).catch(e => console.log('Local relay broadcast failed:', e)));
       }
       if (this.activeServices.wifi) {
         const wifiPeers = Array.from(this.peers.values())
