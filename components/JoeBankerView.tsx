@@ -3,6 +3,7 @@ import { useTransactionService } from '../services/transactions';
 import { joeBanker, TransferRequest, PaymentRequest, SavingsAccount, CreditOffer, BankingAnalytics } from '../services/banking';
 import { bluetoothMesh, MeshNode } from '../services/bluetoothMesh';
 import { hybridMesh } from '../services/hybridMesh';
+import { showToast } from './TerminalModal';
 
 interface JoeBankerViewProps {
   onBack?: () => void;
@@ -130,7 +131,7 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
   const handleTransfer = async () => {
     console.log('Transfer button clicked', { transferForm });
     if (!transferForm.toNode || !transferForm.amount) {
-      alert('Please fill in all fields');
+      showToast('Please fill in all fields', 'warning');
       return;
     }
 
@@ -139,17 +140,17 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
       await joeBanker.initiateTransfer(transferForm.toNode, parseInt(transferForm.amount), transferForm.message);
       setShowTransferModal(false);
       setTransferForm({ toNode: '', amount: '', message: '' });
-      alert('Transfer request sent via mesh network!');
+      showToast('Transfer request sent via mesh network!', 'success');
     } catch (error) {
       console.error('Transfer error:', error);
-      alert('Failed to send transfer request: ' + (error as Error).message);
+      showToast('Failed to send transfer request: ' + (error as Error).message, 'error');
     }
   };
 
   const handlePaymentRequest = async () => {
     console.log('Payment request button clicked', { paymentForm });
     if (!paymentForm.toNode || !paymentForm.amount) {
-      alert('Please fill in all fields');
+      showToast('Please fill in all fields', 'warning');
       return;
     }
 
@@ -158,17 +159,17 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
       await joeBanker.createPaymentRequest(paymentForm.toNode, parseInt(paymentForm.amount), paymentForm.description);
       setShowPaymentModal(false);
       setPaymentForm({ toNode: '', amount: '', description: '' });
-      alert('Payment request sent!');
+      showToast('Payment request sent!', 'success');
     } catch (error) {
       console.error('Payment request error:', error);
-      alert('Failed to create payment request: ' + (error as Error).message);
+      showToast('Failed to create payment request: ' + (error as Error).message, 'error');
     }
   };
 
   const handleCreateSavings = async () => {
     console.log('Create savings button clicked', { savingsForm });
     if (!savingsForm.amount) {
-      alert('Please enter an amount');
+      showToast('Please enter an amount', 'warning');
       return;
     }
 
@@ -177,17 +178,17 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
       joeBanker.createSavingsAccount(parseInt(savingsForm.amount), parseInt(savingsForm.lockPeriod));
       setShowSavingsModal(false);
       setSavingsForm({ amount: '', lockPeriod: '30' });
-      alert('Savings account created!');
+      showToast('Savings account created!', 'success');
     } catch (error) {
       console.error('Savings error:', error);
-      alert('Failed to create savings account: ' + (error as Error).message);
+      showToast('Failed to create savings account: ' + (error as Error).message, 'error');
     }
   };
 
   const handleOfferCredit = async () => {
     console.log('Offer credit button clicked', { creditForm });
     if (!creditForm.borrower || !creditForm.amount) {
-      alert('Please fill in all fields');
+      showToast('Please fill in all fields', 'warning');
       return;
     }
 
@@ -196,10 +197,10 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
       await joeBanker.offerCredit(creditForm.borrower, parseInt(creditForm.amount), parseFloat(creditForm.interestRate), parseInt(creditForm.term));
       setShowCreditModal(false);
       setCreditForm({ borrower: '', amount: '', interestRate: '10', term: '30' });
-      alert('Credit offer sent!');
+      showToast('Credit offer sent!', 'success');
     } catch (error) {
       console.error('Credit offer error:', error);
-      alert('Failed to offer credit: ' + (error as Error).message);
+      showToast('Failed to offer credit: ' + (error as Error).message, 'error');
     }
   };
 

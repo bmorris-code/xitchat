@@ -551,6 +551,7 @@ class GeohashChannelsService {
   }
 
   getNearbyChannels() { return this.nearbyChannels; }
+  getChannel(channelId: string): GeohashChannel | undefined { return this.channels.get(channelId); }
   getChannelMessages(channelId: string) { return this.messages?.get(channelId) || []; }
 
   getLocalAreaChannel() {

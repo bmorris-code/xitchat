@@ -35,8 +35,8 @@ class MessageACKService {
   private lastSeenTimestamp = Date.now();
 
   private readonly RETRY_INTERVAL = 5000;
-  private readonly MAX_RETRIES = 3;
-  private readonly MESSAGE_EXPIRY = 300000; // 5 minutes
+  private readonly MAX_RETRIES = 10;
+  private readonly MESSAGE_EXPIRY = 900000; // 15 minutes
   private readonly ACK_TIMEOUT = 10000;
   private readonly MAX_RETRY_DELAY = 60000;
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { geohashChannels, GeohashChannel } from '../services/geohashChannels';
+import { showToast } from './TerminalModal';
 
 interface RoomsViewProps {
   onJoinRoom: (roomId: string) => void;
