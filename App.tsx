@@ -794,13 +794,22 @@ const App: React.FC = () => {
               }
 
               setChats(prev => {
-                const nostrChat = prev.find(c => c.participant.id === `nostr-${message.from}`);
+                // Enhanced matching: try nostr-prefixed, raw pubkey, node-prefixed, and handle match
+                const senderPubkey = message.from;
+                const senderHandleShort = `@${senderPubkey.substring(0, 8)}`;
+                const nostrChat = prev.find(c =>
+                  c.participant.id === `nostr-${senderPubkey}` ||
+                  c.participant.id === senderPubkey ||
+                  c.participant.id === `node-${senderPubkey}` ||
+                  c.participant.id.replace('nostr-', '') === senderPubkey ||
+                  c.participant.id.replace('node-', '') === senderPubkey
+                );
                 const newMessage: Message = {
                   id: message.id,
                   senderId: message.from,
                   text: normalizedContent,
                   timestamp: message.timestamp instanceof Date ? message.timestamp.getTime() : Date.now(),
-                  senderHandle: `@${message.from.substring(0, 8)}`
+                  senderHandle: senderHandleShort
                 };
                 const isDMActive = activeChatIdRef.current === nostrChat?.id;
                 if (!isDMActive) {
@@ -1470,7 +1479,7 @@ const App: React.FC = () => {
     }
   }, [activeChatId, myHandle, nostrConnected, nostrPeers, setMessageDeliveryState]);
 
-  const handleDeleteMessage = useCallback((messageId: string) => {
+  const handleDeleteMessage = useCallback(async (messageId: string) => {
     if (!activeChatId) return;
     
     // Update local state and persist to storage
@@ -1486,6 +1495,13 @@ const App: React.FC = () => {
       
       return updatedChats;
     });
+
+    // Broadcast deletion through mesh network
+    try {
+      await meshDataSync.syncChatMessageDelete(activeChatId, messageId);
+    } catch (error) {
+      console.error('Failed to sync message deletion:', error);
+    }
   }, [activeChatId]);
 
   const handleForwardMessage = useCallback((message: Message, targetChatId: string) => {

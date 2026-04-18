@@ -6,7 +6,7 @@ import { networkStateManager } from './networkStateManager';
 
 export interface MeshDataPacket {
   id: string;
-  type: 'user_profile' | 'chat_message' | 'marketplace_listing' | 'banking_transaction' | 'node_status' | 'ai_request';
+  type: 'user_profile' | 'chat_message' | 'chat_message_delete' | 'marketplace_listing' | 'banking_transaction' | 'node_status' | 'ai_request';
   nodeId: string;
   timestamp: number;
   data: any;
@@ -165,6 +165,7 @@ class MeshDataSyncService {
       this.relayPacket(packet, message.from);
 
       if (packet.type === 'ai_request') this.handleAIRequest(packet);
+      if (packet.type === 'chat_message_delete') this.handleChatMessageDelete(packet);
     } catch (error) {
       console.error('Failed to handle incoming mesh data:', error);
     }
@@ -175,6 +176,7 @@ class MeshDataSyncService {
     switch (packet.type) {
       case 'user_profile': return meshPermissions.canViewProfile(packet.nodeId);
       case 'chat_message': return meshPermissions.canChatWith(packet.nodeId);
+      case 'chat_message_delete': return meshPermissions.canChatWith(packet.nodeId);
       case 'marketplace_listing': return meshPermissions.canViewMarketplace(packet.nodeId);
       case 'banking_transaction': return false;
       case 'node_status': return meshPermissions.canViewNodeStatus(packet.nodeId);
@@ -246,6 +248,11 @@ class MeshDataSyncService {
     } catch (error) {
       console.error('❌ Uplink AI Bridge failed:', error);
     }
+  }
+
+  private handleChatMessageDelete(packet: MeshDataPacket) {
+    // Notify listeners about message deletion
+    this.notifyListeners('chatMessageDelete', packet.data);
   }
 
   private updateNodeStatuses(peers: HybridMeshPeer[]) {
@@ -343,6 +350,7 @@ class MeshDataSyncService {
   private getTTLForType(type: MeshDataPacket['type']): number {
     switch (type) {
       case 'chat_message': return 7 * 24 * 60 * 60 * 1000;
+      case 'chat_message_delete': return 5 * 60 * 1000; // 5 minutes for delete operations
       case 'marketplace_listing': return 30 * 24 * 60 * 60 * 1000;
       case 'user_profile': return 24 * 60 * 60 * 1000;
       case 'banking_transaction': return 365 * 24 * 60 * 60 * 1000;
@@ -354,6 +362,9 @@ class MeshDataSyncService {
 
   async syncUserProfile(profile: any) { return this.broadcastData('user_profile', profile, 'high'); }
   async syncChatMessage(message: any) { return this.broadcastData('chat_message', message, 'normal'); }
+  async syncChatMessageDelete(chatId: string, messageId: string) { 
+    return this.broadcastData('chat_message_delete', { chatId, messageId }, 'high'); 
+  }
   async syncMarketplaceListing(listing: any) { return this.broadcastData('marketplace_listing', listing, 'normal'); }
   async syncBankingTransaction(transaction: any) { return this.broadcastData('banking_transaction', transaction, 'high'); }
   async syncNodeStatus(status: any) { return this.broadcastData('node_status', status, 'low'); }

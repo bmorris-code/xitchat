@@ -703,8 +703,9 @@ class HybridMeshService {
     const isLocalSource = message.connectionType === 'bluetooth' || message.connectionType === 'wifi';
 
     // Only bridge actual chat/SOS content to Nostr — skip internal protocol messages
+    // Skip [GEOHASH:] content — geohashChannels sends room messages to Nostr directly.
     const bridgeContent = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
-    if (isLocalSource && this.activeServices.nostr && this.isNostrWorthyContent(bridgeContent)) {
+    if (isLocalSource && this.activeServices.nostr && this.isNostrWorthyContent(bridgeContent) && !bridgeContent.startsWith('[GEOHASH:')) {
       console.log(`≡ƒôí Bridging message from ${message.from} to Nostr layer`);
       this.bridgeStats.bridgedOut++;
       void nostrService.broadcastMessage(JSON.stringify({ ...message, isBridged: true })).catch((error) => {
@@ -806,7 +807,8 @@ class HybridMeshService {
 
           // Always ALSO send via Nostr for non-Nostr peers so browser clients receive it
           // (browsers can only receive via Nostr — BLE/WiFi are Android-only)
-          if (peer.connectionType !== 'nostr' && this.activeServices.nostr && this.isNostrWorthyContent(content)) {
+          // Skip [GEOHASH:] content — geohashChannels already sends room messages to Nostr directly.
+          if (peer.connectionType !== 'nostr' && this.activeServices.nostr && this.isNostrWorthyContent(content) && !content.startsWith('[GEOHASH:')) {
             nostrService.broadcastMessage(payload).catch(() => {});
           }
 
@@ -865,7 +867,7 @@ class HybridMeshService {
                   .filter(p => p.connectionType === 'bluetooth' && p.isConnected && !!p.serviceId);
                 btPeers.forEach(p => finalFallbackPromises.push(workingBluetoothMesh.sendMessage(p.serviceId!, payload).catch(() => false)));
               }
-              if (this.activeServices.nostr && this.isNostrWorthyContent(content)) {
+              if (this.activeServices.nostr && this.isNostrWorthyContent(content) && !content.startsWith('[GEOHASH:')) {
                 finalFallbackPromises.push(nostrService.broadcastMessage(payload).catch(() => false));
               }
 
