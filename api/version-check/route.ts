@@ -13,7 +13,7 @@ export async function GET() {
       development: APK_PATH,
       downloadPage: DOWNLOAD_PAGE_PATH
     },
-    releaseNotes: "Bug fixes and performance improvements",
+    releaseNotes: "System-wide maintenance update: Dependency sync, SDK optimization, and performance improvements across Web, Mobile, and Android.",
     forceUpdate: false,
     apkSize: 179840673,
     checksum: "sha256:a1b2c3d4e5f6...",

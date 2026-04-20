@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.xitchat_mobile"
-    compileSdk = 36
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

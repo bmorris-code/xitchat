@@ -7,8 +7,8 @@ export interface ReleaseInfo {
   downloadPageUrl: string;
 }
 
-const DEFAULT_APP_VERSION = '1.0.1';
-const DEFAULT_APP_VERSION_CODE = 2;
+const DEFAULT_APP_VERSION = '1.0.2';
+const DEFAULT_APP_VERSION_CODE = 3;
 const DEFAULT_APK_PATH = '/xitchat-v1.apk';
 const DEFAULT_DOWNLOAD_PAGE_PATH = '/download.html';
 const DEFAULT_GITHUB_APK_URL = 'https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.apk';
