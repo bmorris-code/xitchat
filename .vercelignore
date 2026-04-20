@@ -27,11 +27,8 @@ ios/
 # Native build outputs not needed on Vercel
 android/app/build/
 *.aab
-*.apk
 dist/*.aab
 dist/*.apk
-public/*.aab
-public/*.apk
 
 # Source maps
 *.map
