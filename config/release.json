@@ -1,6 +1,6 @@
 {
-  "version": "1.0.1",
-  "versionCode": 2,
+  "version": "1.0.2",
+  "versionCode": 3,
   "apkUrls": {
     "production": "https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.apk",
     "staging": "https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.apk",
@@ -10,9 +10,9 @@
   "aabUrls": {
     "production": "https://github.com/bmorris-code/xitchat/releases/latest/download/xitchat-v1.aab"
   },
-  "releaseNotes": "Bug fixes and performance improvements",
+  "releaseNotes": "Fixed APK download functionality and deployment issues",
   "forceUpdate": false,
-  "apkSize": 179840607,
+  "apkSize": 30162098,
   "checksum": "sha256:dd600f6d2ecc6feb1e4daf196263801c0e382c34c85e7a14312414ba614ca71d",
   "minSupportedVersion": "1.0.0",
   "updateCheckInterval": 21600000
