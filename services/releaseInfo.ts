@@ -99,6 +99,6 @@ export const releaseInfo: ReleaseInfo = {
   appVersionCode: RELEASE_VERSION_CODE,
   apkVersionLabel: import.meta.env.VITE_APK_VERSION_LABEL || RELEASE_VERSION,
   apkDownloadUrl: getSafeConfiguredApkUrl(),
-  apkFileName: `xitchat-v${import.meta.env.VITE_APK_VERSION_LABEL || RELEASE_VERSION}.apk`,
+  apkFileName: 'xitchat-v1.apk',
   downloadPageUrl: getAbsoluteUrl(DOWNLOAD_PAGE_PATH)
 };
