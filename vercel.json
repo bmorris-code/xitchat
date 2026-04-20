@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "public/xitchat-v1.apk": {
+      "maxDuration": 300
+    }
+  },
   "rewrites": [
     { "source": "/((?!.*\\.[^/]+$).*)", "destination": "/index.html" },
     { "source": "/api/(.*)", "destination": "/api/$1" }
