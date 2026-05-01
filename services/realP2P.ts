@@ -70,7 +70,6 @@ class TrueMeshP2PService {
 
       await this.startLocalDiscovery();
       
-      console.log(`✅ True Mesh P2P service initialized - Offline ready. My ID: ${this.myPeerId}`);
       return true;
     } catch (error) {
       console.error('True Mesh P2P initialization failed:', error);
@@ -81,13 +80,11 @@ class TrueMeshP2PService {
   startDiscovery(): void {
     if (this.isDiscovering) return;
     
-    console.log('🔍 Starting manual mesh discovery...');
     this.startLocalDiscovery();
   }
 
   private async startLocalDiscovery(): Promise<void> {
     if (this.isDiscovering) return;
-    console.log('🔍 Starting local mesh discovery...');
     
     await Promise.allSettled([
       this.discoverViaBluetooth(),
@@ -107,12 +104,10 @@ class TrueMeshP2PService {
   private async discoverViaBluetooth(): Promise<void> {
     try {
       if (!('bluetooth' in navigator)) {
-        console.log('⚠️ Bluetooth not available');
         return;
       }
       const bluetooth = (navigator as any).bluetooth;
       if (!bluetooth.requestDevice) {
-        console.debug('⚠️ Bluetooth Web API not available');
         return;
       }
       const device = await bluetooth.requestDevice({
@@ -120,35 +115,30 @@ class TrueMeshP2PService {
         optionalServices: ['mesh-chat-service']
       });
       this.bluetoothDevice = device;
-      console.log('📱 Bluetooth device connected:', device.name);
       if (device.gatt) {
-        const server = await device.gatt.connect();
-        console.log('🔗 Bluetooth GATT connected');
+        await device.gatt.connect();
       }
     } catch (error) {
-      console.log('⚠️ Bluetooth discovery failed:', error);
+      // Bluetooth discovery failed - expected in most environments
     }
   }
 
   private async discoverViaWiFiDirect(): Promise<void> {
     try {
       if ('wifiDirect' in navigator) {
-        console.log('📡 Starting WiFi Direct discovery...');
-      } else {
-        console.log('⚠️ WiFi Direct not available');
+        // WiFi Direct discovery would start here
       }
     } catch (error) {
-      console.log('⚠️ WiFi Direct discovery failed:', error);
+      // WiFi Direct discovery failed - expected in most environments
     }
   }
   // ...
 
   private async discoverViaLocalNetwork(): Promise<void> {
     try {
-      console.log('🌐 Starting REAL local network discovery...');
       await this.createRealLocalMeshConnections();
     } catch (error) {
-      console.log('⚠️ Local network discovery failed:', error);
+      // Local network discovery failed
     }
   }
 

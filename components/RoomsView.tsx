@@ -85,12 +85,10 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
   ];
 
   useEffect(() => {
-    console.log('[ROOMS] Initializing RoomsView...');
     
     // Initial load
     try {
       const rooms = geohashChannels.getNearbyChannels();
-      console.log('[ROOMS] Initial nearby rooms:', rooms);
       setNearbyRooms(rooms);
     } catch (error) {
       console.error('[ROOMS] Failed to get nearby channels:', error);
@@ -98,7 +96,6 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
     }
 
     const location = geohashChannels.getCurrentLocation();
-    console.log('[ROOMS] Current location:', location);
     if (location) {
       setIsLocating(false);
     }
@@ -106,12 +103,10 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
     // Subscribe to real-time updates
     try {
       const unsubscribeNearby = geohashChannels.subscribe('nearbyChannelsUpdated', (rooms) => {
-        console.log('[ROOMS] Nearby channels updated:', rooms);
         setNearbyRooms(rooms);
       });
 
       const unsubscribeLocation = geohashChannels.subscribe('locationUpdated', (loc) => {
-        console.log('[ROOMS] Location updated:', loc);
         setIsLocating(false);
       });
 
@@ -165,11 +160,6 @@ const RoomsView: React.FC<RoomsViewProps> = ({ onJoinRoom }) => {
       allRooms.push(room);
     }
   });
-
-  console.log('[ROOMS] Global rooms:', globalRooms.length);
-  console.log('[ROOMS] Nearby rooms:', nearbyRooms.length);
-  console.log('[ROOMS] All rooms total:', allRooms.length);
-  console.log('[ROOMS] Is locating:', isLocating);
 
   return (
     <div className="flex-1 flex flex-col p-4 sm:p-6 overflow-y-auto bg-black text-current no-scrollbar relative">

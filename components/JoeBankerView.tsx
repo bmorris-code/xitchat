@@ -68,7 +68,6 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
         ];
         
         setNearbyNodes(realNodes);
-        console.log('Real mesh nodes loaded:', realNodes);
       } catch (error) {
         console.error('Failed to load real mesh nodes:', error);
         setNearbyNodes([]);
@@ -129,14 +128,12 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
   };
 
   const handleTransfer = async () => {
-    console.log('Transfer button clicked', { transferForm });
     if (!transferForm.toNode || !transferForm.amount) {
       showToast('Please fill in all fields', 'warning');
       return;
     }
 
     try {
-      console.log('Initiating transfer...', transferForm);
       await joeBanker.initiateTransfer(transferForm.toNode, parseInt(transferForm.amount), transferForm.message);
       setShowTransferModal(false);
       setTransferForm({ toNode: '', amount: '', message: '' });
@@ -148,14 +145,12 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
   };
 
   const handlePaymentRequest = async () => {
-    console.log('Payment request button clicked', { paymentForm });
     if (!paymentForm.toNode || !paymentForm.amount) {
       showToast('Please fill in all fields', 'warning');
       return;
     }
 
     try {
-      console.log('Creating payment request...', paymentForm);
       await joeBanker.createPaymentRequest(paymentForm.toNode, parseInt(paymentForm.amount), paymentForm.description);
       setShowPaymentModal(false);
       setPaymentForm({ toNode: '', amount: '', description: '' });
@@ -167,14 +162,12 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
   };
 
   const handleCreateSavings = async () => {
-    console.log('Create savings button clicked', { savingsForm });
     if (!savingsForm.amount) {
       showToast('Please enter an amount', 'warning');
       return;
     }
 
     try {
-      console.log('Creating savings account...', savingsForm);
       joeBanker.createSavingsAccount(parseInt(savingsForm.amount), parseInt(savingsForm.lockPeriod));
       setShowSavingsModal(false);
       setSavingsForm({ amount: '', lockPeriod: '30' });
@@ -186,14 +179,12 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
   };
 
   const handleOfferCredit = async () => {
-    console.log('Offer credit button clicked', { creditForm });
     if (!creditForm.borrower || !creditForm.amount) {
       showToast('Please fill in all fields', 'warning');
       return;
     }
 
     try {
-      console.log('Offering credit...', creditForm);
       await joeBanker.offerCredit(creditForm.borrower, parseInt(creditForm.amount), parseFloat(creditForm.interestRate), parseInt(creditForm.term));
       setShowCreditModal(false);
       setCreditForm({ borrower: '', amount: '', interestRate: '10', term: '30' });
@@ -292,10 +283,7 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <button 
-              onClick={() => {
-                console.log('Send Transfer button clicked');
-                setShowTransferModal(true);
-              }} 
+              onClick={() => setShowTransferModal(true)} 
               className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
             >
               <i className="fa-solid fa-arrow-right text-2xl mb-2"></i>
@@ -303,10 +291,7 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
               <p className="text-xs opacity-60">Send XC to nearby mesh nodes</p>
             </button>
             <button 
-              onClick={() => {
-                console.log('Request Payment button clicked');
-                setShowPaymentModal(true);
-              }} 
+              onClick={() => setShowPaymentModal(true)} 
               className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
             >
               <i className="fa-solid fa-file-invoice-dollar text-2xl mb-2"></i>
@@ -314,10 +299,7 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
               <p className="text-xs opacity-60">Invoice other nodes for services</p>
             </button>
             <button 
-              onClick={() => {
-                console.log('Create Savings button clicked');
-                setShowSavingsModal(true);
-              }} 
+              onClick={() => setShowSavingsModal(true)} 
               className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
             >
               <i className="fa-solid fa-piggy-bank text-2xl mb-2"></i>
@@ -325,10 +307,7 @@ const JoeBankerView: React.FC<JoeBankerViewProps> = ({ onBack }) => {
               <p className="text-xs opacity-60">Lock XC for guaranteed returns</p>
             </button>
             <button 
-              onClick={() => {
-                console.log('Offer Credit button clicked');
-                setShowCreditModal(true);
-              }} 
+              onClick={() => setShowCreditModal(true)} 
               className="terminal-btn active p-6 text-left hover:scale-105 transition-transform"
             >
               <i className="fa-solid fa-hand-holding-usd text-2xl mb-2"></i>
